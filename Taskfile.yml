@@ -1,0 +1,63 @@
+version: '3'
+
+vars:
+  BIN: '{{.ROOT_DIR}}/bin'
+  # .golangci-lint-version is the single source of truth for the linter
+  # version. CI reads the same file through the version-file input of
+  # golangci/golangci-lint-action.
+  GOLANGCI_VERSION:
+    sh: cat .golangci-lint-version
+  # `golangci-lint version` prints the number without the leading "v".
+  GOLANGCI_SEMVER:
+    sh: sed 's/^v//' .golangci-lint-version
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  tools:
+    desc: Install development tools into bin/
+    status:
+      - test -x {{.BIN}}/golangci-lint
+      - '{{.BIN}}/golangci-lint version 2>&1 | grep -q {{.GOLANGCI_SEMVER}}'
+    cmds:
+      # golangci-lint does not support installation via `go install` or the
+      # go.mod tool directive, so the official script is used instead.
+      - >-
+        curl -sSfL
+        https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh
+        | sh -s -- -b {{.BIN}} {{.GOLANGCI_VERSION}}
+
+  fmt:
+    desc: Format the code
+    deps: [tools]
+    cmds:
+      - '{{.BIN}}/golangci-lint fmt'
+
+  lint:
+    desc: Run static analysis (formatting diffs are reported too)
+    deps: [tools]
+    cmds:
+      # Formatters configured under `formatters` also run as linters here,
+      # so a separate `fmt --diff` pass is unnecessary.
+      - '{{.BIN}}/golangci-lint run'
+
+  test:
+    desc: Run the tests
+    cmds:
+      - go test ./... -race
+
+  build:
+    desc: Build the binary into bin/
+    cmds:
+      - go build -o {{.BIN}}/pino ./cmd/pino
+
+  check:
+    desc: Run every check
+    cmds:
+      - task: lint
+      - task: test
+      - task: build

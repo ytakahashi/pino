@@ -8,6 +8,9 @@
 *.so
 *.dylib
 
+# Build output and development tools installed by `task tools`
+/bin/
+
 # Test binary, built with `go test -c`
 *.test
 

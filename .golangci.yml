@@ -1,0 +1,74 @@
+version: "2"
+
+formatters:
+  enable:
+    - gofumpt
+    - gci
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/ytakahashi/pino)
+
+linters:
+  default: standard
+  enable:
+    - depguard
+    - errorlint
+    - exhaustive
+    - misspell
+  settings:
+    exhaustive:
+      # Do not let a default clause hide a missing case. Several enums
+      # (LineKind, Mode, Kind, Role, ChangeStatus) are expected to gain
+      # values later.
+      default-signifies-exhaustive: false
+    depguard:
+      # Enforces the layering: presentation -> application -> domain,
+      # with infrastructure depending on domain and the ports only.
+      # Concrete adapters are injected by cli, which is the sole place
+      # allowed to import infrastructure.
+      rules:
+        domain:
+          files:
+            - '**/internal/domain/**'
+          deny:
+            - pkg: github.com/ytakahashi/pino/internal/application
+            - pkg: github.com/ytakahashi/pino/internal/infrastructure
+            - pkg: github.com/ytakahashi/pino/internal/presentation
+            - pkg: github.com/tailscale/hujson
+              desc: the parser stays inside infrastructure
+            - pkg: github.com/charmbracelet
+              desc: UI libraries stay inside presentation
+        application:
+          files:
+            - '**/internal/application/**'
+          deny:
+            - pkg: github.com/ytakahashi/pino/internal/infrastructure
+              desc: use the ports; cli injects the concrete adapters
+            - pkg: github.com/ytakahashi/pino/internal/presentation
+            - pkg: github.com/tailscale/hujson
+            - pkg: github.com/charmbracelet
+        jsonparser:
+          files:
+            - '**/internal/infrastructure/jsonparser/**'
+          deny:
+            - pkg: github.com/ytakahashi/pino/internal/infrastructure/filestore
+            - pkg: github.com/ytakahashi/pino/internal/presentation
+            - pkg: os
+              desc: the parser only deals with byte slices
+        filestore:
+          files:
+            - '**/internal/infrastructure/filestore/**'
+          deny:
+            - pkg: github.com/ytakahashi/pino/internal/infrastructure/jsonparser
+            - pkg: github.com/ytakahashi/pino/internal/presentation
+            - pkg: github.com/tailscale/hujson
+              desc: filestore does not know the bytes are JSON
+        presentation:
+          files:
+            - '**/internal/presentation/**'
+          deny:
+            - pkg: github.com/ytakahashi/pino/internal/infrastructure
+              desc: cli injects the concrete adapters
