@@ -7,6 +7,17 @@ import (
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
+func str(t *testing.T, v string) *domain.String {
+	t.Helper()
+
+	s, err := domain.NewString(v)
+	if err != nil {
+		t.Fatalf("NewString(%q): %v", v, err)
+	}
+
+	return s
+}
+
 func TestKindString(t *testing.T) {
 	t.Parallel()
 
@@ -48,7 +59,7 @@ func TestNodeKinds(t *testing.T) {
 	}{
 		{"object", obj, domain.KindObject},
 		{"array", domain.NewArray(nil), domain.KindArray},
-		{"string", domain.NewString("x"), domain.KindString},
+		{"string", str(t, "x"), domain.KindString},
 		{"number", domain.NewNumber("1"), domain.KindNumber},
 		{"bool", domain.NewBool(true), domain.KindBool},
 		{"null", domain.NewNull(), domain.KindNull},
@@ -82,7 +93,7 @@ func TestNodesAreComparable(t *testing.T) {
 
 	var (
 		same  domain.Node = obj
-		other domain.Node = domain.NewArray([]domain.Node{domain.NewString("x")})
+		other domain.Node = domain.NewArray([]domain.Node{str(t, "x")})
 	)
 
 	if same != domain.Node(obj) {
@@ -141,7 +152,7 @@ func TestNewObjectRejectsDuplicateKey(t *testing.T) {
 
 	members := []domain.Member{
 		{Key: "port", Value: domain.NewNumber("8080")},
-		{Key: "host", Value: domain.NewString("localhost")},
+		{Key: "host", Value: str(t, "localhost")},
 		{Key: "port", Value: domain.NewNumber("9090")},
 	}
 
@@ -168,11 +179,98 @@ func TestNewObjectRejectsDuplicateKey(t *testing.T) {
 	}
 }
 
+// RFC 8259 requires JSON to be UTF-8. A document is refused where the bytes
+// would enter the tree, so that nothing downstream has to decide what to do
+// with text it cannot encode.
+func TestNewStringRejectsInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		in    string
+		index int
+	}{
+		"a lone continuation byte": {in: "\xff", index: 0},
+		"a truncated sequence":     {in: "\xe8\xa8", index: 0},
+		"an overlong encoding":     {in: "\xc0\xaf", index: 0},
+		"an encoded surrogate":     {in: "\xed\xa0\x80", index: 0},
+		"a bad byte after text":    {in: "ok\xffbad", index: 2},
+		"a bad byte after kanji":   {in: "設定\xff", index: 6},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := domain.NewString(tc.in)
+			if err == nil {
+				t.Fatalf("NewString(%q) succeeded, want an invalid UTF-8 error", tc.in)
+			}
+
+			var bad *domain.InvalidUTF8Error
+			if !errors.As(err, &bad) {
+				t.Fatalf("NewString(%q) error = %v, want *InvalidUTF8Error", tc.in, err)
+			}
+
+			if bad.Index != tc.index {
+				t.Errorf("Index = %d, want %d", bad.Index, tc.index)
+			}
+
+			if bad.Text != tc.in {
+				t.Errorf("Text = %q, want %q", bad.Text, tc.in)
+			}
+		})
+	}
+}
+
+func TestNewStringAcceptsValidUTF8(t *testing.T) {
+	t.Parallel()
+
+	// U+FFFD is a character like any other: text that already contains one
+	// must not be mistaken for text that failed to decode.
+	for _, in := range []string{"", "localhost", "設定", "🌲", "�", "a\x00b"} {
+		t.Run(in, func(t *testing.T) {
+			t.Parallel()
+
+			s, err := domain.NewString(in)
+			if err != nil {
+				t.Fatalf("NewString(%q) error = %v", in, err)
+			}
+
+			if s.Value() != in {
+				t.Errorf("Value() = %q, want %q", s.Value(), in)
+			}
+		})
+	}
+}
+
+// A key is a JSON string as much as a value is, and it reaches a document
+// through Member rather than through a constructor of its own.
+func TestNewObjectRejectsInvalidKey(t *testing.T) {
+	t.Parallel()
+
+	_, err := domain.NewObject([]domain.Member{
+		{Key: "host", Value: str(t, "localhost")},
+		{Key: "po\xffrt", Value: domain.NewNumber("8080")},
+	})
+	if err == nil {
+		t.Fatal("NewObject() succeeded, want an invalid UTF-8 error")
+	}
+
+	var bad *domain.InvalidUTF8Error
+	if !errors.As(err, &bad) {
+		t.Fatalf("NewObject() error = %v, want *InvalidUTF8Error", err)
+	}
+
+	if bad.Text != "po\xffrt" || bad.Index != 2 {
+		t.Errorf("error = %+v, want the offending key at byte 2", bad)
+	}
+}
+
 func TestObjectLookup(t *testing.T) {
 	t.Parallel()
 
 	obj, err := domain.NewObject([]domain.Member{
-		{Key: "host", Value: domain.NewString("localhost")},
+		{Key: "host", Value: str(t, "localhost")},
 		{Key: "port", Value: domain.NewNumber("8080")},
 	})
 	if err != nil {
@@ -212,7 +310,7 @@ func TestObjectLookup(t *testing.T) {
 func TestConstructorsCopyTheirInput(t *testing.T) {
 	t.Parallel()
 
-	members := []domain.Member{{Key: "host", Value: domain.NewString("localhost")}}
+	members := []domain.Member{{Key: "host", Value: str(t, "localhost")}}
 
 	obj, err := domain.NewObject(members)
 	if err != nil {
@@ -229,10 +327,10 @@ func TestConstructorsCopyTheirInput(t *testing.T) {
 		t.Error("Lookup(\"host\") failed after the caller mutated its slice")
 	}
 
-	elements := []domain.Node{domain.NewString("search")}
+	elements := []domain.Node{str(t, "search")}
 
 	arr := domain.NewArray(elements)
-	elements[0] = domain.NewString("hijacked")
+	elements[0] = str(t, "hijacked")
 
 	first, ok := arr.At(0).(*domain.String)
 	if !ok {
@@ -317,7 +415,7 @@ func TestObjectKeepsTriviaOutOfReach(t *testing.T) {
 func TestMemberIsHandedOutByValue(t *testing.T) {
 	t.Parallel()
 
-	obj, err := domain.NewObject([]domain.Member{{Key: "host", Value: domain.NewString("localhost")}})
+	obj, err := domain.NewObject([]domain.Member{{Key: "host", Value: str(t, "localhost")}})
 	if err != nil {
 		t.Fatalf("NewObject() error = %v", err)
 	}
@@ -339,8 +437,8 @@ func TestArray(t *testing.T) {
 	t.Parallel()
 
 	arr := domain.NewArray([]domain.Node{
-		domain.NewString("search"),
-		domain.NewString("history"),
+		str(t, "search"),
+		str(t, "history"),
 	})
 
 	if arr.Len() != 2 {

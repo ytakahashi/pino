@@ -1,0 +1,8 @@
+ 0  open    0  /                     punct[{]
+ 1  single  1  /obj                  key["obj"] punct[: ] punct[{}] punct[,]
+ 2  single  1  /arr                  key["arr"] punct[: ] punct[[]] punct[,]
+ 3  open    1  /outer                key["outer"] punct[: ] punct[{]
+ 4  single  2  /outer/inner          key["inner"] punct[: ] punct[{}]
+ 5  close   1  /outer                punct[}] punct[,]
+ 6  single  1  /last                 key["last"] punct[: ] number[1]
+ 7  close   0  /                     punct[}]

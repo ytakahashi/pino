@@ -16,6 +16,7 @@ package domain
 import (
 	"iter"
 	"strconv"
+	"unicode/utf8"
 )
 
 // Kind identifies the JSON type of a Node.
@@ -100,18 +101,69 @@ func (e *DuplicateKeyError) Error() string {
 	return "duplicate key " + strconv.Quote(e.Key)
 }
 
+// InvalidUTF8Error reports text that is not valid UTF-8.
+//
+// RFC 8259 requires JSON to be encoded in UTF-8, so such bytes are not a
+// document pino can write back. They are refused where they would enter the
+// tree rather than replaced with U+FFFD: substituting would rewrite the bytes
+// of a file the user only asked to look at, and the loss would surface at
+// save time with nothing left to trace it to.
+//
+// Refusing here also lets everything downstream — measuring a string's width,
+// searching it, encoding it — take valid UTF-8 for granted.
+type InvalidUTF8Error struct {
+	// Text is the offending string, which is how a parser finds the value or
+	// the key it came from in order to report a position.
+	Text string
+
+	// Index is the byte offset of the first sequence that could not be
+	// decoded.
+	Index int
+}
+
+func (e *InvalidUTF8Error) Error() string {
+	return "invalid UTF-8 at byte " + strconv.Itoa(e.Index)
+}
+
+// checkUTF8 reports the first byte of s that is not part of a valid UTF-8
+// sequence.
+func checkUTF8(s string) error {
+	for i, r := range s {
+		if r != utf8.RuneError {
+			continue
+		}
+
+		// U+FFFD is a character in its own right and may legitimately appear
+		// in a document. Only a decode one byte wide is a failed one.
+		if _, size := utf8.DecodeRuneInString(s[i:]); size == 1 {
+			return &InvalidUTF8Error{Text: s, Index: i}
+		}
+	}
+
+	return nil
+}
+
 // NewObject builds an Object from members, in order.
 //
-// It returns a *DuplicateKeyError if two members share a key. The slice is
-// copied, so later changes by the caller do not reach the object. Copying the
-// slice alone is enough because a Member holds only a string, an immutable
-// Node and an immutable Trivia.
+// It returns a *DuplicateKeyError if two members share a key, and an
+// *InvalidUTF8Error if a key is not valid UTF-8. Keys are checked here rather
+// than by a constructor of their own, because Member is a plain struct and
+// this is the point where one enters a document.
+//
+// The slice is copied, so later changes by the caller do not reach the
+// object. Copying the slice alone is enough because a Member holds only a
+// string, an immutable Node and an immutable Trivia.
 func NewObject(members []Member) (*Object, error) {
 	index := make(map[string]int, len(members))
 	for i, m := range members {
+		if err := checkUTF8(m.Key); err != nil {
+			return nil, err
+		}
+
 		if first, dup := index[m.Key]; dup {
 			return nil, &DuplicateKeyError{Key: m.Key, First: first, Dup: i}
 		}
+
 		index[m.Key] = i
 	}
 
@@ -194,7 +246,19 @@ type String struct {
 	trivia Trivia
 }
 
-func NewString(v string) *String { return &String{value: v} }
+// NewString wraps a string value, which must be valid UTF-8.
+//
+// It returns an *InvalidUTF8Error otherwise. The check is here, rather than
+// left to whoever writes the document out, so that a file pino cannot encode
+// is refused while there is still a position to report it against, and so
+// that text pasted into an edit is caught as it is entered.
+func NewString(v string) (*String, error) {
+	if err := checkUTF8(v); err != nil {
+		return nil, err
+	}
+
+	return &String{value: v}, nil
+}
 
 func (s *String) isNode()        {}
 func (s *String) Kind() Kind     { return KindString }
