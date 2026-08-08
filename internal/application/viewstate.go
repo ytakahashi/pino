@@ -71,3 +71,39 @@ func NewViewState() ViewState {
 func (v ViewState) RenderOptions() RenderOptions {
 	return RenderOptions{Collapsed: v.Collapsed, MaxStrLen: v.MaxStrLen}
 }
+
+// Collapse folds the node at p away. It reports whether anything changed, so
+// that a caller knows whether the rows have to be produced again.
+//
+// The set is keyed by the text of a path rather than by the path itself, since
+// a Path holds a slice and cannot be a map key. Every method here goes through
+// that conversion so that no other part of the layer has to know of it.
+func (v *ViewState) Collapse(p domain.Path) bool {
+	pointer := p.String()
+	if _, folded := v.Collapsed[pointer]; folded {
+		return false
+	}
+
+	v.Collapsed[pointer] = struct{}{}
+
+	return true
+}
+
+// Expand unfolds the node at p, reporting whether anything changed.
+func (v *ViewState) Expand(p domain.Path) bool {
+	pointer := p.String()
+	if _, folded := v.Collapsed[pointer]; !folded {
+		return false
+	}
+
+	delete(v.Collapsed, pointer)
+
+	return true
+}
+
+// IsCollapsed reports whether the node at p is folded away.
+func (v *ViewState) IsCollapsed(p domain.Path) bool {
+	_, folded := v.Collapsed[p.String()]
+
+	return folded
+}

@@ -32,6 +32,15 @@ type App struct {
 	// meta is what the file store handed over when reading, kept to give
 	// back before writing. Its contents are never read here.
 	meta Meta
+
+	// height is how many rows the document has to itself, as reported by
+	// whoever is drawing it.
+	//
+	// It is not part of the view state, which describes the document being
+	// looked at and is discarded when another is opened. How tall the terminal
+	// is outlives any document, so keeping it here saves the view state from
+	// growing an exception to that rule.
+	height int
 }
 
 // New starts a session with no document open.
@@ -80,13 +89,35 @@ func (a *App) Open(path string) error {
 	return nil
 }
 
-// Lines renders the open document. It returns nil when nothing is open.
+// Frame is the session as it should be drawn. It holds no rows when nothing is
+// open.
 //
-// The document is rendered again on every call. Bubble Tea calls View for
-// every message it receives, so this will want memoising on the root and the
-// render options; until it measurably hurts, re-rendering keeps the lines
+// It only reads: the cursor is looked up, never corrected. Drawing happens on
+// every message Bubble Tea delivers, and a query that quietly repaired state
+// would hide the fact that something had left it broken. Correcting is what
+// settle does, once per action.
+func (a *App) Frame() Frame {
+	lines := a.render()
+
+	return Frame{
+		Lines:  lines,
+		Cursor: indexOf(lines, a.view.Cursor),
+		Scroll: a.view.Scroll,
+	}
+}
+
+// render lays the open document out, or produces nothing when none is open.
+//
+// Answering with no rows rather than refusing is what lets the rest of the
+// layer be written without a branch for "nothing is open": moving finds no
+// cursor row, settling finds nothing to settle, and the window stays at the
+// top.
+//
+// The document is laid out again on every call. Bubble Tea draws for every
+// message it receives, so this will want memoising on the root and the render
+// options; until it measurably hurts, rendering afresh keeps the rows
 // impossible to get out of step with the document.
-func (a *App) Lines() []Line {
+func (a *App) render() []Line {
 	if a.doc == nil {
 		return nil
 	}
@@ -116,6 +147,16 @@ type StatusInfo struct {
 
 	// Dirty reports unsaved changes.
 	Dirty bool
+
+	// Pointer locates the selected node, as RFC 6901 spells it: the root is
+	// the empty string. How to show that is left to whoever draws the bar,
+	// where "/" reads better than a blank.
+	Pointer string
+
+	// Type names the kind of the selected value: object, array, string,
+	// number, boolean or null. It is empty when nothing is selected, which is
+	// what tells the two apart from a root holding an object.
+	Type string
 }
 
 // Status describes the session for the status bar.
@@ -132,6 +173,14 @@ func (a *App) Status() StatusInfo {
 
 	if a.doc != nil {
 		info.Dirty = a.doc.IsDirty()
+
+		// The selected node is looked up in the tree rather than read off the
+		// rows: producing the rows to learn the type of one node would draw
+		// the whole document again every time the bar is refreshed, which is
+		// the same cost this struct avoids by not carrying a row count.
+		if n, ok := domain.Resolve(a.doc.Root(), a.view.Cursor); ok {
+			info.Pointer, info.Type = a.view.Cursor.String(), n.Kind().String()
+		}
 	}
 
 	return info
@@ -140,10 +189,132 @@ func (a *App) Status() StatusInfo {
 // Do applies an Action and returns the work the presentation layer has to
 // carry out. An Action this session has nothing to do with yields no effect.
 func (a *App) Do(act Action) []Effect {
-	switch act.(type) {
+	switch act := act.(type) {
 	case ActionQuit:
 		return []Effect{EffectQuit{}}
+
+	case ActionMoveNext:
+		a.moveBy(nextRow)
+
+	case ActionMovePrev:
+		a.moveBy(prevRow)
+
+	case ActionMoveIn:
+		a.moveIn()
+
+	case ActionMoveOut:
+		a.moveOut()
+
+	case ActionResize:
+		// A window of no rows is not a window; asking for one is answered by
+		// scrolling nowhere rather than by arithmetic on a negative height.
+		a.height = max(act.Height, 0)
+		a.settle(a.render())
 	}
 
 	return nil
+}
+
+// settle puts the cursor and the window back into agreement with lines.
+//
+// Every action ends here, which is what makes "the cursor is on screen" true
+// after all of them rather than after each having remembered to arrange it.
+// The cursor is written back rather than merely drawn elsewhere: a path
+// pointing at a node no longer on screen would go on naming that node in the
+// status bar, and would decide where the next keystroke moves from.
+//
+// lines is a parameter rather than something produced here, so that the
+// actions leaving the rows alone say so by handing over the ones they already
+// have. Only the ones that change which rows exist lay the document out again.
+func (a *App) settle(lines []Line) {
+	row := visibleRow(lines, a.view.Cursor)
+	if row < 0 {
+		row = firstRow(lines)
+	}
+
+	if row >= 0 {
+		a.view.Cursor = lines[row].Path
+	}
+
+	a.view.Scroll = clampScroll(a.view.Scroll, row, a.height, len(lines))
+}
+
+// moveBy selects the row step leads to, staying put when it leads nowhere.
+//
+// The document is laid out once: which rows exist does not depend on where the
+// cursor is, so the same rows answer both where to go and what to settle
+// against.
+func (a *App) moveBy(step func(lines []Line, from int) int) {
+	lines := a.render()
+
+	if from := visibleRow(lines, a.view.Cursor); from >= 0 {
+		if to := step(lines, from); to >= 0 {
+			a.view.Cursor = lines[to].Path
+		}
+	}
+
+	a.settle(lines)
+}
+
+// moveIn unfolds the selected container, or selects the first thing inside one
+// that is already open.
+//
+// Unfolding leaves the cursor where it is, as vim does: what was hidden
+// appears, and stepping into it is the next keystroke. Nothing happens on a
+// value with no children, in the same way that there is nothing to open.
+func (a *App) moveIn() {
+	lines := a.render()
+
+	from := visibleRow(lines, a.view.Cursor)
+	if from < 0 {
+		a.settle(lines)
+
+		return
+	}
+
+	if lines[from].Collapsed {
+		if a.view.Expand(lines[from].Path) {
+			// The rows that were hidden are back, so the ones in hand are
+			// stale.
+			a.settle(a.render())
+
+			return
+		}
+	} else if to := firstChildRow(lines, from); to >= 0 {
+		a.view.Cursor = lines[to].Path
+	}
+
+	a.settle(lines)
+}
+
+// moveOut folds the selected container away, or selects what holds it.
+//
+// An open container folds; anything else, a folded container included, steps
+// out to its parent. That is what gives one key both meanings without a mode:
+// pressing it repeatedly walks out of a document, folding each level on the
+// way only while standing on something open.
+//
+// The root does neither: it has no parent, so it is where walking out ends,
+// and folding it would leave a screen holding "{…}" and no document at all.
+func (a *App) moveOut() {
+	lines := a.render()
+
+	from := visibleRow(lines, a.view.Cursor)
+	if from < 0 {
+		a.settle(lines)
+
+		return
+	}
+
+	if lines[from].Kind == LineOpen && !lines[from].Path.IsRoot() {
+		if a.view.Collapse(lines[from].Path) {
+			a.settle(a.render())
+
+			return
+		}
+	} else if to := parentRow(lines, from); to >= 0 {
+		a.view.Cursor = lines[to].Path
+	}
+
+	a.settle(lines)
 }
