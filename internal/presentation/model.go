@@ -89,12 +89,12 @@ func (m Model) View() tea.View {
 		return fullScreen("")
 	}
 
-	lines := m.app.Lines()
+	frame := m.app.Frame()
 	info := m.app.Status()
 
 	rows := make([]string, 0, m.height)
 
-	for _, l := range m.visible(lines) {
+	for _, l := range m.visible(frame.Lines) {
 		// The indentation comes from the open document rather than from the
 		// theme, so that what is drawn and what the status bar reports are
 		// the same value.
@@ -107,7 +107,7 @@ func (m Model) View() tea.View {
 		rows = append(rows, "")
 	}
 
-	rows = append(rows, m.theme.RenderStatusBar(info, len(lines), m.width))
+	rows = append(rows, m.theme.RenderStatusBar(info, len(frame.Lines), m.width))
 
 	return fullScreen(strings.Join(rows, "\n"))
 }

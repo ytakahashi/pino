@@ -238,8 +238,8 @@ func TestOpenFailure(t *testing.T) {
 				t.Errorf("Status().Name = %q after a failed Open, want empty", app.Status().Name)
 			}
 
-			if lines := app.Lines(); lines != nil {
-				t.Errorf("Lines() = %v after a failed Open, want nil", lines)
+			if frame := app.Frame(); frame.Lines != nil {
+				t.Errorf("Frame().Lines = %v after a failed Open, want nil", frame.Lines)
 			}
 
 			if renderer.calls != 0 {
@@ -249,7 +249,7 @@ func TestOpenFailure(t *testing.T) {
 	}
 }
 
-func TestLines(t *testing.T) {
+func TestFrame(t *testing.T) {
 	t.Parallel()
 
 	root := testTree(t)
@@ -265,8 +265,25 @@ func TestLines(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 
-	if got := app.Lines(); len(got) != len(want) {
-		t.Fatalf("Lines() = %v, want %v", got, want)
+	frame := app.Frame()
+
+	if len(frame.Lines) != len(want) {
+		t.Fatalf("Frame().Lines = %v, want %v", frame.Lines, want)
+	}
+
+	// Both rows of the fake carry the root path, and the cursor starts there.
+	if frame.Cursor != 0 {
+		t.Errorf("Frame().Cursor = %d, want 0", frame.Cursor)
+	}
+
+	if frame.Scroll != 0 {
+		t.Errorf("Frame().Scroll = %d, want 0", frame.Scroll)
+	}
+
+	// One picture costs one render; asking for the rows, the cursor row and
+	// the window separately would cost three.
+	if renderer.calls != 1 {
+		t.Errorf("renderer called %d times for one frame, want 1", renderer.calls)
 	}
 
 	if renderer.gotRoot != root {
@@ -282,6 +299,91 @@ func TestLines(t *testing.T) {
 	// without anyone choosing still has a limit.
 	if renderer.gotOpt.MaxStrLen <= 0 {
 		t.Errorf("renderer saw MaxStrLen = %d, want a limit", renderer.gotOpt.MaxStrLen)
+	}
+}
+
+// A session with nothing open still has to answer, since the terminal draws
+// before a document is necessarily there.
+func TestFrameWithoutDocument(t *testing.T) {
+	t.Parallel()
+
+	renderer := &fakeRenderer{lines: []Line{{Kind: LineOpen}}}
+	app := New(Deps{Renderer: renderer})
+
+	frame := app.Frame()
+
+	if frame.Lines != nil {
+		t.Errorf("Frame().Lines = %v, want none", frame.Lines)
+	}
+
+	if frame.Cursor != -1 {
+		t.Errorf("Frame().Cursor = %d, want -1", frame.Cursor)
+	}
+
+	if renderer.calls != 0 {
+		t.Errorf("renderer called %d times with no document open", renderer.calls)
+	}
+}
+
+func TestViewStateFolding(t *testing.T) {
+	t.Parallel()
+
+	view := NewViewState()
+	server := path(domain.KeySegment("server"))
+
+	if view.IsCollapsed(server) {
+		t.Error("a fresh view state has something folded")
+	}
+
+	if !view.Collapse(server) {
+		t.Error("Collapse() = false on a node that was open")
+	}
+
+	if !view.IsCollapsed(server) {
+		t.Error("IsCollapsed() = false after folding")
+	}
+
+	// Folding twice is not a change, which is how an action knows whether the
+	// rows have to be produced again.
+	if view.Collapse(server) {
+		t.Error("Collapse() = true on a node already folded")
+	}
+
+	// The set is what the renderer reads, keyed by the text of the path.
+	if _, ok := view.RenderOptions().Collapsed["/server"]; !ok {
+		t.Errorf("the renderer sees %v, want the pointer of the folded node", view.RenderOptions().Collapsed)
+	}
+
+	if !view.Expand(server) {
+		t.Error("Expand() = false on a node that was folded")
+	}
+
+	if view.Expand(server) {
+		t.Error("Expand() = true on a node already open")
+	}
+
+	if view.IsCollapsed(server) {
+		t.Error("IsCollapsed() = true after unfolding")
+	}
+}
+
+// The root is addressed by the empty pointer, which a set keyed by text can
+// easily fail to hold apart from "nothing is folded".
+func TestViewStateFoldsTheRoot(t *testing.T) {
+	t.Parallel()
+
+	view := NewViewState()
+
+	if !view.Collapse(domain.Path{}) {
+		t.Fatal("Collapse(root) = false")
+	}
+
+	if !view.IsCollapsed(domain.Path{}) {
+		t.Error("IsCollapsed(root) = false after folding it")
+	}
+
+	if view.IsCollapsed(path(domain.KeySegment("server"))) {
+		t.Error("folding the root folded a member as well")
 	}
 }
 

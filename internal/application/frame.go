@@ -1,0 +1,24 @@
+package application
+
+// Frame is one drawable picture of the session: the rows of the document,
+// which of them the cursor is on, and where the window onto them starts.
+//
+// The three arrive together because drawing needs all three and rendering
+// produces them at once. Separate accessors would each have to render the
+// document again to answer, which is the same trap StatusInfo avoids by not
+// carrying a row count.
+//
+// The rows are the whole document rather than the part that fits: how many
+// rows there are belongs in the status bar, and cutting to the width of the
+// terminal is the business of whoever owns it. Scroll says where that cut
+// begins.
+type Frame struct {
+	Lines []Line
+
+	// Cursor indexes Lines, and is -1 when no row is selected: nothing is
+	// open, or the document is empty.
+	Cursor int
+
+	// Scroll is the first row to draw.
+	Scroll int
+}

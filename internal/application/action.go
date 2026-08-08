@@ -16,6 +16,43 @@ type ActionQuit struct{}
 
 func (ActionQuit) isAction() {}
 
+// ActionMoveNext and ActionMovePrev ask for the node after and before the one
+// selected, in the order the document is drawn in.
+type (
+	ActionMoveNext struct{}
+	ActionMovePrev struct{}
+)
+
+func (ActionMoveNext) isAction() {}
+func (ActionMovePrev) isAction() {}
+
+// ActionMoveIn asks to go one step towards the leaves: to unfold the selected
+// container, or to select the first thing inside one already open.
+//
+// ActionMoveOut is its opposite: fold the selected container, or select what
+// holds it. The pair is named for the direction taken through the tree rather
+// than for the keys pressed, because which of the two things it does depends
+// on what is selected.
+type (
+	ActionMoveIn  struct{}
+	ActionMoveOut struct{}
+)
+
+func (ActionMoveIn) isAction()  {}
+func (ActionMoveOut) isAction() {}
+
+// ActionResize reports how many rows the document can be drawn in.
+//
+// It is the one Action that does not come from a key. Resizing a window is
+// still something the person did, and the layer that owns the terminal is
+// still the one translating it, so it arrives the same way everything else
+// does. Height is the room left for the document, not the height of the
+// terminal: subtracting the status bar, and later an inspector, is a decision
+// that belongs to whoever lays the screen out.
+type ActionResize struct{ Height int }
+
+func (ActionResize) isAction() {}
+
 // Effect is work the application cannot do itself and hands back to the
 // presentation layer, which owns the terminal.
 //
