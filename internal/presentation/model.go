@@ -86,7 +86,7 @@ func (m Model) View() tea.View {
 	// The size arrives as a message, so the first frame is empty and is
 	// replaced as soon as it comes.
 	if m.width <= 0 || m.height <= 0 {
-		return tea.NewView("")
+		return fullScreen("")
 	}
 
 	lines := m.app.Lines()
@@ -109,7 +109,22 @@ func (m Model) View() tea.View {
 
 	rows = append(rows, m.theme.RenderStatusBar(info, len(lines), m.width))
 
-	return tea.NewView(strings.Join(rows, "\n"))
+	return fullScreen(strings.Join(rows, "\n"))
+}
+
+// fullScreen is a frame drawn on a screen of pino's own.
+//
+// The document is laid out against the height of the terminal, with the status
+// bar held at the bottom by blank rows, which is only coherent if pino owns
+// every row. Drawing that into the shell's scrollback would instead leave the
+// blank rows and every intermediate frame behind it. The alternate screen also
+// gives back what was on the terminal when pino quits, so that opening a file
+// to look at it does not cost the person the output they had.
+func fullScreen(content string) tea.View {
+	v := tea.NewView(content)
+	v.AltScreen = true
+
+	return v
 }
 
 // bodyHeight is how many rows the document has to itself.

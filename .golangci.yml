@@ -80,3 +80,14 @@ linters:
           deny:
             - pkg: github.com/ytakahashi/pino/internal/infrastructure
               desc: cli injects the concrete adapters
+        # main exists to hand the process over to cli and to turn what comes
+        # back into an exit code. Everything else it could reach is reachable
+        # through cli, where it can be tested without starting a process.
+        cmd:
+          files:
+            - '**/cmd/**'
+          deny:
+            - pkg: github.com/ytakahashi/pino/internal/domain
+            - pkg: github.com/ytakahashi/pino/internal/application
+            - pkg: github.com/ytakahashi/pino/internal/infrastructure
+            - pkg: github.com/ytakahashi/pino/internal/presentation

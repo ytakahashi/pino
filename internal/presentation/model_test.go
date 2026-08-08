@@ -292,3 +292,19 @@ func isQuit(msg tea.Msg) bool {
 
 	return ok
 }
+
+// The document is laid out against the height of the terminal, which only
+// works on a screen pino has to itself.
+func TestViewUsesTheAlternateScreen(t *testing.T) {
+	t.Parallel()
+
+	app := openTestApp(t)
+
+	if !NewModel(app, DefaultTheme()).View().AltScreen {
+		t.Error("the first frame is not on the alternate screen")
+	}
+
+	if !sized(t, app, 40, 10).View().AltScreen {
+		t.Error("the frame is not on the alternate screen")
+	}
+}
