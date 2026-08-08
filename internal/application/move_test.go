@@ -363,6 +363,420 @@ func TestCursorRecoversFromBeingFoldedAway(t *testing.T) {
 	}
 }
 
+func TestMoveFirstAndLast(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+
+	app.Do(ActionMoveLast{})
+
+	if got := cursorOf(app); got != "/debug" {
+		t.Errorf("moving to the last node selected %q, want /debug", got)
+	}
+
+	app.Do(ActionMoveFirst{})
+
+	if got := cursorOf(app); got != "" {
+		t.Errorf("moving to the first node selected %q, want the root", got)
+	}
+
+	// From deep inside, both still reach the ends of the document.
+	press(app, ActionMoveIn{}, ActionMoveNext{}, ActionMoveIn{})
+
+	app.Do(ActionMoveLast{})
+
+	if got := cursorOf(app); got != "/debug" {
+		t.Errorf("moving to the last node from inside selected %q, want /debug", got)
+	}
+
+	app.Do(ActionMoveFirst{})
+
+	if got := cursorOf(app); got != "" {
+		t.Errorf("moving to the first node from inside selected %q, want the root", got)
+	}
+}
+
+// These two ask for an end of the document rather than for a step, so they
+// work even when the cursor has been left pointing at something folded away.
+func TestMoveFirstRecoversALostCursor(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+
+	press(app, ActionMoveIn{}, ActionMoveNext{}, ActionMoveIn{}) // /server/host
+	app.view.Collapse(path(domain.KeySegment("server")))
+
+	app.Do(ActionMoveFirst{})
+
+	if got := cursorOf(app); got != "" {
+		t.Errorf("moving to the first node selected %q, want the root", got)
+	}
+}
+
+// A document of one node has the same row for both ends.
+func TestMoveFirstAndLastOnASingleValue(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, text(t, "only"))
+
+	app.Do(ActionMoveLast{})
+
+	if got := cursorOf(app); got != "" {
+		t.Errorf("moving to the last node selected %q, want the root", got)
+	}
+
+	if got := app.Frame().Cursor; got != 0 {
+		t.Errorf("Frame().Cursor = %d, want 0", got)
+	}
+}
+
+func TestScrollHalf(t *testing.T) {
+	t.Parallel()
+
+	// A document long enough to scroll through: ten members of two rows each.
+	members := make([]domain.Member, 0, 10)
+	for i := range 10 {
+		members = append(members, member(
+			string(rune('a'+i)),
+			domain.NewArray([]domain.Node{domain.NewNumber("1")}),
+		))
+	}
+
+	app := session(t, object(t, members...))
+	app.Do(ActionResize{Height: 10})
+
+	total := len(app.Frame().Lines)
+	if total < 30 {
+		t.Fatalf("the fixture draws %d rows, too few to scroll through", total)
+	}
+
+	// Down half a window at a time, with the cursor keeping its place on the
+	// screen: the window and the cursor travel together.
+	app.Do(ActionScrollHalfDown{})
+
+	frame := app.Frame()
+	if frame.Scroll != 5 {
+		t.Errorf("Scroll = %d after half a screen, want 5", frame.Scroll)
+	}
+
+	if frame.Cursor-frame.Scroll != 0 {
+		t.Errorf("the cursor sits %d rows into the window, want 0 as before",
+			frame.Cursor-frame.Scroll)
+	}
+
+	// And again, from a cursor no longer at the top of the window.
+	app.Do(ActionMoveNext{})
+	before := app.Frame()
+
+	app.Do(ActionScrollHalfDown{})
+	after := app.Frame()
+
+	if after.Scroll != before.Scroll+5 {
+		t.Errorf("Scroll = %d, want %d", after.Scroll, before.Scroll+5)
+	}
+
+	// The cursor keeps its place on the screen, give or take the snap onto a
+	// row it can occupy: half a screen on from here is the closing row of an
+	// array, and the nearest node is one further down. Every closing run in
+	// this document is a single row, so that is the whole of the drift.
+	// Stepping node by node rather than counting rows would drift twice as
+	// far, and further with every press.
+	drift := (after.Cursor - after.Scroll) - (before.Cursor - before.Scroll)
+	if drift < 0 || drift > 1 {
+		t.Errorf("the cursor drifted %d rows down the window, want at most 1", drift)
+	}
+
+	// Back up the way it came.
+	app.Do(ActionScrollHalfUp{})
+
+	if got := app.Frame().Scroll; got != before.Scroll {
+		t.Errorf("Scroll = %d after going back up, want %d", got, before.Scroll)
+	}
+}
+
+// At either end the window stops, and the cursor has to stop somewhere it can
+// still be seen.
+func TestScrollHalfStopsAtTheEnds(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	app.Do(ActionResize{Height: 4})
+
+	for range 10 {
+		app.Do(ActionScrollHalfDown{})
+	}
+
+	frame := app.Frame()
+	if got := cursorOf(app); got != "/debug" {
+		t.Errorf("scrolling to the bottom selected %q, want the last node", got)
+	}
+
+	if frame.Cursor < frame.Scroll || frame.Cursor >= frame.Scroll+4 {
+		t.Errorf("cursor row %d is outside the window [%d, %d)",
+			frame.Cursor, frame.Scroll, frame.Scroll+4)
+	}
+
+	for range 10 {
+		app.Do(ActionScrollHalfUp{})
+	}
+
+	frame = app.Frame()
+	if got := cursorOf(app); got != "" {
+		t.Errorf("scrolling to the top selected %q, want the root", got)
+	}
+
+	if frame.Scroll != 0 {
+		t.Errorf("Scroll = %d at the top, want 0", frame.Scroll)
+	}
+}
+
+// A document that fits has nothing to scroll, but the cursor still travels.
+func TestScrollHalfOnADocumentThatFits(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	app.Do(ActionResize{Height: 100})
+
+	app.Do(ActionScrollHalfDown{})
+
+	if got := app.Frame().Scroll; got != 0 {
+		t.Errorf("Scroll = %d on a document that fits, want 0", got)
+	}
+
+	if got := cursorOf(app); got == "" {
+		t.Error("the cursor did not move")
+	}
+}
+
+// The terminal has not said how big it is yet, and there may be no document at
+// all. Neither is a reason to fail.
+func TestScrollHalfWithoutAWindow(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+
+	app.Do(ActionScrollHalfDown{})
+
+	if got := app.Frame().Scroll; got != 0 {
+		t.Errorf("Scroll = %d with no window, want 0", got)
+	}
+
+	if got := cursorOf(app); got != "/name" {
+		t.Errorf("scrolling with no window selected %q, want one node down", got)
+	}
+
+	empty := New(Deps{Renderer: NewJSONRenderer()})
+	empty.Do(ActionScrollHalfDown{})
+	empty.Do(ActionScrollHalfUp{})
+
+	if frame := empty.Frame(); frame.Cursor != -1 || frame.Scroll != 0 {
+		t.Errorf("Frame() = %+v with no document open", frame)
+	}
+}
+
+// pointersOf is what a session draws, as pointers, in order.
+func pointersOf(a *App) []string {
+	frame := a.Frame()
+
+	got := make([]string, 0, len(frame.Lines))
+	for _, l := range frame.Lines {
+		if l.Kind != LineClose {
+			got = append(got, l.Path.String())
+		}
+	}
+
+	return got
+}
+
+func TestCollapseAll(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	app.Do(ActionCollapseAll{})
+
+	// The root stays open, so its members are what is left on screen.
+	want := []string{"", "/name", "/server", "/debug"}
+	got := pointersOf(app)
+
+	if len(got) != len(want) {
+		t.Fatalf("a folded document shows %v, want %v", got, want)
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("row %d is %q, want %q", i, got[i], want[i])
+		}
+	}
+
+	if app.view.IsCollapsed(domain.Path{}) {
+		t.Error("folding everything folded the root as well")
+	}
+}
+
+// Folding everything folds what is inside the containers too, so unfolding one
+// reveals its members already closed. Descending is then a level at a time.
+func TestCollapseAllFoldsNestedContainers(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	app.Do(ActionCollapseAll{})
+
+	if !app.view.IsCollapsed(path(domain.KeySegment("server"), domain.KeySegment("ports"))) {
+		t.Fatal("a container inside a folded one was left open")
+	}
+
+	// Unfold /server: its array member appears, still folded.
+	press(app, ActionMoveNext{}, ActionMoveNext{}, ActionMoveIn{})
+
+	if got := cursorOf(app); got != "/server" {
+		t.Fatalf("expected to be on /server, got %q", got)
+	}
+
+	for _, l := range app.Frame().Lines {
+		if l.Path.String() == "/server/ports" && !l.Collapsed {
+			t.Error("the array inside is drawn open, want it still folded")
+		}
+
+		if l.Path.String() == "/server/ports/0" {
+			t.Error("the elements of the folded array are on screen")
+		}
+	}
+}
+
+// A container with nothing in it says as much either way, and folding the row
+// it is drawn on would only offer to unfold into nothing.
+func TestCollapseAllLeavesEmptyContainers(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, object(t,
+		member("opts", object(t)),
+		member("tags", domain.NewArray(nil)),
+		member("server", object(t, member("host", text(t, "localhost")))),
+	))
+
+	app.Do(ActionCollapseAll{})
+
+	for _, key := range []string{"opts", "tags"} {
+		if app.view.IsCollapsed(path(domain.KeySegment(key))) {
+			t.Errorf("/%s is empty but was folded", key)
+		}
+	}
+
+	if !app.view.IsCollapsed(path(domain.KeySegment("server"))) {
+		t.Error("/server has members but was left open")
+	}
+}
+
+// A document that is a single value has no container to fold.
+func TestCollapseAllOnAScalarDocument(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, text(t, "only"))
+	before := len(app.Frame().Lines)
+
+	app.Do(ActionCollapseAll{})
+
+	if got := len(app.Frame().Lines); got != before {
+		t.Errorf("the document draws %d rows after folding, want %d", got, before)
+	}
+}
+
+// Folding everything leaves the cursor inside something no longer drawn, and
+// it has to come back to the nearest thing that is.
+func TestCollapseAllRecoversTheCursor(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+
+	press(app, ActionMoveIn{}, ActionMoveNext{}, ActionMoveIn{}, ActionMoveNext{}, ActionMoveIn{})
+
+	if got := cursorOf(app); got != "/server/ports/0" {
+		t.Fatalf("expected to be on /server/ports/0, got %q", got)
+	}
+
+	app.Do(ActionCollapseAll{})
+
+	if got := cursorOf(app); got != "/server" {
+		t.Errorf("the cursor settled on %q, want the nearest node still drawn", got)
+	}
+}
+
+// A cursor on a container that is folded stays where it is: that row is still
+// drawn, as the one line the container has become.
+func TestCollapseAllKeepsACursorOnAContainer(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+
+	press(app, ActionMoveNext{}, ActionMoveNext{}) // /server
+
+	app.Do(ActionCollapseAll{})
+
+	if got := cursorOf(app); got != "/server" {
+		t.Errorf("the cursor moved to %q, want it to stay on /server", got)
+	}
+}
+
+func TestExpandAll(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	before := len(app.Frame().Lines)
+
+	app.Do(ActionCollapseAll{})
+
+	if got := len(app.Frame().Lines); got >= before {
+		t.Fatalf("folding everything left %d rows, want fewer than %d", got, before)
+	}
+
+	app.Do(ActionExpandAll{})
+
+	if got := len(app.Frame().Lines); got != before {
+		t.Errorf("unfolding everything left %d rows, want the original %d", got, before)
+	}
+
+	if got := len(app.view.Collapsed); got != 0 {
+		t.Errorf("%d nodes are still folded", got)
+	}
+
+	// Folding one container by hand and then unfolding everything clears that
+	// too, not only what folding everything had added.
+	press(app, ActionMoveNext{}, ActionMoveNext{}, ActionMoveOut{})
+
+	if !app.view.IsCollapsed(path(domain.KeySegment("server"))) {
+		t.Fatal("the fixture did not fold")
+	}
+
+	app.Do(ActionExpandAll{})
+
+	if got := len(app.Frame().Lines); got != before {
+		t.Errorf("unfolding left %d rows, want the original %d", got, before)
+	}
+}
+
+func TestFoldAllWithoutDocument(t *testing.T) {
+	t.Parallel()
+
+	for name, act := range map[string]Action{
+		"collapse": ActionCollapseAll{},
+		"expand":   ActionExpandAll{},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Deps{Renderer: NewJSONRenderer()})
+
+			if effects := app.Do(act); effects != nil {
+				t.Errorf("Do() = %v with no document open, want none", effects)
+			}
+
+			if frame := app.Frame(); frame.Cursor != -1 || frame.Scroll != 0 {
+				t.Errorf("Frame() = %+v with no document open", frame)
+			}
+		})
+	}
+}
+
 func TestStatusFollowsTheCursor(t *testing.T) {
 	t.Parallel()
 

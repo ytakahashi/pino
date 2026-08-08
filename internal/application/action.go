@@ -41,6 +41,39 @@ type (
 func (ActionMoveIn) isAction()  {}
 func (ActionMoveOut) isAction() {}
 
+// ActionMoveFirst and ActionMoveLast ask for the first and the last node of
+// the document.
+//
+// The last node, not the last row: the rows closing everything still open come
+// after it, and the cursor does not land on those.
+type (
+	ActionMoveFirst struct{}
+	ActionMoveLast  struct{}
+)
+
+func (ActionMoveFirst) isAction() {}
+func (ActionMoveLast) isAction()  {}
+
+// ActionScrollHalfDown and ActionScrollHalfUp ask to read on by half a screen,
+// carrying the cursor along with the text.
+type (
+	ActionScrollHalfDown struct{}
+	ActionScrollHalfUp   struct{}
+)
+
+func (ActionScrollHalfDown) isAction() {}
+func (ActionScrollHalfUp) isAction()   {}
+
+// ActionExpandAll and ActionCollapseAll ask for the whole document to be
+// unfolded, or for it to be folded down to an overview of its shape.
+type (
+	ActionExpandAll   struct{}
+	ActionCollapseAll struct{}
+)
+
+func (ActionExpandAll) isAction()   {}
+func (ActionCollapseAll) isAction() {}
+
 // ActionResize reports how many rows the document can be drawn in.
 //
 // It is the one Action that does not come from a key. Resizing a window is

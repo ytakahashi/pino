@@ -393,6 +393,92 @@ func TestFirstChildRowOfAnEmptyContainer(t *testing.T) {
 	}
 }
 
+// The end of a document is its last node, not its last row: the rows closing
+// everything still open come after it.
+func TestLastRow(t *testing.T) {
+	t.Parallel()
+
+	lines := rows(t, sample(t), nil)
+
+	if got := pointerAt(t, lines, lastRow(lines)); got != "/debug" {
+		t.Errorf("lastRow() = %q, want /debug", got)
+	}
+
+	if got := lastRow(nil); got != -1 {
+		t.Errorf("lastRow(nil) = %d, want -1", got)
+	}
+
+	// A document that is a single value has that value as its last node.
+	scalar := rows(t, text(t, "only"), nil)
+	if got := lastRow(scalar); got != 0 {
+		t.Errorf("lastRow(a single value) = %d, want 0", got)
+	}
+}
+
+func TestNearestRow(t *testing.T) {
+	t.Parallel()
+
+	lines := rows(t, sample(t), nil)
+	closing := indexOf(lines, path(domain.KeySegment("server"), domain.KeySegment("ports"))) + 3
+
+	if lines[closing].Kind != LineClose {
+		t.Fatalf("the fixture changed: row %d is not a closing row", closing)
+	}
+
+	tests := map[string]struct {
+		from, dir int
+		want      string
+	}{
+		"already on a node":            {from: 1, dir: 1, want: "/name"},
+		"on a closing row, going down": {from: closing, dir: 1, want: "/server/tls"},
+		"on a closing row, going up":   {from: closing, dir: -1, want: "/server/ports/1"},
+
+		// Past the end there is nothing below, so the search turns around.
+		"past the end":   {from: len(lines) + 10, dir: 1, want: "/debug"},
+		"past the start": {from: -10, dir: -1, want: ""},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got := nearestRow(lines, tc.from, tc.dir)
+			if got < 0 {
+				t.Fatalf("nearestRow(%d, %d) = -1, want the row for %q", tc.from, tc.dir, tc.want)
+			}
+
+			if pointer := pointerAt(t, lines, got); pointer != tc.want {
+				t.Errorf("nearestRow(%d, %d) = %q, want %q", tc.from, tc.dir, pointer, tc.want)
+			}
+		})
+	}
+
+	if got := nearestRow(nil, 0, 1); got != -1 {
+		t.Errorf("nearestRow(nil) = %d, want -1", got)
+	}
+}
+
+// Whatever it is asked, it answers a row the cursor can occupy. Jumping by a
+// count of rows relies on that: it lands wherever the arithmetic puts it.
+func TestNearestRowAlwaysLandsOnANode(t *testing.T) {
+	t.Parallel()
+
+	lines := rows(t, sample(t), nil)
+
+	for from := -3; from < len(lines)+3; from++ {
+		for _, dir := range []int{1, -1} {
+			got := nearestRow(lines, from, dir)
+			if got < 0 || got >= len(lines) {
+				t.Fatalf("nearestRow(%d, %d) = %d, outside the document", from, dir, got)
+			}
+
+			if lines[got].Kind == LineClose {
+				t.Fatalf("nearestRow(%d, %d) landed on a closing row", from, dir)
+			}
+		}
+	}
+}
+
 func TestClampScroll(t *testing.T) {
 	t.Parallel()
 

@@ -205,6 +205,25 @@ func (a *App) Do(act Action) []Effect {
 	case ActionMoveOut:
 		a.moveOut()
 
+	case ActionMoveFirst:
+		a.moveTo(firstRow)
+
+	case ActionMoveLast:
+		a.moveTo(lastRow)
+
+	case ActionScrollHalfDown:
+		a.scrollHalf(+1)
+
+	case ActionScrollHalfUp:
+		a.scrollHalf(-1)
+
+	case ActionExpandAll:
+		a.view.ExpandAll()
+		a.settle(a.render())
+
+	case ActionCollapseAll:
+		a.collapseAll()
+
 	case ActionResize:
 		// A window of no rows is not a window; asking for one is answered by
 		// scrolling nowhere rather than by arithmetic on a negative height.
@@ -254,6 +273,77 @@ func (a *App) moveBy(step func(lines []Line, from int) int) {
 	}
 
 	a.settle(lines)
+}
+
+// moveTo selects whichever row pick chooses.
+//
+// Unlike moveBy this needs no row to start from: where these actions go does
+// not depend on where they begin, so they still work when the cursor has been
+// left pointing at something no longer drawn.
+func (a *App) moveTo(pick func(lines []Line) int) {
+	lines := a.render()
+
+	if to := pick(lines); to >= 0 {
+		a.view.Cursor = lines[to].Path
+	}
+
+	a.settle(lines)
+}
+
+// scrollHalf moves the window and the cursor half a screen, downwards for a
+// positive dir and upwards for a negative one.
+//
+// The window is moved here rather than left for settle to follow: minimal
+// scrolling alone would pin the cursor to the edge of the screen while the
+// text barely moved, which is not what reading half a page at a time looks
+// like. settle still runs afterwards and has the last word, which is what
+// keeps the two in agreement at the ends of a document.
+//
+// The cursor travels a count of rows rather than a count of nodes. Stepping
+// node by node would cover more ground wherever closing rows were skipped, and
+// the cursor would drift down the screen over several presses; counting rows
+// keeps it where it was. Landing on a row it cannot occupy is answered by the
+// nearest one it can.
+func (a *App) scrollHalf(dir int) {
+	lines := a.render()
+	if len(lines) == 0 {
+		a.settle(lines)
+
+		return
+	}
+
+	// Half a window, and never less than a row: a window too small to halve
+	// still has to move, and a terminal that has not yet reported its size is
+	// no reason to refuse.
+	step := max(a.height/2, 1) * dir
+
+	if from := visibleRow(lines, a.view.Cursor); from >= 0 {
+		if to := nearestRow(lines, from+step, dir); to >= 0 {
+			a.view.Cursor = lines[to].Path
+		}
+	}
+
+	// Bounding the window without regard to the cursor, which settle then
+	// takes into account: passing no cursor row is how this asks for the
+	// offset to be brought into range and nothing more.
+	a.view.Scroll = clampScroll(a.view.Scroll+step, -1, a.height, len(lines))
+
+	a.settle(lines)
+}
+
+// collapseAll folds the document down to an overview of its shape.
+//
+// It is the one action needing the tree rather than the rows: what is folded
+// away cannot be found among what is drawn, so the containers to fold are
+// collected by walking the document itself. That is also why this is the one
+// place left checking whether a document is open at all.
+func (a *App) collapseAll() {
+	if a.doc == nil {
+		return
+	}
+
+	a.view.CollapseAll(a.doc.Root())
+	a.settle(a.render())
 }
 
 // moveIn unfolds the selected container, or selects the first thing inside one

@@ -1,6 +1,10 @@
 package application
 
-import "github.com/ytakahashi/pino/internal/domain"
+import (
+	"iter"
+
+	"github.com/ytakahashi/pino/internal/domain"
+)
 
 // ViewMode selects which renderer draws the document.
 type ViewMode uint8
@@ -106,4 +110,89 @@ func (v *ViewState) IsCollapsed(p domain.Path) bool {
 	_, folded := v.Collapsed[p.String()]
 
 	return folded
+}
+
+// CollapseAll folds every container of the document away, leaving the members
+// of the root on screen.
+//
+// The root itself stays open. Folding it would leave one row reading "{…}",
+// which is not an overview of a document but the absence of one, and taking in
+// the shape of what is open is the whole point of asking for this.
+//
+// Containers inside the ones being folded are folded too, so unfolding one
+// reveals its members already closed. That is what vim does when all folds are
+// closed at once, and it is what makes unfolding a way of descending a level
+// at a time.
+func (v *ViewState) CollapseAll(root domain.Node) {
+	for pointer := range collapsibleUnder(root) {
+		v.Collapsed[pointer] = struct{}{}
+	}
+}
+
+// ExpandAll unfolds the whole document.
+//
+// The set is emptied rather than replaced, since the renderer is handed this
+// very map on every redraw.
+func (v *ViewState) ExpandAll() {
+	clear(v.Collapsed)
+}
+
+// collapsibleUnder yields the pointer of every container below root that has
+// something in it. The root is not among them, and neither are containers with
+// no members: folding either says nothing that leaving it open does not.
+//
+// The tree is walked rather than the rows, because folding a container hides
+// what is inside it: a single pass over what is drawn would only ever reach
+// the outermost level, and repeating until nothing changes would be a slower
+// way of doing what one walk does.
+func collapsibleUnder(root domain.Node) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		var walk func(n domain.Node, p domain.Path) bool
+
+		walk = func(n domain.Node, p domain.Path) bool {
+			// The switch is on Kind rather than on the concrete type so that a
+			// kind added later is reported here by the exhaustive linter: one
+			// that holds children would otherwise be left open by this.
+			switch n.Kind() {
+			case domain.KindObject:
+				o := n.(*domain.Object)
+				if o.Len() == 0 {
+					return true
+				}
+
+				if !p.IsRoot() && !yield(p.String()) {
+					return false
+				}
+
+				for _, m := range o.All() {
+					if !walk(m.Value, p.Child(domain.KeySegment(m.Key))) {
+						return false
+					}
+				}
+
+			case domain.KindArray:
+				a := n.(*domain.Array)
+				if a.Len() == 0 {
+					return true
+				}
+
+				if !p.IsRoot() && !yield(p.String()) {
+					return false
+				}
+
+				for i, e := range a.All() {
+					if !walk(e, p.Child(domain.IndexSegment(i))) {
+						return false
+					}
+				}
+
+			case domain.KindString, domain.KindNumber, domain.KindBool, domain.KindNull:
+				// Nothing to fold, and nothing below.
+			}
+
+			return true
+		}
+
+		walk(root, domain.Path{})
+	}
 }

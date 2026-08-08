@@ -128,6 +128,53 @@ func firstChildRow(lines []Line, from int) int {
 	return from + 1
 }
 
+// lastRow is the final row the cursor can land on, or -1 when there is none.
+//
+// It is not the final row: a document ends in the closing rows of everything
+// still open, and the end of a document means its last node.
+func lastRow(lines []Line) int {
+	return nearestRow(lines, len(lines)-1, -1)
+}
+
+// nearestRow is the closest row to from that the cursor can land on, searching
+// in direction dir first (positive downwards) and turning around if that end
+// offers nothing.
+//
+// Jumping by a count of rows can land on a closing row, and the run of them
+// that ends a document has nothing below it, which is why the search has to be
+// able to turn around. from outside the document is treated as its nearest
+// end.
+func nearestRow(lines []Line, from, dir int) int {
+	if len(lines) == 0 {
+		return -1
+	}
+
+	from = min(max(from, 0), len(lines)-1)
+
+	step := 1
+	if dir < 0 {
+		step = -1
+	}
+
+	if row := scanRow(lines, from, step); row >= 0 {
+		return row
+	}
+
+	return scanRow(lines, from, -step)
+}
+
+// scanRow walks from towards one end of the document, answering the first row
+// the cursor can land on.
+func scanRow(lines []Line, from, step int) int {
+	for i := from; i >= 0 && i < len(lines); i += step {
+		if lines[i].Kind != LineClose {
+			return i
+		}
+	}
+
+	return -1
+}
+
 // clampScroll is the first row to draw so that cursor is on screen, moving as
 // little as possible from scroll.
 //
