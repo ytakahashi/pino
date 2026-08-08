@@ -10,21 +10,41 @@ import (
 // JSON, which is how pino shows a file by default.
 func NewJSONRenderer() Renderer { return jsonRenderer{} }
 
-type jsonRenderer struct{}
+// jsonRenderer draws one document with one set of options.
+//
+// The options sit on the renderer rather than among the arguments of the
+// recursion below: they are the same for every row, and they say how to draw
+// rather than what. What is left in the arguments is exactly the subtree and
+// where it sits, which is what a cache keyed on the node pointer would need.
+type jsonRenderer struct{ opt RenderOptions }
 
 // Render draws root. It returns nil when no document is open.
 //
-// opt is not consulted yet: folding and shortening long strings are the two
-// things it carries, and neither is drawn so far. It is part of the signature
-// from the start so that adding them changes this renderer only.
-func (r jsonRenderer) Render(root domain.Node, opt RenderOptions) []Line {
+// The receiver is unused: the options arrive with the call, so the renderer
+// that draws is built here rather than being the one Render was called on.
+func (jsonRenderer) Render(root domain.Node, opt RenderOptions) []Line {
 	if root == nil {
 		return nil
 	}
 
 	// The root has no key in front of it and no sibling to be separated
 	// from, which is what a nil label and a final position mean.
-	return r.node(root, domain.Path{}, 0, nil, true)
+	return jsonRenderer{opt: opt}.node(root, domain.Path{}, 0, nil, true)
+}
+
+// isCollapsed reports whether the container at p is folded away.
+//
+// The set is keyed by JSON Pointer, so asking costs building one. Nothing is
+// folded in a document just opened, and that is also when every row would pay,
+// so an empty set is answered without touching a path at all.
+func (r jsonRenderer) isCollapsed(p domain.Path) bool {
+	if len(r.opt.Collapsed) == 0 {
+		return false
+	}
+
+	_, ok := r.opt.Collapsed[p.String()]
+
+	return ok
 }
 
 // node returns the rows for the subtree at n.
@@ -54,7 +74,7 @@ func (r jsonRenderer) node(n domain.Node, p domain.Path, depth int, label []Span
 			Path:  p,
 			Kind:  LineSingle,
 			Depth: depth,
-			Spans: separated(spansOf(label, scalarSpan(n)), last),
+			Spans: separated(spansOf(label, r.scalarSpan(n)), last),
 		}}
 
 	default:
@@ -67,6 +87,13 @@ func (r jsonRenderer) node(n domain.Node, p domain.Path, depth int, label []Span
 // An empty object is drawn on a single row: an open and a close row with
 // nothing between them would cost two rows to say what "{}" says in one, and
 // leave a close row the cursor cannot land on directly below its open row.
+//
+// An object that is folded away is drawn on a single row too. It is a
+// LineSingle rather than a LineOpen carrying the flag, so that an open row
+// always has a close row to match: folding, deleting a subtree and caching one
+// all want to treat the two as a pair. Being empty wins over being folded,
+// since there is nothing to hide and a row that offers to unfold into nothing
+// is a worse answer than the braces themselves.
 func (r jsonRenderer) object(o *domain.Object, p domain.Path, depth int, label []Span, last bool) []Line {
 	if o.Len() == 0 {
 		return []Line{{
@@ -74,6 +101,16 @@ func (r jsonRenderer) object(o *domain.Object, p domain.Path, depth int, label [
 			Kind:  LineSingle,
 			Depth: depth,
 			Spans: separated(spansOf(label, punct("{}")), last),
+		}}
+	}
+
+	if r.isCollapsed(p) {
+		return []Line{{
+			Path:      p,
+			Kind:      LineSingle,
+			Depth:     depth,
+			Spans:     separated(spansOf(label, punct("{…}")), last),
+			Collapsed: true,
 		}}
 	}
 
@@ -107,7 +144,7 @@ func (r jsonRenderer) object(o *domain.Object, p domain.Path, depth int, label [
 }
 
 // array returns the rows for a, brackets included. An empty array is drawn on
-// a single row, for the reason given on object.
+// a single row, and so is a folded one, both for the reasons given on object.
 func (r jsonRenderer) array(a *domain.Array, p domain.Path, depth int, label []Span, last bool) []Line {
 	if a.Len() == 0 {
 		return []Line{{
@@ -115,6 +152,16 @@ func (r jsonRenderer) array(a *domain.Array, p domain.Path, depth int, label []S
 			Kind:  LineSingle,
 			Depth: depth,
 			Spans: separated(spansOf(label, punct("[]")), last),
+		}}
+	}
+
+	if r.isCollapsed(p) {
+		return []Line{{
+			Path:      p,
+			Kind:      LineSingle,
+			Depth:     depth,
+			Spans:     separated(spansOf(label, punct("[…]")), last),
+			Collapsed: true,
 		}}
 	}
 
@@ -145,13 +192,10 @@ func (r jsonRenderer) array(a *domain.Array, p domain.Path, depth int, label []S
 }
 
 // scalarSpan is the drawn form of a value that occupies no rows of its own.
-func scalarSpan(n domain.Node) Span {
+func (r jsonRenderer) scalarSpan(n domain.Node) Span {
 	switch v := n.(type) {
 	case *domain.String:
-		// Quoted the way the document would be written, so that a control
-		// character in a value is shown as an escape rather than sent to the
-		// terminal.
-		return Span{Text: domain.QuoteString(v.Value()), Role: RoleStringValue}
+		return stringSpan(v.Value(), r.opt.MaxStrLen)
 
 	case *domain.Number:
 		// The literal as it was written: a number is shown the way the file
@@ -167,6 +211,56 @@ func scalarSpan(n domain.Node) Span {
 	default:
 		panic("application: cannot render node of kind " + n.Kind().String())
 	}
+}
+
+// stringSpan is the drawn form of a string value, shortened to maxLen runes if
+// it is longer than that. A maxLen of zero or less draws the value in full.
+//
+// A shortened value ends in an ellipsis inside its quotes. The mark is not
+// decoration: everywhere else what is on screen is exactly what would be
+// saved, which is why the renderer and the encoder share one set of escaping
+// rules, and this is the one place that departs from it. Without the mark a
+// value would look as though it ended where the row does.
+//
+// Only values are shortened, never keys. A shortened key would leave the row
+// naming a member that the pointer in the status bar does not, and keys are
+// short in the documents people edit by hand.
+//
+// Length is counted in runes rather than in the width the terminal gives them,
+// which needs a table this layer would have to take a dependency for. What is
+// being avoided here is one value filling the screen, not a row overflowing
+// it: rows are cut to the width of the terminal where they are drawn.
+func stringSpan(v string, maxLen int) Span {
+	if maxLen > 0 {
+		if head, cut := truncateRunes(v, maxLen); cut {
+			// Escaped before the quotes go on, so that the ellipsis lands
+			// inside them. Cutting the escaped form instead could split a \u
+			// sequence and put half of it on screen.
+			return Span{Text: `"` + domain.EscapeString(head) + `…"`, Role: RoleStringValue}
+		}
+	}
+
+	// Quoted the way the document would be written, so that a control
+	// character in a value is shown as an escape rather than sent to the
+	// terminal.
+	return Span{Text: domain.QuoteString(v), Role: RoleStringValue}
+}
+
+// truncateRunes returns the first n runes of s, and whether anything was left
+// behind. Ranging over a string yields the byte offset of each rune, so the
+// cut is found without counting the whole of a long value first.
+func truncateRunes(s string, n int) (string, bool) {
+	count := 0
+
+	for i := range s {
+		if count == n {
+			return s[:i], true
+		}
+
+		count++
+	}
+
+	return s, false
 }
 
 // memberLabel is the key and separator drawn in front of an object member.
