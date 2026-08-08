@@ -66,6 +66,47 @@ type Node interface {
 	isNode()
 }
 
+// isNilNode reports whether n refers to no node at all.
+//
+// A Node holding a nil pointer does not compare equal to nil: the interface
+// carries a type as well as a value, so n != nil is true while any method
+// touching a field panics. Kind is the one method that does not, which is why
+// it can be asked here.
+//
+// Such a node cannot come from a document — a JSON null parses to a *Null —
+// so it only ever arrives from a mistake in pino. The constructors refuse it
+// (see NewObject), and everything walking a tree is then free to assume that
+// what it reaches is really there.
+func isNilNode(n Node) bool {
+	if n == nil {
+		return true
+	}
+
+	// Switching on Kind rather than on the concrete type so that a kind added
+	// later is reported here by the exhaustive linter. A case missing from
+	// this list would let a nil of the new type into a tree, which is the bug
+	// this function exists to prevent.
+	switch n.Kind() {
+	case KindObject:
+		return n.(*Object) == nil
+	case KindArray:
+		return n.(*Array) == nil
+	case KindString:
+		return n.(*String) == nil
+	case KindNumber:
+		return n.(*Number) == nil
+	case KindBool:
+		return n.(*Bool) == nil
+	case KindNull:
+		return n.(*Null) == nil
+	default:
+		// Unreachable while Kind and the concrete types are set together.
+		// Rejecting is the safe answer for the callers, all of which are
+		// deciding whether to admit n into a tree.
+		return true
+	}
+}
+
 // Member is one key/value pair of an Object.
 //
 // Its fields are exported because a Member is handed out by value, so
@@ -150,6 +191,13 @@ func checkUTF8(s string) error {
 // than by a constructor of their own, because Member is a plain struct and
 // this is the point where one enters a document.
 //
+// It panics if a member has no value. A document cannot ask for that — a JSON
+// null is a *Null — so it is a mistake in the caller rather than something the
+// input can contain, which is the same line IndexSegment draws. Returning an
+// error instead would spread handling for an impossible case through every
+// caller, while letting one through would leave a hole in the tree that
+// panics much later, in whichever walk reaches it first.
+//
 // The slice is copied, so later changes by the caller do not reach the
 // object. Copying the slice alone is enough because a Member holds only a
 // string, an immutable Node and an immutable Trivia.
@@ -158,6 +206,10 @@ func NewObject(members []Member) (*Object, error) {
 	for i, m := range members {
 		if err := checkUTF8(m.Key); err != nil {
 			return nil, err
+		}
+
+		if isNilNode(m.Value) {
+			panic("domain: no value for object key " + strconv.Quote(m.Key))
 		}
 
 		if first, dup := index[m.Key]; dup {
@@ -216,7 +268,15 @@ type Array struct {
 }
 
 // NewArray builds an Array from elements, in order. The slice is copied.
+//
+// It panics if an element is missing, for the reason given on NewObject.
 func NewArray(elements []Node) *Array {
+	for i, e := range elements {
+		if isNilNode(e) {
+			panic("domain: no value for array element " + strconv.Itoa(i))
+		}
+	}
+
 	return &Array{elements: append([]Node(nil), elements...)}
 }
 
