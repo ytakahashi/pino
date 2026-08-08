@@ -32,6 +32,11 @@ type Theme struct {
 	NullValue   lipgloss.Style
 	Punct       lipgloss.Style
 	TreeGuide   lipgloss.Style
+
+	// StatusBar is the strip along the bottom of the screen. It is not a
+	// Role: no renderer produces it, and it is drawn around the document
+	// rather than as part of it.
+	StatusBar lipgloss.Style
 }
 
 // DefaultTheme is what pino draws with when nothing else is chosen.
@@ -56,6 +61,12 @@ func DefaultTheme() Theme {
 		NullValue:   lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
 		Punct:       lipgloss.NewStyle().Foreground(lipgloss.Color("244")),
 		TreeGuide:   lipgloss.NewStyle().Foreground(lipgloss.Color("240")),
+
+		// The bar is set apart by a filled background rather than by a rule
+		// above it, which would cost one of the rows the document is drawn in.
+		StatusBar: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")).
+			Background(lipgloss.Color("238")),
 	}
 }
 
