@@ -4,6 +4,8 @@ go 1.26.5
 
 tool github.com/go-task/task/v3/cmd/task
 
+require github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
+
 require (
 	cel.dev/expr v0.25.2 // indirect
 	charm.land/bubbles/v2 v2.1.0 // indirect
