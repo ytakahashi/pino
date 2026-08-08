@@ -39,6 +39,11 @@ linters:
             - pkg: github.com/ytakahashi/pino/internal/presentation
             - pkg: github.com/tailscale/hujson
               desc: the parser stays inside infrastructure
+            # Bubble Tea and Lip Gloss are published under charm.land; the
+            # github.com path still covers the pieces they pull in, such as
+            # x/ansi and colorprofile.
+            - pkg: charm.land
+              desc: UI libraries stay inside presentation
             - pkg: github.com/charmbracelet
               desc: UI libraries stay inside presentation
         application:
@@ -49,7 +54,10 @@ linters:
               desc: use the ports; cli injects the concrete adapters
             - pkg: github.com/ytakahashi/pino/internal/presentation
             - pkg: github.com/tailscale/hujson
+            - pkg: charm.land
+              desc: rendering yields Roles, not styles; presentation colours them
             - pkg: github.com/charmbracelet
+              desc: rendering yields Roles, not styles; presentation colours them
         jsonparser:
           files:
             - '**/internal/infrastructure/jsonparser/**'
