@@ -41,3 +41,56 @@ func TestQuoteString(t *testing.T) {
 		})
 	}
 }
+
+// escapeCases are the inputs worth escaping, kept apart so that the two
+// functions are checked against the same set.
+var escapeCases = map[string]struct {
+	in   string
+	want string // escaped, without the quotes
+}{
+	"empty":                {in: "", want: ``},
+	"plain text":           {in: "localhost", want: `localhost`},
+	"a quote":              {in: `say "hi"`, want: `say \"hi\"`},
+	"a backslash":          {in: `C:\tmp`, want: `C:\\tmp`},
+	"the short escapes":    {in: "\b\f\n\r\t", want: `\b\f\n\r\t`},
+	"a control character":  {in: "a\x00b", want: `a\u0000b`},
+	"the last control one": {in: "\x1f", want: `\u001f`},
+	"delete":               {in: "\x7f", want: "\x7f"},
+	"kanji":                {in: "設定", want: "設定"},
+	"an emoji":             {in: "🌲", want: "🌲"},
+	"a solidus":            {in: "a/b", want: "a/b"},
+	"only a quote":         {in: `"`, want: `\"`},
+}
+
+func TestEscapeString(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range escapeCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := EscapeString(tc.in); got != tc.want {
+				t.Errorf("EscapeString(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// The renderer builds a shortened value as a quote, the escaped beginning of
+// the string, a marker and a closing quote. That only produces the same text
+// as an unshortened value if the two functions agree on everything but the
+// quotes.
+func TestQuoteStringIsEscapeStringInQuotes(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range escapeCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			want := `"` + EscapeString(tc.in) + `"`
+			if got := QuoteString(tc.in); got != want {
+				t.Errorf("QuoteString(%q) = %s, want %s", tc.in, got, want)
+			}
+		})
+	}
+}

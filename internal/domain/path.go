@@ -103,6 +103,25 @@ func (p Path) Child(seg Segment) Path {
 	return Path{segments: segments}
 }
 
+// Parent returns the path to the container holding p.
+//
+// The root is its own parent. Walking up therefore stops on IsRoot rather than
+// on a second return value, which is what the callers want: recovering a lost
+// cursor climbs until it finds a node that is still on screen, and the root
+// always is.
+//
+// Unlike Child this shares its storage with p, which is safe precisely because
+// Child does not: no method ever writes into a path's segments, so the only
+// way to reach a shared array would be an append that never happens. Climbing
+// from a deep path therefore allocates nothing.
+func (p Path) Parent() Path {
+	if len(p.segments) == 0 {
+		return p
+	}
+
+	return Path{segments: p.segments[:len(p.segments)-1]}
+}
+
 // Equal reports whether p and q address the same node.
 //
 // Segments are compared by reference token rather than by kind, because a

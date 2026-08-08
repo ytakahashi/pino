@@ -345,6 +345,110 @@ func TestChildDoesNotDisturbTheParent(t *testing.T) {
 	}
 }
 
+func TestPathParent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		path domain.Path
+		want string
+	}{
+		{
+			name: "deep path",
+			path: path(domain.KeySegment("a"), domain.KeySegment("b"), domain.KeySegment("c")),
+			want: "/a/b",
+		},
+		{
+			name: "array element",
+			path: path(domain.KeySegment("features"), domain.IndexSegment(1)),
+			want: "/features",
+		},
+		{
+			name: "one level down",
+			path: path(domain.KeySegment("server")),
+			want: "",
+		},
+		{
+			// The root being its own parent is what lets a walk upwards stop on
+			// IsRoot instead of on a second return value.
+			name: "the root",
+			path: domain.Path{},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.path.Parent().String(); got != tt.want {
+				t.Errorf("Parent() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// Climbing from any path has to reach the root, which is how a lost cursor is
+// recovered: the walk stops because Parent stops shortening.
+func TestPathParentClimbsToTheRoot(t *testing.T) {
+	t.Parallel()
+
+	p := path(
+		domain.KeySegment("a"),
+		domain.IndexSegment(0),
+		domain.KeySegment("b"),
+		domain.KeySegment("c"),
+	)
+
+	steps := 0
+	for !p.IsRoot() {
+		p = p.Parent()
+
+		steps++
+		if steps > 10 {
+			t.Fatal("Parent() did not reach the root")
+		}
+	}
+
+	if steps != 4 {
+		t.Errorf("reached the root in %d steps, want 4", steps)
+	}
+}
+
+// Parent shares its storage with the path it came from, so anything built
+// from it must still not disturb its origin or its siblings. This is the same
+// trap Child avoids, reached from the other direction.
+func TestParentDoesNotDisturbTheOriginalPath(t *testing.T) {
+	t.Parallel()
+
+	original := path(
+		domain.KeySegment("server"),
+		domain.KeySegment("features"),
+		domain.IndexSegment(0),
+	)
+
+	parent := original.Parent()
+
+	first := parent.Child(domain.IndexSegment(7))
+	second := parent.Child(domain.IndexSegment(8))
+
+	if got := original.String(); got != "/server/features/0" {
+		t.Errorf("original = %q, want %q", got, "/server/features/0")
+	}
+
+	if got := parent.String(); got != "/server/features" {
+		t.Errorf("parent = %q, want %q", got, "/server/features")
+	}
+
+	if got := first.String(); got != "/server/features/7" {
+		t.Errorf("first child of the parent = %q, want %q", got, "/server/features/7")
+	}
+
+	if got := second.String(); got != "/server/features/8" {
+		t.Errorf("second child of the parent = %q, want %q", got, "/server/features/8")
+	}
+}
+
 func TestPathEqual(t *testing.T) {
 	t.Parallel()
 
