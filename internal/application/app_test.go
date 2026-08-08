@@ -277,6 +277,12 @@ func TestLines(t *testing.T) {
 	if len(renderer.gotOpt.Collapsed) != 0 {
 		t.Errorf("renderer saw %d folded nodes, want none", len(renderer.gotOpt.Collapsed))
 	}
+
+	// It also decides how much of a long value is drawn, and a document opened
+	// without anyone choosing still has a limit.
+	if renderer.gotOpt.MaxStrLen <= 0 {
+		t.Errorf("renderer saw MaxStrLen = %d, want a limit", renderer.gotOpt.MaxStrLen)
+	}
 }
 
 // otherAction is an Action this layer has no handling for.
