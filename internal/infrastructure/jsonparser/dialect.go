@@ -98,7 +98,7 @@ func checkClose(v, last *hujson.Value, after hujson.Extra, d domain.Dialect, src
 	trailingComma := last != nil && last.AfterExtra != nil
 
 	if trailingComma && !d.AllowTrailingComma {
-		return errorAt(src, last.EndOffset+len(last.AfterExtra), "a trailing comma is not allowed in JSON", nil)
+		return errorAt(src, last.EndOffset+len(last.AfterExtra), "trailing commas are not supported yet", nil)
 	}
 
 	// The composite's own extra begins after whatever punctuation precedes
@@ -123,7 +123,7 @@ func checkExtra(extra hujson.Extra, base int, d domain.Dialect, src []byte) erro
 	}
 
 	if i := commentIndex(extra); i >= 0 {
-		return errorAt(src, base+i, "comments are not allowed in JSON", nil)
+		return errorAt(src, base+i, "comments are not supported yet", nil)
 	}
 
 	return nil
