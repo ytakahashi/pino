@@ -58,11 +58,32 @@ func testDocument(t *testing.T) domain.Node {
 	return root
 }
 
-func openTestApp(t *testing.T) *application.App {
+// tallDocument draws as ten rows, more than the small terminals below can
+// show, so that the window has somewhere to move to.
+func tallDocument(t *testing.T) domain.Node {
+	t.Helper()
+
+	members := make([]domain.Member, 0, 8)
+	for i := range 8 {
+		members = append(members, domain.Member{
+			Key:   "k" + strconv.Itoa(i),
+			Value: domain.NewNumber(strconv.Itoa(i)),
+		})
+	}
+
+	root, err := domain.NewObject(members)
+	if err != nil {
+		t.Fatalf("NewObject() = %v", err)
+	}
+
+	return root
+}
+
+func openApp(t *testing.T, root domain.Node) *application.App {
 	t.Helper()
 
 	app := application.New(application.Deps{
-		Parser:   fakeParser{root: testDocument(t)},
+		Parser:   fakeParser{root: root},
 		Files:    fakeStore{},
 		Renderer: application.NewJSONRenderer(),
 	})
@@ -72,6 +93,12 @@ func openTestApp(t *testing.T) *application.App {
 	}
 
 	return app
+}
+
+func openTestApp(t *testing.T) *application.App {
+	t.Helper()
+
+	return openApp(t, testDocument(t))
 }
 
 // sized is a model that has already been told how big the terminal is.
@@ -122,12 +149,44 @@ func TestUpdateQuitsOnBoundKey(t *testing.T) {
 func TestUpdateIgnoresUnboundKey(t *testing.T) {
 	m := sized(t, openTestApp(t), 80, 24)
 
-	next, cmd := m.Update(tea.KeyPressMsg{Code: 'z', Text: "z"})
+	next, cmd := m.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
 	if cmd != nil {
-		t.Errorf("Update(z) = %v, want no command", cmd)
+		t.Errorf("Update(x) = %v, want no command", cmd)
 	}
 
 	assertSameSession(t, next, m)
+}
+
+// A prefix key produces nothing on its own and is remembered until the key
+// that completes it arrives.
+func TestUpdateRemembersAPrefix(t *testing.T) {
+	m := sized(t, openTestApp(t), 80, 24)
+
+	next, cmd := m.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
+	if cmd != nil {
+		t.Errorf("Update(g) = %v, want no command", cmd)
+	}
+
+	after, ok := next.(Model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want Model", next)
+	}
+
+	if after.pending != PendingG {
+		t.Errorf("pending = %v after g, want %v", after.pending, PendingG)
+	}
+
+	// The second g completes it and is acted on.
+	next, _ = after.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
+
+	done, ok := next.(Model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want Model", next)
+	}
+
+	if done.pending != PendingNone {
+		t.Errorf("pending = %v after gg, want nothing waiting", done.pending)
+	}
 }
 
 func TestUpdateIgnoresUnknownMessage(t *testing.T) {
@@ -151,7 +210,7 @@ func assertSameSession(t *testing.T, next tea.Model, m Model) {
 		t.Fatalf("Update() returned %T, want Model", next)
 	}
 
-	if got.app != m.app || got.width != m.width || got.height != m.height {
+	if got.app != m.app || got.width != m.width || got.height != m.height || got.pending != m.pending {
 		t.Errorf("Update() changed the model")
 	}
 }
@@ -281,6 +340,164 @@ func TestViewSurvivesATinyTerminal(t *testing.T) {
 			for i, row := range got {
 				if w := lipgloss.Width(row); w > size.width {
 					t.Errorf("row %d is %d wide, want at most %d", i, w, size.width)
+				}
+			}
+		})
+	}
+}
+
+// press sends key presses in order, answering the model they leave behind.
+func press(t *testing.T, m Model, keys ...tea.KeyPressMsg) Model {
+	t.Helper()
+
+	for _, k := range keys {
+		next, _ := m.Update(k)
+
+		got, ok := next.(Model)
+		if !ok {
+			t.Fatalf("Update() returned %T, want Model", next)
+		}
+
+		m = got
+	}
+
+	return m
+}
+
+// selectedRow is the row drawn with the cursor's own styling, or -1. It is
+// found by its background, which nothing else on a body row carries.
+func selectedRow(t *testing.T, m Model) int {
+	t.Helper()
+
+	marker := cursorBackground(t, m.theme)
+	found := -1
+
+	for i, row := range strings.Split(m.View().Content, "\n") {
+		if !strings.Contains(row, marker) {
+			continue
+		}
+
+		if found >= 0 {
+			t.Fatalf("rows %d and %d are both drawn as selected", found, i)
+		}
+
+		found = i
+	}
+
+	return found
+}
+
+// The row the cursor is on is the one marked, and moving moves the mark.
+func TestViewMarksTheCursorRow(t *testing.T) {
+	m := sized(t, openTestApp(t), 40, 8)
+
+	if got := selectedRow(t, m); got != 0 {
+		t.Errorf("row %d is drawn as selected, want the root on row 0", got)
+	}
+
+	m = press(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"})
+
+	if got := selectedRow(t, m); got != 1 {
+		t.Errorf("row %d is drawn as selected after moving down, want row 1", got)
+	}
+}
+
+// The band reaches the edge of the screen, so that the row is marked whatever
+// it happens to hold.
+func TestViewFillsTheCursorRow(t *testing.T) {
+	const width = 40
+
+	m := sized(t, openTestApp(t), width, 8)
+
+	row := strings.Split(m.View().Content, "\n")[0]
+
+	if got := lipgloss.Width(row); got != width {
+		t.Errorf("the selected row is %d wide, want the full %d", got, width)
+	}
+
+	// The rows around it are left as they are, rather than padded as well.
+	if got := lipgloss.Width(strings.Split(m.View().Content, "\n")[1]); got == width {
+		t.Error("a row that is not selected was padded to the width of the screen")
+	}
+}
+
+// The window follows the cursor, which is the application's decision; what is
+// checked here is that the part drawn is the part it asked for.
+func TestViewScrollsWithTheCursor(t *testing.T) {
+	// Three rows for the document, against a document of ten.
+	m := sized(t, openApp(t, tallDocument(t)), 40, 4)
+
+	if got := rows(t, m)[0]; strings.TrimRight(got, " ") != "{" {
+		t.Fatalf("row 0 = %q, want the top of the document", got)
+	}
+
+	// Down past the bottom of the window: the document scrolls, and the row
+	// the cursor is on is still on screen.
+	for range 5 {
+		m = press(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	}
+
+	if got := rows(t, m)[0]; strings.TrimRight(got, " ") == "{" {
+		t.Error("the window did not move, so the cursor has left the screen")
+	}
+
+	if row := selectedRow(t, m); row < 0 || row >= m.bodyHeight() {
+		t.Errorf("the selected row is %d, outside the %d rows drawn", row, m.bodyHeight())
+	}
+
+	// Back to the top, and so is the window.
+	m = press(t, m, tea.KeyPressMsg{Code: 'g', Text: "g"}, tea.KeyPressMsg{Code: 'g', Text: "g"})
+
+	if got := rows(t, m)[0]; strings.TrimRight(got, " ") != "{" {
+		t.Errorf("row 0 = %q, want the top of the document again", got)
+	}
+}
+
+// Resizing tells the application how much room the document has, which is
+// what the window it asks for is worked out against.
+func TestUpdateReportsTheBodyHeight(t *testing.T) {
+	// Tall enough for the whole document, so nothing is scrolled.
+	m := sized(t, openApp(t, tallDocument(t)), 40, 24)
+
+	for range 5 {
+		m = press(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	}
+
+	if got := rows(t, m)[0]; strings.TrimRight(got, " ") != "{" {
+		t.Errorf("row 0 = %q, want the document still drawn from the top", got)
+	}
+
+	// Shrunk to less than the cursor's position, the window has to follow it.
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 3})
+
+	small, ok := next.(Model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want Model", next)
+	}
+
+	if row := selectedRow(t, small); row < 0 || row >= small.bodyHeight() {
+		t.Errorf("the selected row is %d, outside the %d rows drawn", row, small.bodyHeight())
+	}
+}
+
+// However the terminal is shaped, the cursor is somewhere on it.
+func TestViewKeepsTheCursorOnScreen(t *testing.T) {
+	sizes := []struct{ width, height int }{
+		{width: 40, height: 3},
+		{width: 40, height: 4},
+		{width: 12, height: 5},
+		{width: 80, height: 24},
+	}
+
+	for _, size := range sizes {
+		t.Run(strconv.Itoa(size.width)+"x"+strconv.Itoa(size.height), func(t *testing.T) {
+			m := sized(t, openApp(t, tallDocument(t)), size.width, size.height)
+
+			for range 9 {
+				m = press(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"})
+
+				if row := selectedRow(t, m); row < 0 || row >= m.bodyHeight() {
+					t.Fatalf("the selected row is %d, outside the %d rows drawn", row, m.bodyHeight())
 				}
 			}
 		})

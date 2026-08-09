@@ -21,6 +21,12 @@ type Model struct {
 
 	width  int
 	height int
+
+	// pending is a prefix key waiting for the one that completes it. It is
+	// the only thing here that outlives a single message and is not the
+	// session's, because a half-typed sequence is not a fact about the
+	// document.
+	pending Pending
 }
 
 // NewModel puts a session on the terminal.
@@ -47,10 +53,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 
-		return m, nil
+		// The application follows the cursor with the window, so it has to be
+		// told how big that window is. What it is told is the room left for
+		// the document rather than the height of the terminal: taking the
+		// status bar off the top of it, and later an inspector, is a decision
+		// about laying out a screen and stays on this side of the boundary.
+		return m, m.dispatch(m.app.Do(application.ActionResize{Height: m.bodyHeight()}))
 
 	case tea.KeyPressMsg:
-		act := Resolve(msg, m.app.Mode())
+		act, pending := Resolve(msg, m.app.Mode(), m.pending)
+		m.pending = pending
+
 		if act == nil {
 			return m, nil
 		}
@@ -94,11 +107,23 @@ func (m Model) View() tea.View {
 
 	rows := make([]string, 0, m.height)
 
-	for _, l := range m.visible(frame.Lines) {
+	window, start := m.visible(frame)
+
+	for i, l := range window {
 		// The indentation comes from the open document rather than from the
 		// theme, so that what is drawn and what the status bar reports are
 		// the same value.
-		rows = append(rows, m.clip(m.theme.RenderLine(l, info.Indent)))
+		selected := start+i == frame.Cursor
+		row := m.clip(m.theme.RenderLine(l, info.Indent, selected))
+
+		// The band behind the selected row runs to the edge of the screen.
+		// Where the text stops has nothing to do with which row is selected,
+		// so letting the highlight stop there would make it look ragged.
+		if selected {
+			row += m.theme.RenderCursorFill(m.width - ansi.StringWidth(row))
+		}
+
+		rows = append(rows, row)
 	}
 
 	// Blank rows hold the bar at the bottom when the document is shorter than
@@ -136,18 +161,22 @@ func (m Model) bodyHeight() int {
 	return max(m.height-1, 0)
 }
 
-// visible is the part of the document that fits on the screen.
+// visible is the part of the document that fits on the screen, along with the
+// row number it starts at.
 //
-// It is shown from the top: scrolling follows the cursor, and with no cursor
-// yet there is nothing for a scroll position to follow. What this does settle
-// is that the rows drawn are a window onto the lines, so that giving the
-// window a starting point later changes this function and nothing else.
-func (m Model) visible(lines []application.Line) []application.Line {
-	if height := m.bodyHeight(); len(lines) > height {
-		return lines[:height]
-	}
+// Where it starts is the application's to decide, since that is what follows
+// the cursor about. The offset comes back out because a row has to be told
+// whether it is the selected one, and what it is compared against is a
+// position in the whole document rather than in the part on screen.
+//
+// The offset is brought into range rather than trusted: it was worked out
+// against a height this layer reported, and a frame drawn between the two
+// would otherwise index outside the document.
+func (m Model) visible(frame application.Frame) ([]application.Line, int) {
+	start := min(max(frame.Scroll, 0), len(frame.Lines))
+	end := min(start+m.bodyHeight(), len(frame.Lines))
 
-	return lines
+	return frame.Lines[start:end], start
 }
 
 // clip cuts a row to the width of the terminal.

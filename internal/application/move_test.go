@@ -494,6 +494,86 @@ func TestScrollHalf(t *testing.T) {
 	}
 }
 
+// repeat is one action pressed over and over.
+func repeat(act Action, n int) []Action {
+	actions := make([]Action, n)
+	for i := range actions {
+		actions[i] = act
+	}
+
+	return actions
+}
+
+// The rows closing whatever is still open come after the last node, and the
+// cursor never lands on them. Reaching the end of a document has to look like
+// reaching it, so the window goes to the bottom rather than only as far as the
+// cursor obliges it to.
+func TestReachingTheLastNodeShowsTheEnd(t *testing.T) {
+	t.Parallel()
+
+	const height = 5
+
+	ways := map[string][]Action{
+		"jumping to the end": {ActionMoveLast{}},
+		"walking down":       repeat(ActionMoveNext{}, 20),
+		"reading on":         repeat(ActionScrollHalfDown{}, 20),
+	}
+
+	for name, actions := range ways {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := session(t, sample(t))
+			app.Do(ActionResize{Height: height})
+			press(app, actions...)
+
+			if got := cursorOf(app); got != "/debug" {
+				t.Fatalf("selected %q, want the last node", got)
+			}
+
+			frame := app.Frame()
+			if frame.Scroll+height < len(frame.Lines) {
+				t.Errorf("the window shows rows [%d, %d) of %d, want it to reach the end",
+					frame.Scroll, frame.Scroll+height, len(frame.Lines))
+			}
+		})
+	}
+}
+
+// A document that fits is drawn from the top wherever the cursor is, so
+// reaching the end of one does not scroll it.
+func TestReachingTheLastNodeOfADocumentThatFits(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	app.Do(ActionResize{Height: 100})
+	app.Do(ActionMoveLast{})
+
+	if got := app.Frame().Scroll; got != 0 {
+		t.Errorf("Scroll = %d, want the document drawn from the top", got)
+	}
+}
+
+// Sending the window to the bottom is for standing at the end, not a place it
+// stays: moving back up scrolls as little as it has to again.
+func TestLeavingTheLastNodeScrollsBack(t *testing.T) {
+	t.Parallel()
+
+	const height = 5
+
+	app := session(t, sample(t))
+	app.Do(ActionResize{Height: height})
+	app.Do(ActionMoveLast{})
+
+	atEnd := app.Frame().Scroll
+
+	press(app, repeat(ActionMovePrev{}, 20)...)
+
+	if got := app.Frame().Scroll; got >= atEnd {
+		t.Errorf("Scroll = %d after walking back to the top, want less than %d", got, atEnd)
+	}
+}
+
 // At either end the window stops, and the cursor has to stop somewhere it can
 // still be seen.
 func TestScrollHalfStopsAtTheEnds(t *testing.T) {

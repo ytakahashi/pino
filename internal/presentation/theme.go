@@ -37,6 +37,14 @@ type Theme struct {
 	// Role: no renderer produces it, and it is drawn around the document
 	// rather than as part of it.
 	StatusBar lipgloss.Style
+
+	// Cursor is laid over the row the selection is on, keeping each span's own
+	// colour: it says which row, not what is in it.
+	//
+	// Whatever it sets has to be something the spans leave unset, since a span
+	// that has made its own choice keeps it. In practice that means a
+	// background, which is why no Role has one.
+	Cursor lipgloss.Style
 }
 
 // DefaultTheme is what pino draws with when nothing else is chosen.
@@ -67,6 +75,13 @@ func DefaultTheme() Theme {
 		StatusBar: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("252")).
 			Background(lipgloss.Color("238")),
+
+		// The selected row is marked by a band behind it rather than by an
+		// arrow in front of it: an arrow would need a column of its own and
+		// push the whole document sideways, and reading JSON in its usual
+		// shape is what the view is for. The grey is dark enough to leave
+		// every value colour legible and distinct from the bar's.
+		Cursor: lipgloss.NewStyle().Background(lipgloss.Color("237")),
 	}
 }
 
@@ -105,16 +120,52 @@ func (t Theme) style(r application.Role) lipgloss.Style {
 //
 // indent is one level of indentation of the open document, not a property of
 // the theme: it is what the file already uses and what will be written back,
-// which is why the status bar reports the same value. It is left unstyled,
-// since styling whitespace only emits escape sequences around nothing.
-func (t Theme) RenderLine(l application.Line, indent string) string {
+// which is why the status bar reports the same value. On a row that is not
+// selected it is left unstyled, since styling whitespace only emits escape
+// sequences around nothing.
+//
+// selected marks the row the cursor is on. The cursor's styling is laid over
+// each span in turn rather than around the row as a whole: a style wrapping
+// the finished row would end at the first span that reset its own colours,
+// leaving the band broken wherever the document is at its most colourful.
+func (t Theme) RenderLine(l application.Line, indent string, selected bool) string {
 	var b strings.Builder
 
-	b.WriteString(strings.Repeat(indent, l.Depth))
+	if leading := strings.Repeat(indent, l.Depth); selected {
+		b.WriteString(t.Cursor.Render(leading))
+	} else {
+		b.WriteString(leading)
+	}
 
 	for _, s := range l.Spans {
-		b.WriteString(t.style(s.Role).Render(s.Text))
+		b.WriteString(t.decorate(t.style(s.Role), selected).Render(s.Text))
 	}
 
 	return b.String()
+}
+
+// decorate lays the cursor over a span's own styling on the selected row.
+//
+// Inherit takes only what the span has not settled for itself, which is what
+// keeps each value its own colour while the row gains a background.
+func (t Theme) decorate(s lipgloss.Style, selected bool) lipgloss.Style {
+	if !selected {
+		return s
+	}
+
+	return s.Inherit(t.Cursor)
+}
+
+// RenderCursorFill is the remainder of the selected row: width columns of the
+// cursor's styling and nothing else.
+//
+// The band has to reach the edge of the screen. Stopping where the text does
+// would make how far it reached depend on how long each row happened to be,
+// which reads as ragged rather than as a row being pointed at.
+func (t Theme) RenderCursorFill(width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	return t.Cursor.Render(strings.Repeat(" ", width))
 }

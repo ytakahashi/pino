@@ -255,7 +255,18 @@ func (a *App) settle(lines []Line) {
 		a.view.Cursor = lines[row].Path
 	}
 
-	a.view.Scroll = clampScroll(a.view.Scroll, row, a.height, len(lines))
+	scroll := a.view.Scroll
+
+	// The rows closing whatever is still open come after the last node, and
+	// the cursor never lands on them. Standing on the last node with those
+	// rows just off the bottom looks exactly like standing in the middle of a
+	// document, so the end of one is shown whole rather than to the least
+	// extent the cursor requires.
+	if row >= 0 && row == lastRow(lines) {
+		scroll = max(scroll, len(lines)-a.height)
+	}
+
+	a.view.Scroll = clampScroll(scroll, row, a.height, len(lines))
 }
 
 // moveBy selects the row step leads to, staying put when it leads nowhere.
