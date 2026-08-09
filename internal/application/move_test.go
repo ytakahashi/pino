@@ -494,6 +494,159 @@ func TestScrollHalf(t *testing.T) {
 	}
 }
 
+// Turning a wheel moves the window. The selection comes along only when the
+// window would otherwise leave it behind, since the status bar names the node
+// it is on and naming one off the screen says nothing.
+func TestScrollBy(t *testing.T) {
+	t.Parallel()
+
+	const height = 5
+
+	app := session(t, sample(t))
+	app.Do(ActionResize{Height: height})
+
+	// Down three, from the top: the window moves and the selection, which was
+	// on the first row, comes to the top of it.
+	app.Do(ActionScrollBy{Rows: 3})
+
+	frame := app.Frame()
+	if frame.Scroll != 3 {
+		t.Fatalf("Scroll = %d, want 3", frame.Scroll)
+	}
+
+	if frame.Cursor != 3 {
+		t.Errorf("the selection is on row %d, want the top of the window", frame.Cursor)
+	}
+
+	// Back up three, with the selection inside the window all the while: it
+	// stays exactly where it was.
+	before := cursorOf(app)
+
+	app.Do(ActionScrollBy{Rows: -3})
+
+	if got := app.Frame().Scroll; got != 0 {
+		t.Errorf("Scroll = %d, want 0", got)
+	}
+
+	if got := cursorOf(app); got != before {
+		t.Errorf("the selection moved to %q, want it left on %q", got, before)
+	}
+}
+
+// A selection pushed off the bottom is brought back to the last row of the
+// window that it can occupy, closing rows not among them.
+func TestScrollByPullsTheCursorUp(t *testing.T) {
+	t.Parallel()
+
+	const height = 5
+
+	app := session(t, sample(t))
+	app.Do(ActionResize{Height: height})
+	app.Do(ActionMoveLast{})
+
+	if got := cursorOf(app); got != "/debug" {
+		t.Fatalf("expected to be on the last node, got %q", got)
+	}
+
+	app.Do(ActionScrollBy{Rows: -4})
+
+	frame := app.Frame()
+
+	if frame.Cursor < frame.Scroll || frame.Cursor >= frame.Scroll+height {
+		t.Fatalf("the selection is on row %d, outside the window [%d, %d)",
+			frame.Cursor, frame.Scroll, frame.Scroll+height)
+	}
+
+	// The bottom row of the window is the array's closing bracket, so the
+	// selection settles on the element above it rather than on the bracket.
+	if got := cursorOf(app); got != "/server/ports/1" {
+		t.Errorf("the selection came back to %q, want /server/ports/1", got)
+	}
+}
+
+// The window stops at the ends of the document however hard the wheel is
+// turned, and the selection stays on screen.
+func TestScrollByStopsAtTheEnds(t *testing.T) {
+	t.Parallel()
+
+	const height = 5
+
+	app := session(t, sample(t))
+	app.Do(ActionResize{Height: height})
+
+	press(app, repeat(ActionScrollBy{Rows: 3}, 10)...)
+
+	frame := app.Frame()
+	if frame.Scroll != len(frame.Lines)-height {
+		t.Errorf("Scroll = %d at the bottom, want %d", frame.Scroll, len(frame.Lines)-height)
+	}
+
+	if frame.Cursor < frame.Scroll || frame.Cursor >= frame.Scroll+height {
+		t.Errorf("the selection is on row %d, outside the window", frame.Cursor)
+	}
+
+	press(app, repeat(ActionScrollBy{Rows: -3}, 10)...)
+
+	frame = app.Frame()
+	if frame.Scroll != 0 {
+		t.Errorf("Scroll = %d at the top, want 0", frame.Scroll)
+	}
+
+	// The selection is dragged only as far as staying on screen requires, so
+	// winding back to the top leaves it at the bottom of the window rather
+	// than carrying it to the first row.
+	if frame.Cursor < 0 || frame.Cursor >= height {
+		t.Errorf("the selection is on row %d, outside the window [0, %d)", frame.Cursor, height)
+	}
+}
+
+// Without a window there is nothing to scroll, and nothing to be pushed out
+// of either.
+func TestScrollByWithoutAWindow(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+
+	app.Do(ActionScrollBy{Rows: 3})
+
+	if got := app.Frame().Scroll; got != 0 {
+		t.Errorf("Scroll = %d with no window, want 0", got)
+	}
+
+	if got := cursorOf(app); got != "" {
+		t.Errorf("the selection moved to %q with no window, want the root", got)
+	}
+
+	empty := New(Deps{Renderer: NewJSONRenderer()})
+	empty.Do(ActionScrollBy{Rows: 3})
+
+	if frame := empty.Frame(); frame.Cursor != -1 || frame.Scroll != 0 {
+		t.Errorf("Frame() = %+v with no document open", frame)
+	}
+}
+
+// A document that fits has nowhere to scroll to, and the selection is left
+// alone rather than dragged to an edge.
+func TestScrollByOnADocumentThatFits(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	app.Do(ActionResize{Height: 100})
+	press(app, ActionMoveNext{}, ActionMoveNext{})
+
+	before := cursorOf(app)
+
+	app.Do(ActionScrollBy{Rows: 3})
+
+	if got := app.Frame().Scroll; got != 0 {
+		t.Errorf("Scroll = %d on a document that fits, want 0", got)
+	}
+
+	if got := cursorOf(app); got != before {
+		t.Errorf("the selection moved to %q, want it left on %q", got, before)
+	}
+}
+
 // repeat is one action pressed over and over.
 func repeat(act Action, n int) []Action {
 	actions := make([]Action, n)

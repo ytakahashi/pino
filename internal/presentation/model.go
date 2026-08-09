@@ -27,6 +27,16 @@ type Model struct {
 	// session's, because a half-typed sequence is not a fact about the
 	// document.
 	pending Pending
+
+	// mouse is whether the terminal is asked to report the wheel.
+	//
+	// Asking costs the terminal's own text selection: there is no mode that
+	// reports the wheel alone, so clicks and drags are captured too and
+	// dragging no longer selects text to copy. That is a real loss for anyone
+	// reading JSON over ssh, which is why the choice is a value here rather
+	// than something written into the frame: turning it off is one field, and
+	// an option to would set it where the program is assembled.
+	mouse bool
 }
 
 // NewModel puts a session on the terminal.
@@ -35,7 +45,7 @@ type Model struct {
 // are settled where the rest of the program is assembled, which is where an
 // option to choose one would arrive.
 func NewModel(app *application.App, theme Theme) Model {
-	return Model{app: app, theme: theme}
+	return Model{app: app, theme: theme, mouse: true}
 }
 
 // Init has nothing to start. The document is opened before the program runs,
@@ -69,9 +79,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		return m, m.dispatch(m.app.Do(act))
+
+	case tea.MouseWheelMsg:
+		rows, ok := wheelDistance(msg)
+		if !ok {
+			return m, nil
+		}
+
+		return m, m.dispatch(m.app.Do(application.ActionScrollBy{Rows: rows}))
 	}
 
 	return m, nil
+}
+
+// wheelRows is how far one turn of the wheel reaches. Three is what terminals
+// and the programs drawn in them have settled on.
+const wheelRows = 3
+
+// wheelDistance is how far a turn of the wheel scrolls, and whether it scrolls
+// at all.
+//
+// The horizontal wheel is left unbound: a row of a document is cut to the
+// width of the screen rather than scrolled sideways, so there is nothing for
+// it to move.
+func wheelDistance(msg tea.MouseWheelMsg) (int, bool) {
+	switch msg.Button {
+	case tea.MouseWheelDown:
+		return wheelRows, true
+
+	case tea.MouseWheelUp:
+		return -wheelRows, true
+	}
+
+	return 0, false
 }
 
 // dispatch carries out what the application asked for.
@@ -99,7 +139,7 @@ func (m Model) View() tea.View {
 	// The size arrives as a message, so the first frame is empty and is
 	// replaced as soon as it comes.
 	if m.width <= 0 || m.height <= 0 {
-		return fullScreen("")
+		return fullScreen("", m.mouse)
 	}
 
 	frame := m.app.Frame()
@@ -132,9 +172,9 @@ func (m Model) View() tea.View {
 		rows = append(rows, "")
 	}
 
-	rows = append(rows, m.theme.RenderStatusBar(info, len(frame.Lines), m.width))
+	rows = append(rows, m.theme.RenderStatusBar(info, len(frame.Lines), m.pending, m.width))
 
-	return fullScreen(strings.Join(rows, "\n"))
+	return fullScreen(strings.Join(rows, "\n"), m.mouse)
 }
 
 // fullScreen is a frame drawn on a screen of pino's own.
@@ -145,9 +185,17 @@ func (m Model) View() tea.View {
 // blank rows and every intermediate frame behind it. The alternate screen also
 // gives back what was on the terminal when pino quits, so that opening a file
 // to look at it does not cost the person the output they had.
-func fullScreen(content string) tea.View {
+// The mouse is asked for here too, since the terminal is told what to report
+// by each frame rather than once at the start.
+func fullScreen(content string, mouse bool) tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
+
+	if mouse {
+		// The narrowest mode there is. It still captures clicks and drags,
+		// there being none that reports the wheel alone.
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 
 	return v
 }

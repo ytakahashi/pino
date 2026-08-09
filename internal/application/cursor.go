@@ -175,6 +175,26 @@ func scanRow(lines []Line, from, step int) int {
 	return -1
 }
 
+// intoWindow is the row to select when from has been left outside the window
+// of height rows starting at scroll, or -1 when it is still inside it.
+//
+// Moving the window on its own can strand the selection above or below what is
+// drawn. Bringing it to the edge it went out by is the smallest way back, and
+// keeps reading on with the wheel from carrying the selection along further
+// than the text moved.
+func intoWindow(lines []Line, from, scroll, height int) int {
+	switch {
+	case from < scroll:
+		return nearestRow(lines, scroll, 1)
+
+	case from >= scroll+height:
+		return nearestRow(lines, scroll+height-1, -1)
+
+	default:
+		return -1
+	}
+}
+
 // clampScroll is the first row to draw so that cursor is on screen, moving as
 // little as possible from scroll.
 //

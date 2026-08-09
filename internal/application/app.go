@@ -217,6 +217,9 @@ func (a *App) Do(act Action) []Effect {
 	case ActionScrollHalfUp:
 		a.scrollHalf(-1)
 
+	case ActionScrollBy:
+		a.scrollBy(act.Rows)
+
 	case ActionExpandAll:
 		a.view.ExpandAll()
 		a.settle(a.render())
@@ -338,6 +341,38 @@ func (a *App) scrollHalf(dir int) {
 	// takes into account: passing no cursor row is how this asks for the
 	// offset to be brought into range and nothing more.
 	a.view.Scroll = clampScroll(a.view.Scroll+step, -1, a.height, len(lines))
+
+	a.settle(lines)
+}
+
+// scrollBy moves the window by rows, positive downwards, taking the selection
+// with it only as far as keeping it on screen requires.
+//
+// It is the one movement that starts with the window rather than with the
+// selection, which is what turning a wheel asks for. The selection is still
+// not left behind: the status bar names the node it is on, and naming one
+// nobody can see says less than nudging the selection does.
+func (a *App) scrollBy(rows int) {
+	lines := a.render()
+
+	// Without a window there is nothing to scroll and no edge to be pushed
+	// over, so the selection is left exactly where it is.
+	if len(lines) == 0 || a.height <= 0 {
+		a.settle(lines)
+
+		return
+	}
+
+	// No cursor row is passed: this is asking for the offset to be brought
+	// into range and nothing more, the same way half a screen does.
+	scroll := clampScroll(a.view.Scroll+rows, -1, a.height, len(lines))
+	a.view.Scroll = scroll
+
+	if from := visibleRow(lines, a.view.Cursor); from >= 0 {
+		if to := intoWindow(lines, from, scroll, a.height); to >= 0 {
+			a.view.Cursor = lines[to].Path
+		}
+	}
 
 	a.settle(lines)
 }

@@ -64,6 +64,16 @@ type (
 func (ActionScrollHalfDown) isAction() {}
 func (ActionScrollHalfUp) isAction()   {}
 
+// ActionScrollBy asks for the window to move, rather than for the selection
+// to. Rows is positive downwards.
+//
+// It is what a wheel produces. How far one turn reaches is a habit of the
+// device and of the terminal, so it arrives as a distance rather than as a
+// request this layer would have to put a number to.
+type ActionScrollBy struct{ Rows int }
+
+func (ActionScrollBy) isAction() {}
+
 // ActionExpandAll and ActionCollapseAll ask for the whole document to be
 // unfolded, or for it to be folded down to an overview of its shape.
 type (

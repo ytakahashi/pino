@@ -79,6 +79,49 @@ func tallDocument(t *testing.T) domain.Node {
 	return root
 }
 
+// nestedDocument is deep enough that every way of moving has somewhere to go:
+//
+//	{
+//	  "server": {
+//	    "cache": {
+//	      "ttl": 60
+//	    },
+//	    "host": "localhost"
+//	  },
+//	  "port": 8080
+//	}
+func nestedDocument(t *testing.T) domain.Node {
+	t.Helper()
+
+	host, err := domain.NewString("localhost")
+	if err != nil {
+		t.Fatalf("NewString() = %v", err)
+	}
+
+	cache, err := domain.NewObject([]domain.Member{{Key: "ttl", Value: domain.NewNumber("60")}})
+	if err != nil {
+		t.Fatalf("NewObject() = %v", err)
+	}
+
+	server, err := domain.NewObject([]domain.Member{
+		{Key: "cache", Value: cache},
+		{Key: "host", Value: host},
+	})
+	if err != nil {
+		t.Fatalf("NewObject() = %v", err)
+	}
+
+	root, err := domain.NewObject([]domain.Member{
+		{Key: "server", Value: server},
+		{Key: "port", Value: domain.NewNumber("8080")},
+	})
+	if err != nil {
+		t.Fatalf("NewObject() = %v", err)
+	}
+
+	return root
+}
+
 func openApp(t *testing.T, root domain.Node) *application.App {
 	t.Helper()
 
@@ -248,9 +291,17 @@ func TestViewFillsTheScreen(t *testing.T) {
 		}
 	}
 
-	// The bar is anchored to the last row, whatever the document is worth.
-	if bar := got[7]; !strings.HasPrefix(bar, " NORMAL  JSON  config.json  4 lines  indent:2") {
-		t.Errorf("last row = %q, want the status bar", bar)
+	// The bar is anchored to the last row, whatever the document is worth,
+	// with where the selection is at one end and what the document is at the
+	// other.
+	bar := got[7]
+
+	if !strings.HasPrefix(bar, " NORMAL  JSON  config.json  /  object") {
+		t.Errorf("the bar begins %q, want the session and the selection", bar)
+	}
+
+	if !strings.HasSuffix(bar, "4 lines  indent:2 ") {
+		t.Errorf("the bar ends %q, want the state of the document", bar)
 	}
 }
 
@@ -311,8 +362,15 @@ func TestViewWithoutADocument(t *testing.T) {
 		}
 	}
 
-	if want := " NORMAL  JSON  0 lines  indent:2"; !strings.HasPrefix(got[3], want) {
-		t.Errorf("status bar = %q, want prefix %q", got[3], want)
+	// Nothing is selected, so the bar says only what is true of the session.
+	bar := got[3]
+
+	if !strings.HasPrefix(bar, " NORMAL  JSON") {
+		t.Errorf("the bar begins %q, want the mode and the view", bar)
+	}
+
+	if !strings.HasSuffix(bar, "0 lines  indent:2 ") {
+		t.Errorf("the bar ends %q, want the state of the document", bar)
 	}
 }
 
@@ -477,6 +535,121 @@ func TestUpdateReportsTheBodyHeight(t *testing.T) {
 
 	if row := selectedRow(t, small); row < 0 || row >= small.bodyHeight() {
 		t.Errorf("the selected row is %d, outside the %d rows drawn", row, small.bodyHeight())
+	}
+}
+
+// The wheel moves the window, and the selection stays on the screen.
+func TestUpdateScrollsOnTheWheel(t *testing.T) {
+	m := sized(t, openApp(t, tallDocument(t)), 40, 5)
+
+	if got := rows(t, m)[0]; strings.TrimRight(got, " ") != "{" {
+		t.Fatalf("row 0 = %q, want the top of the document", got)
+	}
+
+	next, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+
+	down, ok := next.(Model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want Model", next)
+	}
+
+	if got := rows(t, down)[0]; strings.TrimRight(got, " ") == "{" {
+		t.Error("the wheel did not move the window")
+	}
+
+	if row := selectedRow(t, down); row < 0 || row >= down.bodyHeight() {
+		t.Errorf("the selected row is %d, outside the %d rows drawn", row, down.bodyHeight())
+	}
+
+	// And back up again.
+	next, _ = down.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+
+	up, ok := next.(Model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want Model", next)
+	}
+
+	if got := rows(t, up)[0]; strings.TrimRight(got, " ") != "{" {
+		t.Errorf("row 0 = %q, want the top of the document again", got)
+	}
+}
+
+// Sideways there is nothing to scroll: a row too wide for the screen is cut,
+// not moved.
+func TestUpdateIgnoresTheHorizontalWheel(t *testing.T) {
+	m := sized(t, openApp(t, tallDocument(t)), 40, 5)
+
+	next, cmd := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight})
+	if cmd != nil {
+		t.Errorf("Update() = %v, want no command", cmd)
+	}
+
+	assertSameSession(t, next, m)
+
+	if got := rows(t, m)[0]; strings.TrimRight(got, " ") != "{" {
+		t.Errorf("row 0 = %q, want the window left where it was", got)
+	}
+}
+
+// A prefix that has been typed reaches the screen, not merely the model. What
+// this catches that the tests either side of it do not is the bar being drawn
+// from something other than what the key table left waiting: the key table
+// answers with a prefix, the model stores it, and the bar renders whichever
+// one it is handed, so only drawing a real frame joins the three.
+func TestViewShowsAPendingPrefix(t *testing.T) {
+	m := sized(t, openTestApp(t), 80, 8)
+
+	bar := func(m Model) string {
+		t.Helper()
+
+		drawn := rows(t, m)
+
+		return strings.TrimRight(drawn[len(drawn)-1], " ")
+	}
+
+	if got := bar(m); strings.HasSuffix(got, "  g") {
+		t.Fatalf("the bar reads %q with nothing typed, want no prefix on it", got)
+	}
+
+	if got := bar(press(t, m, tea.KeyPressMsg{Code: 'g', Text: "g"})); !strings.HasSuffix(got, "  g") {
+		t.Errorf("the bar reads %q after g, want it to end with the prefix", got)
+	}
+
+	if got := bar(press(t, m, tea.KeyPressMsg{Code: 'z', Text: "z"})); !strings.HasSuffix(got, "  z") {
+		t.Errorf("the bar reads %q after z, want it to end with the prefix", got)
+	}
+
+	// Completing the sequence takes it off again.
+	done := press(t, m,
+		tea.KeyPressMsg{Code: 'g', Text: "g"},
+		tea.KeyPressMsg{Code: 'g', Text: "g"},
+	)
+
+	if got := bar(done); strings.HasSuffix(got, "  g") {
+		t.Errorf("the bar reads %q after gg, want the prefix gone", got)
+	}
+}
+
+// The terminal only reports the wheel while it is asked to, and each frame is
+// what asks.
+func TestViewAsksForTheMouse(t *testing.T) {
+	m := sized(t, openTestApp(t), 40, 8)
+
+	if got := m.View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Errorf("MouseMode = %v, want %v", got, tea.MouseModeCellMotion)
+	}
+
+	// Turning it off gives the terminal its own text selection back, which is
+	// the reason for the choice being a value rather than something fixed.
+	m.mouse = false
+
+	if got := m.View().MouseMode; got != tea.MouseModeNone {
+		t.Errorf("MouseMode = %v with the mouse off, want %v", got, tea.MouseModeNone)
+	}
+
+	// The frame drawn before the size is known says the same thing.
+	if got := NewModel(openTestApp(t), DefaultTheme()).View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Errorf("the first frame has MouseMode = %v, want %v", got, tea.MouseModeCellMotion)
 	}
 }
 

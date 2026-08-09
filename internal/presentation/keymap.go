@@ -20,6 +20,21 @@ const (
 	PendingZ
 )
 
+// String is the prefix as it was typed, which is what the status bar shows.
+// Nothing waiting is nothing to show.
+func (p Pending) String() string {
+	switch p {
+	case PendingG:
+		return "g"
+	case PendingZ:
+		return "z"
+	case PendingNone:
+		return ""
+	}
+
+	return ""
+}
+
 // Resolve is the Action a key press stands for, along with the prefix left
 // waiting afterwards. Either may be empty: a prefix produces no Action, and
 // most keys leave nothing waiting.
