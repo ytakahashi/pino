@@ -9,9 +9,22 @@ import (
 // LineKind says what a line does to the structure around it.
 //
 // It is what lets the layers above treat a rendered document as a flat list
-// while still respecting the tree: the cursor skips LineClose, and folding a
-// node means dropping everything between its LineOpen and the matching
-// LineClose.
+// while still respecting the tree: a row that can be opened is a LineOpen, a
+// row that is folded away is a LineSingle carrying the flag, and the cursor
+// skips LineClose.
+//
+// A close row always closes the nearest open row still waiting for one, and
+// carries the same path. The converse does not hold: an open row need not have
+// a close row, because that is a property of the view being drawn rather than
+// of this model. The JSON view has closing braces to draw; the tree view has
+// none, and a container there ends where the depth of the rows drops back.
+//
+// Requiring the converse would cost more than it is worth. The tree view would
+// have to emit close rows holding nothing, which are blank lines on screen, or
+// a Line would have to record which renderer made it. Nothing wants either:
+// folding is the renderer declining to draw a subtree rather than anything
+// counting rows in pairs, cursor movement only ever skips a close row, and an
+// edit takes the extent of a subtree from the tree itself.
 type LineKind uint8
 
 const (

@@ -1,0 +1,6 @@
+ 0  open    0  /                          guide[▼ ] key[/] punct[ {4}]
+ 1  single  1  /obj                       key[obj] punct[ {}]
+ 2  single  1  /arr                       key[arr] punct[ []]
+ 3  open    1  /outer                     guide[▼ ] key[outer] punct[ {1}]
+ 4  single  2  /outer/inner               key[inner] punct[ {}]
+ 5  single  1  /last                      key[last] punct[: ] number[1]

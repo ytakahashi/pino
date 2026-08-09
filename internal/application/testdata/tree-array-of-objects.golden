@@ -1,0 +1,7 @@
+ 0  open    0  /                          guide[▼ ] key[/] punct[ [2]]
+ 1  open    1  /0                         guide[▼ ] key[0] punct[ {2}]
+ 2  single  2  /0/id                      key[id] punct[: ] number[1]
+ 3  open    2  /0/tags                    guide[▼ ] key[tags] punct[ [1]]
+ 4  single  3  /0/tags/0                  key[0] punct[: ] string["a"]
+ 5  open    1  /1                         guide[▼ ] key[1] punct[ {1}]
+ 6  single  2  /1/id                      key[id] punct[: ] number[2]

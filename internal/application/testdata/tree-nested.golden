@@ -1,0 +1,7 @@
+ 0  open    0  /                          guide[▼ ] key[/] punct[ {1}]
+ 1  open    1  /server                    guide[▼ ] key[server] punct[ {3}]
+ 2  single  2  /server/host               key[host] punct[: ] string["localhost"]
+ 3  single  2  /server/port               key[port] punct[: ] number[8080]
+ 4  open    2  /server/features           guide[▼ ] key[features] punct[ [2]]
+ 5  single  3  /server/features/0         key[0] punct[: ] string["search"]
+ 6  single  3  /server/features/1         key[1] punct[: ] string["history"]
