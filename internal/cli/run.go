@@ -83,7 +83,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	app := application.New(application.Deps{
 		Parser:   jsonparser.New(),
 		Files:    filestore.New(),
-		Renderer: application.NewJSONRenderer(),
+		JSONView: application.NewJSONRenderer(),
+		TreeView: application.NewTreeRenderer(),
 	})
 
 	// The document is opened before the terminal is taken over: pino is a

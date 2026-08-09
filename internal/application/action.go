@@ -84,6 +84,15 @@ type (
 func (ActionExpandAll) isAction()   {}
 func (ActionCollapseAll) isAction() {}
 
+// ActionToggleView asks for the document to be shown the other way.
+//
+// It names the step rather than the destination, because there are two views
+// and one key between them. What is being asked for is "the other one", which
+// is what the key on the keyboard means.
+type ActionToggleView struct{}
+
+func (ActionToggleView) isAction() {}
+
 // ActionResize reports how many rows the document can be drawn in.
 //
 // It is the one Action that does not come from a key. Resizing a window is

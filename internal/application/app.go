@@ -6,9 +6,18 @@ import "github.com/ytakahashi/pino/internal/domain"
 // builds the adapters and passes them in; nothing below this layer knows
 // which implementations they are.
 type Deps struct {
-	Parser   Parser
-	Files    FileStore
-	Renderer Renderer
+	Parser Parser
+	Files  FileStore
+
+	// The two ways a document is drawn. Both are built by the caller, as the
+	// ports are, so that a test can feed the session rows of its own choosing.
+	//
+	// They are named fields rather than a map keyed by view: a key left out of
+	// a map is a nil call discovered by running the program, whereas a field
+	// left out is something the compiler and the exhaustive switch below can
+	// both be made to point at.
+	JSONView Renderer
+	TreeView Renderer
 }
 
 // App is the whole state of a pino session.
@@ -122,11 +131,37 @@ func (a *App) render() []Line {
 		return nil
 	}
 
-	return a.deps.Renderer.Render(a.doc.Root(), a.view.RenderOptions())
+	return a.renderer().Render(a.doc.Root(), a.view.RenderOptions())
+}
+
+// renderer is the one drawing the document at the moment.
+//
+// It is the whole of what switching views does to rendering: the rest of this
+// layer asks for rows and is given rows, and never learns which renderer made
+// them.
+func (a *App) renderer() Renderer {
+	switch a.view.ViewMode {
+	case ViewJSON:
+		return a.deps.JSONView
+
+	case ViewTree:
+		return a.deps.TreeView
+	}
+
+	// Not reached: the switch covers every view, and the linter keeps it so.
+	return a.deps.JSONView
 }
 
 // Mode is what the next key press means.
 func (a *App) Mode() Mode { return a.mode }
+
+// ViewMode is which of the views is drawing.
+//
+// Status carries it too, for the bar that names it. This answers the same
+// question without looking a node up in the document, which is what laying the
+// screen out needs: how the screen is divided depends on the view and not at
+// all on what is selected.
+func (a *App) ViewMode() ViewMode { return a.view.ViewMode }
 
 // StatusInfo is what the status bar shows.
 //
@@ -226,6 +261,9 @@ func (a *App) Do(act Action) []Effect {
 
 	case ActionCollapseAll:
 		a.collapseAll()
+
+	case ActionToggleView:
+		a.toggleView()
 
 	case ActionResize:
 		// A window of no rows is not a window; asking for one is answered by
@@ -374,6 +412,61 @@ func (a *App) scrollBy(rows int) {
 		}
 	}
 
+	a.settle(lines)
+}
+
+// toggleView draws the document the other way, leaving the reader looking at
+// the same node from the same place on the screen.
+//
+// The selection needs nothing done to it. It is held as a path, and both
+// renderers draw a row for the same nodes in the same order, so the node it
+// names is on screen in the view being switched to.
+//
+// The window does need something done to it. The offset is a row number, and
+// neither the number of rows nor the row a given node sits on survives the
+// switch: a node on row 120 of the JSON view may be on row 60 of the tree.
+// Left alone, the window would show somewhere else entirely.
+//
+// What is carried across is where the cursor sat within the window rather than
+// where the window sat in the document. Letting settle place it would put the
+// cursor at the top of the screen whenever the rows below it grew fewer, and a
+// line jumping from the middle of the screen to the top is a larger change than
+// "show me this the other way" asks for.
+//
+// It is carried as far as the other view can take it, which near the end of a
+// document is not always the whole way: a view with fewer rows cannot put a
+// node close to its end as far down the screen. settle brings the offset back
+// into range, and the switch after that reads the corrected one, so a round
+// trip taken near an end returns to the same node with the window a little
+// higher or lower than it left. The shift happens once and then stops, since
+// the second switch has nothing left to correct. Undoing it would mean holding
+// on to an offset from before it was corrected, which every other action would
+// then have to know to throw away: a hidden second thing to settle, for a row
+// or two at the ends of a document.
+//
+// The document is laid out twice, once each side of the switch, because the
+// state of the window before can only be read from the rows before. Tab is not
+// a key held down, so this is not where memoising would first be wanted.
+func (a *App) toggleView() {
+	before := a.render()
+
+	// How far down the window the cursor was. A cursor off the screen, or a
+	// session with nothing open, leaves the offset at the top row.
+	offset := 0
+	if row := visibleRow(before, a.view.Cursor); row >= 0 {
+		offset = min(max(row-a.view.Scroll, 0), max(a.height-1, 0))
+	}
+
+	a.view.ViewMode = a.view.ViewMode.Next()
+
+	lines := a.render()
+	if row := visibleRow(lines, a.view.Cursor); row >= 0 {
+		a.view.Scroll = row - offset
+	}
+
+	// settle has the last word, so an offset that cannot be honoured at the
+	// ends of a shorter document is brought back into range here rather than
+	// guarded against above.
 	a.settle(lines)
 }
 

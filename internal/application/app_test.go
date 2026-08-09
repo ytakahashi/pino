@@ -99,7 +99,8 @@ func TestOpen(t *testing.T) {
 	app := New(Deps{
 		Parser:   parser,
 		Files:    fakeFiles{data: map[string][]byte{"conf/app.json": []byte(testSource)}, meta: meta},
-		Renderer: renderer,
+		JSONView: renderer,
+		TreeView: renderer,
 	})
 
 	if err := app.Open("conf/app.json"); err != nil {
@@ -154,7 +155,8 @@ func TestOpenAgain(t *testing.T) {
 			"first.json":  []byte(testSource),
 			"second.json": []byte("{\n  \"a\": 1\n}\n"),
 		}},
-		Renderer: &fakeRenderer{},
+		JSONView: &fakeRenderer{},
+		TreeView: &fakeRenderer{},
 	})
 
 	if err := app.Open("first.json"); err != nil {
@@ -221,7 +223,7 @@ func TestOpenFailure(t *testing.T) {
 			t.Parallel()
 
 			renderer := &fakeRenderer{}
-			app := New(Deps{Parser: tc.parser, Files: tc.files, Renderer: renderer})
+			app := New(Deps{Parser: tc.parser, Files: tc.files, JSONView: renderer, TreeView: renderer})
 
 			// The error travels out as it was raised: the command line turns
 			// it into a message, and only it knows the path the user typed.
@@ -258,7 +260,8 @@ func TestFrame(t *testing.T) {
 	app := New(Deps{
 		Parser:   &fakeParser{root: root},
 		Files:    fakeFiles{data: map[string][]byte{"a.json": []byte(testSource)}},
-		Renderer: renderer,
+		JSONView: renderer,
+		TreeView: renderer,
 	})
 
 	if err := app.Open("a.json"); err != nil {
@@ -308,7 +311,7 @@ func TestFrameWithoutDocument(t *testing.T) {
 	t.Parallel()
 
 	renderer := &fakeRenderer{lines: []Line{{Kind: LineOpen}}}
-	app := New(Deps{Renderer: renderer})
+	app := New(Deps{JSONView: renderer, TreeView: renderer})
 
 	frame := app.Frame()
 
@@ -413,7 +416,7 @@ func TestDo(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			app := New(Deps{Parser: &fakeParser{}, Files: fakeFiles{}, Renderer: &fakeRenderer{}})
+			app := New(Deps{Parser: &fakeParser{}, Files: fakeFiles{}, JSONView: &fakeRenderer{}, TreeView: &fakeRenderer{}})
 
 			got := app.Do(tc.act)
 			if len(got) != len(tc.want) {

@@ -26,6 +26,25 @@ func (v ViewMode) String() string {
 	}
 }
 
+// Next is the view Tab switches to.
+//
+// Switching is a step through the views rather than a choice among them: there
+// are two, and one key moves between them. A third would arrive as an action
+// naming the view it wants instead, since stepping through three in a fixed
+// order is not how anyone would ask for the one they mean.
+func (v ViewMode) Next() ViewMode {
+	switch v {
+	case ViewJSON:
+		return ViewTree
+
+	case ViewTree:
+		return ViewJSON
+	}
+
+	// Not reached: the switch covers every view, and the linter keeps it so.
+	return ViewJSON
+}
+
 // ViewState is how the document is being looked at, as opposed to what the
 // document is.
 //

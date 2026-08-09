@@ -128,7 +128,8 @@ func openApp(t *testing.T, root domain.Node) *application.App {
 	app := application.New(application.Deps{
 		Parser:   fakeParser{root: root},
 		Files:    fakeStore{},
-		Renderer: application.NewJSONRenderer(),
+		JSONView: application.NewJSONRenderer(),
+		TreeView: application.NewTreeRenderer(),
 	})
 
 	if err := app.Open("config.json"); err != nil {
@@ -348,7 +349,8 @@ func TestViewWithoutADocument(t *testing.T) {
 	app := application.New(application.Deps{
 		Parser:   fakeParser{},
 		Files:    fakeStore{},
-		Renderer: application.NewJSONRenderer(),
+		JSONView: application.NewJSONRenderer(),
+		TreeView: application.NewTreeRenderer(),
 	})
 
 	got := rows(t, sized(t, app, 40, 4))
