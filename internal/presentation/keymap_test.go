@@ -81,6 +81,15 @@ func TestResolveInNormalMode(t *testing.T) {
 		{name: "left", key: special(tea.KeyLeft), want: application.ActionMoveOut{}},
 		{name: "right", key: special(tea.KeyRight), want: application.ActionMoveIn{}},
 
+		{name: "tab switches views", key: special(tea.KeyTab), want: application.ActionToggleView{}},
+		{
+			// There are two views and one key between them, so stepping back
+			// through them is stepping forward.
+			name: "shifted tab is not bound",
+			key:  tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift},
+			want: nil,
+		},
+
 		{name: "G goes to the end", key: shifted('g', 'G'), want: application.ActionMoveLast{}},
 		{name: "ctrl+d reads on", key: ctrl('d'), want: application.ActionScrollHalfDown{}},
 		{name: "ctrl+u reads back", key: ctrl('u'), want: application.ActionScrollHalfUp{}},
@@ -168,9 +177,11 @@ func TestResolveCancelsAPrefix(t *testing.T) {
 		"g then a bound key":    {key('g'), key('j')},
 		"g then an unbound one": {key('g'), key('x')},
 		"g then escape":         {key('g'), special(tea.KeyEscape)},
+		"g then tab":            {key('g'), special(tea.KeyTab)},
 		"z then a bound key":    {key('z'), key('l')},
 		"z then the wrong case": {key('z'), key('r')},
 		"z then escape":         {key('z'), special(tea.KeyEscape)},
+		"z then tab":            {key('z'), special(tea.KeyTab)},
 	}
 
 	for name, keys := range tests {

@@ -144,23 +144,24 @@ func (m Model) View() tea.View {
 
 	frame := m.app.Frame()
 	info := m.app.Status()
+	body := m.layout().BodyWidth
 
 	rows := make([]string, 0, m.height)
 
 	window, start := m.visible(frame)
 
 	for i, l := range window {
-		// The indentation comes from the open document rather than from the
-		// theme, so that what is drawn and what the status bar reports are
-		// the same value.
 		selected := start+i == frame.Cursor
-		row := m.clip(m.theme.RenderLine(l, info.Indent, selected))
+		row := clip(m.theme.RenderLine(l, indentFor(info), selected), body)
 
-		// The band behind the selected row runs to the edge of the screen.
-		// Where the text stops has nothing to do with which row is selected,
-		// so letting the highlight stop there would make it look ragged.
+		// The band behind the selected row runs to the far side of the
+		// document, not to the far side of the text. Where a row happens to
+		// stop has nothing to do with which row is selected, so a highlight
+		// stopping there reads as ragged rather than as a row being pointed
+		// at. It stops at the document's own edge so that it cannot reach into
+		// the inspector standing beside it.
 		if selected {
-			row += m.theme.RenderCursorFill(m.width - ansi.StringWidth(row))
+			row += m.theme.RenderCursorFill(body - ansi.StringWidth(row))
 		}
 
 		rows = append(rows, row)
@@ -200,13 +201,48 @@ func fullScreen(content string, mouse bool) tea.View {
 	return v
 }
 
+// layout is how this model's screen is divided.
+func (m Model) layout() layout {
+	return layoutFor(m.width, m.height, m.app.ViewMode())
+}
+
 // bodyHeight is how many rows the document has to itself.
 //
-// The status bar takes the last one. The tree view's inspector will take
-// more, which is why the arithmetic sits here rather than spread through the
-// drawing.
+// The status bar takes the last one. The inspector standing under the tree
+// will take more, and this becomes the layout's BodyHeight when it does. Until
+// then it stays the height of the terminal less the bar, because the number is
+// also what the session is told: reserving rows on screen without saying so
+// would leave the session scrolling for a window taller than the one being
+// drawn, and the cursor could sit below what anyone can see.
 func (m Model) bodyHeight() int {
-	return max(m.height-1, 0)
+	return max(m.height-statusBarRows, 0)
+}
+
+// treeIndent is one level of the tree, which is also the width of a marker:
+// a child's name therefore sits under its parent's.
+const treeIndent = "  "
+
+// indentFor is one level of indentation in the view being drawn.
+//
+// The JSON view uses the document's own, because the whitespace it draws is
+// the whitespace that will be saved: a file written with tabs is shown with
+// tabs. Nothing the tree view draws is ever saved, so the same reason does not
+// reach it, and following the document there would do harm instead — a
+// tab-indented file would run the tree off the right of the screen, and one
+// written with eight spaces would spend forty columns on a depth of five.
+// Overlooking a document's shape is what the tree view is for.
+//
+// The status bar goes on reporting the document's own value in either view.
+// What it says is what saving will do, not what the screen is doing.
+func indentFor(info application.StatusInfo) string {
+	switch info.ViewMode {
+	case application.ViewTree:
+		return treeIndent
+
+	case application.ViewJSON:
+	}
+
+	return info.Indent
 }
 
 // visible is the part of the document that fits on the screen, along with the
@@ -227,13 +263,14 @@ func (m Model) visible(frame application.Frame) ([]application.Line, int) {
 	return frame.Lines[start:end], start
 }
 
-// clip cuts a row to the width of the terminal.
+// clip cuts a row to the width the document has, which is the terminal's less
+// whatever stands beside it.
 //
 // Rows are never wrapped: one line of the document is one row on the screen,
 // which is what allows a line to be found by its position. A line too long to
 // fit is therefore cut off. Shortening long values, which is the usual reason
 // for one, belongs to the renderer rather than to the display, since only the
 // renderer can leave a mark saying that something was left out.
-func (m Model) clip(row string) string {
-	return ansi.Truncate(row, m.width, "")
+func clip(row string, width int) string {
+	return ansi.Truncate(row, width, "")
 }

@@ -700,3 +700,177 @@ func TestViewUsesTheAlternateScreen(t *testing.T) {
 		t.Error("the frame is not on the alternate screen")
 	}
 }
+
+// tab is the key that switches views.
+var tabKey = tea.KeyPressMsg{Code: tea.KeyTab}
+
+// openIndented is a session whose document was read from bytes laid out with
+// indent, so that what the JSON view draws and what the bar reports follow the
+// file rather than a default.
+func openIndented(t *testing.T, root domain.Node, indent string) *application.App {
+	t.Helper()
+
+	app := application.New(application.Deps{
+		Parser: fakeParser{root: root},
+		Files: fakeStore{src: []byte(
+			"{\n" + indent + "\"server\": {\n" + indent + indent + "\"host\": \"localhost\"\n" + indent + "}\n}\n",
+		)},
+		JSONView: application.NewJSONRenderer(),
+		TreeView: application.NewTreeRenderer(),
+	})
+
+	if err := app.Open("config.json"); err != nil {
+		t.Fatalf("Open() = %v", err)
+	}
+
+	return app
+}
+
+func TestIndentFor(t *testing.T) {
+	tests := map[string]struct {
+		view   application.ViewMode
+		indent string
+		want   string
+	}{
+		// The JSON view draws the whitespace the file will be saved with,
+		// whatever that is.
+		"the JSON view with two spaces":  {view: application.ViewJSON, indent: "  ", want: "  "},
+		"the JSON view with four spaces": {view: application.ViewJSON, indent: "    ", want: "    "},
+		"the JSON view with tabs":        {view: application.ViewJSON, indent: "\t", want: "\t"},
+		"the JSON view with none":        {view: application.ViewJSON, indent: "", want: ""},
+
+		// The tree view draws none of what is saved, so it uses a width of its
+		// own: a tab-indented file would otherwise run off the screen, and one
+		// written with eight spaces would spend forty columns on a depth of
+		// five.
+		"the tree view with two spaces":   {view: application.ViewTree, indent: "  ", want: "  "},
+		"the tree view with tabs":         {view: application.ViewTree, indent: "\t", want: "  "},
+		"the tree view with eight spaces": {view: application.ViewTree, indent: "        ", want: "  "},
+		"the tree view with none":         {view: application.ViewTree, indent: "", want: "  "},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			info := application.StatusInfo{ViewMode: tc.view, Indent: tc.indent}
+
+			if got := indentFor(info); got != tc.want {
+				t.Errorf("indentFor(%+v) = %q, want %q", info, got, tc.want)
+			}
+		})
+	}
+}
+
+// Tab redraws the same document the other way. This is the whole of what the
+// key does on screen: the same node stays selected, and the rows around it
+// change shape.
+func TestViewSwitchesToTheTree(t *testing.T) {
+	m := sized(t, openApp(t, nestedDocument(t)), 60, 20)
+
+	// Down to a node inside the document, so that keeping the selection is
+	// something more than staying on the root.
+	m = press(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"}, tea.KeyPressMsg{Code: 'j', Text: "j"})
+
+	before := m.app.Status()
+	if before.Pointer != "/server/cache" {
+		t.Fatalf("the cursor is at %q, want /server/cache", before.Pointer)
+	}
+
+	if got := rows(t, m)[0]; strings.TrimRight(got, " ") != "{" {
+		t.Fatalf("the JSON view begins with %q, want a brace", got)
+	}
+
+	m = press(t, m, tabKey)
+
+	after := m.app.Status()
+
+	if after.ViewMode != application.ViewTree {
+		t.Errorf("the bar names the %v view after Tab, want %v", after.ViewMode, application.ViewTree)
+	}
+
+	if after.Pointer != before.Pointer {
+		t.Errorf("the cursor moved to %q, want %q", after.Pointer, before.Pointer)
+	}
+
+	// The root of the tree: a marker, the name pino gives the root, and the
+	// count of what it holds.
+	if got := rows(t, m)[0]; strings.TrimRight(got, " ") != "▼ / {2}" {
+		t.Errorf("the tree view begins with %q, want %q", got, "▼ / {2}")
+	}
+
+	// And back, to the document as it is written.
+	m = press(t, m, tabKey)
+
+	if got := rows(t, m)[0]; strings.TrimRight(got, " ") != "{" {
+		t.Errorf("the JSON view begins with %q after switching back, want a brace", got)
+	}
+}
+
+// The tree is drawn two columns per level however the file is laid out, while
+// the bar goes on reporting what saving will do.
+func TestViewDrawsTheTreeWithItsOwnIndent(t *testing.T) {
+	m := sized(t, openIndented(t, nestedDocument(t), "\t"), 60, 20)
+
+	// The JSON view follows the file: one tab per level.
+	if got := rows(t, m)[1]; !strings.HasPrefix(got, "\t\"server\"") {
+		t.Errorf("the JSON view draws %q, want a tab in front of the key", got)
+	}
+
+	m = press(t, m, tabKey)
+
+	drawn := rows(t, m)
+
+	// The tree does not: two spaces per level, and none of the file's tabs.
+	if got, want := drawn[1], "  ▼ server {2}"; got != want {
+		t.Errorf("the tree view draws %q, want %q", got, want)
+	}
+
+	if got := drawn[2]; !strings.HasPrefix(got, "    ▼ cache {1}") {
+		t.Errorf("a row two levels deep is %q, want four columns of indentation", got)
+	}
+
+	// The bar still says what the document uses, because that is what saving
+	// will write rather than what the screen is doing.
+	bar := drawn[len(drawn)-1]
+	if !strings.Contains(bar, "indent:tab") {
+		t.Errorf("the bar reads %q, want it to still report the document's indent", bar)
+	}
+}
+
+// On a terminal wide enough for the inspector to stand beside the tree, the
+// document is drawn in the columns left to it. The band behind the selected
+// row stops there too, or it would reach across the rule into the pane.
+func TestViewKeepsTheTreeWithinTheBody(t *testing.T) {
+	const width = 120
+
+	m := press(t, sized(t, openApp(t, nestedDocument(t)), width, 20), tabKey)
+
+	l := m.layout()
+	if l.Inspector != placeSide {
+		t.Fatalf("the inspector is placed %v on a %d column terminal, want beside", l.Inspector, width)
+	}
+
+	drawn := rows(t, m)
+
+	// The status bar is the one row that does run the whole way across.
+	for i, row := range drawn[:len(drawn)-1] {
+		if w := lipgloss.Width(row); w > l.BodyWidth {
+			t.Errorf("row %d is %d wide, want at most the body's %d: %q", i, w, l.BodyWidth, row)
+		}
+	}
+
+	if got := lipgloss.Width(drawn[selectedRow(t, m)]); got != l.BodyWidth {
+		t.Errorf("the selected row is %d wide, want the body's %d", got, l.BodyWidth)
+	}
+}
+
+// The JSON view has no pane beside it, so the band goes on reaching the edge
+// of the screen there.
+func TestViewFillsTheCursorRowInTheJSONView(t *testing.T) {
+	const width = 120
+
+	m := sized(t, openApp(t, nestedDocument(t)), width, 20)
+
+	if got := lipgloss.Width(rows(t, m)[selectedRow(t, m)]); got != width {
+		t.Errorf("the selected row is %d wide, want the full %d", got, width)
+	}
+}

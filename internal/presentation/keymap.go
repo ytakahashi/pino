@@ -98,6 +98,13 @@ func resolveNormal(k tea.KeyPressMsg) (application.Action, Pending) {
 	case "l", "right":
 		return application.ActionMoveIn{}, PendingNone
 
+	// Tab alone. A terminal reports it as its own key rather than as the
+	// character it once was, so "shift+tab" falls through to nothing: there
+	// are two views and one key between them, and stepping backwards through
+	// two is stepping forwards.
+	case "tab":
+		return application.ActionToggleView{}, PendingNone
+
 	case "G":
 		return application.ActionMoveLast{}, PendingNone
 	case "ctrl+d":

@@ -118,11 +118,13 @@ func (t Theme) style(r application.Role) lipgloss.Style {
 // in the JSON view and as guides in the tree view, and it is why the width of
 // a level is not the line's to decide.
 //
-// indent is one level of indentation of the open document, not a property of
-// the theme: it is what the file already uses and what will be written back,
-// which is why the status bar reports the same value. On a row that is not
-// selected it is left unstyled, since styling whitespace only emits escape
-// sequences around nothing.
+// indent is one level of indentation in the view being drawn, and is a
+// parameter rather than a property of the theme: the JSON view draws with the
+// document's own, since that whitespace is what will be written back, while
+// the tree view draws with a width of its own choosing because nothing it
+// shows is ever saved. Which of the two applies is settled by the caller, in
+// indentFor. On a row that is not selected the indentation is left unstyled,
+// since styling whitespace only emits escape sequences around nothing.
 //
 // selected marks the row the cursor is on. The cursor's styling is laid over
 // each span in turn rather than around the row as a whole: a style wrapping
