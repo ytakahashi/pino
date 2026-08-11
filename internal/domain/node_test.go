@@ -7,17 +7,6 @@ import (
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
-func str(t *testing.T, v string) *domain.String {
-	t.Helper()
-
-	s, err := domain.NewString(v)
-	if err != nil {
-		t.Fatalf("NewString(%q): %v", v, err)
-	}
-
-	return s
-}
-
 func TestKindString(t *testing.T) {
 	t.Parallel()
 

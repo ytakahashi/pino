@@ -9,16 +9,6 @@ import (
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
-// path builds a Path from segments, the way the renderer walks a tree.
-func path(segs ...domain.Segment) domain.Path {
-	p := domain.Path{}
-	for _, s := range segs {
-		p = p.Child(s)
-	}
-
-	return p
-}
-
 func TestSegment(t *testing.T) {
 	t.Parallel()
 
