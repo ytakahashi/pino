@@ -32,7 +32,7 @@ func (t Theme) RenderStatusBar(info application.StatusInfo, lines int, pending P
 }
 
 // leftFields say where the reader is: in which mode, in which view, in which
-// file, at which node, of which type.
+// file, and — where nothing else is saying so — at which node, of which type.
 func leftFields(info application.StatusInfo) []string {
 	fields := []string{info.Mode.String(), info.ViewMode.String()}
 
@@ -42,10 +42,19 @@ func leftFields(info application.StatusInfo) []string {
 		fields = append(fields, printable(info.Name))
 	}
 
-	// The type is what says whether anything is selected. The pointer cannot:
-	// the root's is empty, and so is the one reported with nothing open.
-	if info.Type != "" {
-		fields = append(fields, printable(pointerLabel(info.Pointer)), info.Type)
+	switch info.ViewMode {
+	case application.ViewJSON:
+		// The type is what says whether anything is selected. The pointer
+		// cannot: the root's is empty, and so is the one reported with nothing
+		// open.
+		if info.Type != "" {
+			fields = append(fields, printable(pointerLabel(info.Pointer)), info.Type)
+		}
+
+	case application.ViewTree:
+		// Left off, because the inspector says both a row below and says them
+		// at more length. It is drawn whenever the tree is: the one size that
+		// leaves no room for it leaves none for this bar either.
 	}
 
 	return fields

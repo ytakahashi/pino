@@ -368,3 +368,78 @@ func withCursor(info application.StatusInfo, pointer, typ string) application.St
 
 	return info
 }
+
+// The tree view leaves the pointer and the type off the bar, because the
+// inspector says both a row below and says them at more length. What the bar
+// reports about the document itself does not change with the view.
+func TestRenderStatusBarDropsTheSelectionInTheTreeView(t *testing.T) {
+	open := application.StatusInfo{
+		Mode:   application.ModeNormal,
+		Name:   "config.json",
+		Indent: "  ",
+	}
+
+	tests := map[string]struct {
+		info application.StatusInfo
+		want string
+	}{
+		"a node in the tree view": {
+			info: withView(withCursor(open, "/server/port", "number"), application.ViewTree),
+			want: " NORMAL  TREE  config.json  6 lines  indent:2",
+		},
+
+		// The same session drawn the other way keeps them, which is the whole
+		// of the difference.
+		"a node in the JSON view": {
+			info: withView(withCursor(open, "/server/port", "number"), application.ViewJSON),
+			want: " NORMAL  JSON  config.json  /server/port  number  6 lines  indent:2",
+		},
+
+		"the root in the tree view": {
+			info: withView(withCursor(open, "", "object"), application.ViewTree),
+			want: " NORMAL  TREE  config.json  6 lines  indent:2",
+		},
+
+		"nothing selected in the tree view": {
+			info: withView(open, application.ViewTree),
+			want: " NORMAL  TREE  config.json  6 lines  indent:2",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := statusText(Theme{}, tc.info, 6, PendingNone, 80); got != tc.want {
+				t.Errorf("RenderStatusBar() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// The right hand end says what state the document is in, which is a fact about
+// the document rather than about how it is being drawn.
+func TestRenderStatusBarKeepsTheRightEndAcrossViews(t *testing.T) {
+	open := application.StatusInfo{
+		Mode:   application.ModeNormal,
+		Name:   "config.json",
+		Indent: "\t",
+		Dirty:  true,
+	}
+
+	want := "6 lines  indent:tab  modified  z"
+
+	for _, view := range []application.ViewMode{application.ViewJSON, application.ViewTree} {
+		t.Run(view.String(), func(t *testing.T) {
+			got := statusText(Theme{}, withView(withCursor(open, "/a", "null"), view), 6, PendingZ, 80)
+
+			if !strings.HasSuffix(got, want) {
+				t.Errorf("RenderStatusBar() = %q, want it to end with %q", got, want)
+			}
+		})
+	}
+}
+
+func withView(info application.StatusInfo, view application.ViewMode) application.StatusInfo {
+	info.ViewMode = view
+
+	return info
+}

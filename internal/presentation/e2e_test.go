@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	teatest "github.com/charmbracelet/x/exp/teatest/v2"
 )
 
@@ -39,11 +40,10 @@ func waitForRedraw(t *testing.T, tm *teatest.TestModel, want string) {
 	)
 }
 
-// Reading a document is what M1 is for, and this is the only test that does it
-// the way a person would: a real program, a real terminal, and keystrokes
-// arriving one at a time. What it adds to the tests either side of the key
-// table is that the whole run of key to Action to state to screen holds
-// together, prefix keys and the status bar included.
+// Reading a document, done the way a person would: a real program, a real
+// terminal, and keystrokes arriving one at a time. What this adds to the tests
+// either side of the key table is that the whole run of key to Action to state
+// to screen holds together, prefix keys and the status bar included.
 func TestReadsADocument(t *testing.T) {
 	t.Parallel()
 
@@ -121,5 +121,71 @@ func TestQuitsOnTheQuitKey(t *testing.T) {
 	// travelled through the key table, the application and the effect that
 	// came back, and that the effect reached the program as a command rather
 	// than being handled inside the model.
+	tm.WaitFinished(t, teatest.WithFinalTimeout(waitTime))
+}
+
+// Switching between the two views, done the same way. What this adds to the
+// tests either side of it is that the whole run holds together at once: Tab
+// reaches the key table, the session swaps renderers, the screen is laid out
+// afresh with an inspector that costs the document rows, and the folded set
+// crosses in both directions.
+//
+// Eighty columns puts the inspector under the tree rather than beside it,
+// which is the arrangement that changes how many rows the document has. The
+// one beside it changes only columns and is covered where the screen is
+// assembled.
+//
+// One thing is waited for per keystroke, since a keystroke repaints once and
+// each wait reads on from where the last one stopped. What each one waits for
+// is text that keystroke had to have produced.
+func TestSwitchesBetweenTheViews(t *testing.T) {
+	t.Parallel()
+
+	tm := teatest.NewTestModel(
+		t,
+		NewModel(openApp(t, nestedDocument(t)), DefaultTheme()),
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	waitForRedraw(t, tm, "localhost")
+
+	// Down to a node well inside the document, so that keeping the selection
+	// across a switch is more than staying on the root.
+	tm.Type("j")
+	waitForRedraw(t, tm, `"server": {`)
+
+	tm.Type("j")
+	waitForRedraw(t, tm, `"cache": {`)
+
+	// Folded away here, in the JSON view.
+	tm.Type("h")
+	waitForRedraw(t, tm, "…},")
+
+	// Tab, sent as a terminal reports it: Type would fill in the text of the
+	// keystroke, which a terminal does not do for a key standing for no
+	// character, and the table matches on how a key is spelled.
+	//
+	// The tree draws the same node, still folded, with a marker and a count of
+	// what it holds. Nothing but the tree renderer working from the session's
+	// own folded set could have produced that row.
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyTab})
+	waitForRedraw(t, tm, "▶ cache {1}")
+
+	// And unfolded again from this side, which draws the member the tree's
+	// way: a name without quotes, where the JSON view writes one with them.
+	tm.Type("l")
+	waitForRedraw(t, tm, "ttl: 60")
+
+	// The inspector follows the selection: stepping from the container onto
+	// the member it holds turns the field that counted its children into the
+	// one that shows a value.
+	tm.Type("j")
+	waitForRedraw(t, tm, "Value     60")
+
+	// Back to the document as it is written, unfolded as the tree left it.
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyTab})
+	waitForRedraw(t, tm, `"ttl": 60`)
+
+	tm.Type("q")
 	tm.WaitFinished(t, teatest.WithFinalTimeout(waitTime))
 }
