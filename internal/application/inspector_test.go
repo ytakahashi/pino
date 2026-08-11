@@ -242,11 +242,11 @@ func TestInspectorWithoutDocument(t *testing.T) {
 func TestInspectorDoesNotRender(t *testing.T) {
 	t.Parallel()
 
-	renderer := &fakeRenderer{lines: []Line{{Kind: LineOpen}}}
+	renderer := &spyRenderer{lines: []Line{{Kind: LineOpen}}}
 
 	app := New(Deps{
 		Parser:   &fakeParser{root: testTree(t)},
-		Files:    fakeFiles{data: map[string][]byte{"a.json": []byte(testSource)}},
+		Files:    fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
 		JSONView: renderer,
 		TreeView: renderer,
 	})

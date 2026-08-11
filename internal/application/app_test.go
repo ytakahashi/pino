@@ -2,92 +2,12 @@ package application
 
 import (
 	"errors"
-	"io/fs"
 	"testing"
 
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
-// The doubles below are small because the ports are defined by technology:
-// a store that only hands out bytes, a parser that only sees bytes.
-
-type fakeFiles struct {
-	data map[string][]byte
-	meta Meta
-	err  error
-}
-
-func (f fakeFiles) Read(path string) ([]byte, Meta, error) {
-	if f.err != nil {
-		return nil, nil, f.err
-	}
-
-	src, ok := f.data[path]
-	if !ok {
-		return nil, nil, fs.ErrNotExist
-	}
-
-	return src, f.meta, nil
-}
-
-func (fakeFiles) Write(string, []byte) error { return errors.ErrUnsupported }
-
-func (fakeFiles) HasChangedSince(string, Meta) (ChangeStatus, error) {
-	return ChangeNone, errors.ErrUnsupported
-}
-
-// fakeMeta stands in for what a real store keeps about a file. A pointer
-// makes it identifiable, which is what lets the test check that the value is
-// carried through untouched.
-type fakeMeta struct{}
-
-type fakeParser struct {
-	root domain.Node
-	err  error
-
-	gotSrc     []byte
-	gotDialect domain.Dialect
-}
-
-func (p *fakeParser) Parse(src []byte, d domain.Dialect) (domain.Node, error) {
-	p.gotSrc, p.gotDialect = src, d
-
-	if p.err != nil {
-		return nil, p.err
-	}
-
-	return p.root, nil
-}
-
-type fakeRenderer struct {
-	lines []Line
-
-	gotRoot domain.Node
-	gotOpt  RenderOptions
-	calls   int
-}
-
-func (r *fakeRenderer) Render(root domain.Node, opt RenderOptions) []Line {
-	r.gotRoot, r.gotOpt = root, opt
-	r.calls++
-
-	return r.lines
-}
-
-// The source uses four spaces so that the detected layout cannot be confused
-// with the default one.
-const testSource = "{\n    \"a\": 1\n}\n"
-
-func testTree(t *testing.T) domain.Node {
-	t.Helper()
-
-	root, err := domain.NewObject([]domain.Member{{Key: "a", Value: domain.NewNumber("1")}})
-	if err != nil {
-		t.Fatalf("NewObject: %v", err)
-	}
-
-	return root
-}
+// Opening a document, and the frame a session hands back to be drawn.
 
 func TestOpen(t *testing.T) {
 	t.Parallel()
@@ -95,10 +15,10 @@ func TestOpen(t *testing.T) {
 	root := testTree(t)
 	meta := &fakeMeta{}
 	parser := &fakeParser{root: root}
-	renderer := &fakeRenderer{lines: []Line{{Kind: LineSingle}}}
+	renderer := &spyRenderer{lines: []Line{{Kind: LineSingle}}}
 	app := New(Deps{
 		Parser:   parser,
-		Files:    fakeFiles{data: map[string][]byte{"conf/app.json": []byte(testSource)}, meta: meta},
+		Files:    fakeFileStore{data: map[string][]byte{"conf/app.json": []byte(testSource)}, meta: meta},
 		JSONView: renderer,
 		TreeView: renderer,
 	})
@@ -151,12 +71,12 @@ func TestOpenAgain(t *testing.T) {
 
 	app := New(Deps{
 		Parser: &fakeParser{root: testTree(t)},
-		Files: fakeFiles{data: map[string][]byte{
+		Files: fakeFileStore{data: map[string][]byte{
 			"first.json":  []byte(testSource),
 			"second.json": []byte("{\n  \"a\": 1\n}\n"),
 		}},
-		JSONView: &fakeRenderer{},
-		TreeView: &fakeRenderer{},
+		JSONView: &spyRenderer{},
+		TreeView: &spyRenderer{},
 	})
 
 	if err := app.Open("first.json"); err != nil {
@@ -202,17 +122,17 @@ func TestOpenFailure(t *testing.T) {
 	parseErr := errors.New("parse failed")
 
 	tests := map[string]struct {
-		files  fakeFiles
+		files  fakeFileStore
 		parser *fakeParser
 		want   error
 	}{
 		"the file cannot be read": {
-			files:  fakeFiles{err: readErr},
+			files:  fakeFileStore{err: readErr},
 			parser: &fakeParser{root: domain.NewNull()},
 			want:   readErr,
 		},
 		"the file is not JSON": {
-			files:  fakeFiles{data: map[string][]byte{"broken.json": []byte("{")}},
+			files:  fakeFileStore{data: map[string][]byte{"broken.json": []byte("{")}},
 			parser: &fakeParser{err: parseErr},
 			want:   parseErr,
 		},
@@ -222,7 +142,7 @@ func TestOpenFailure(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			renderer := &fakeRenderer{}
+			renderer := &spyRenderer{}
 			app := New(Deps{Parser: tc.parser, Files: tc.files, JSONView: renderer, TreeView: renderer})
 
 			// The error travels out as it was raised: the command line turns
@@ -256,10 +176,10 @@ func TestFrame(t *testing.T) {
 
 	root := testTree(t)
 	want := []Line{{Kind: LineOpen}, {Kind: LineClose}}
-	renderer := &fakeRenderer{lines: want}
+	renderer := &spyRenderer{lines: want}
 	app := New(Deps{
 		Parser:   &fakeParser{root: root},
-		Files:    fakeFiles{data: map[string][]byte{"a.json": []byte(testSource)}},
+		Files:    fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
 		JSONView: renderer,
 		TreeView: renderer,
 	})
@@ -310,7 +230,7 @@ func TestFrame(t *testing.T) {
 func TestFrameWithoutDocument(t *testing.T) {
 	t.Parallel()
 
-	renderer := &fakeRenderer{lines: []Line{{Kind: LineOpen}}}
+	renderer := &spyRenderer{lines: []Line{{Kind: LineOpen}}}
 	app := New(Deps{JSONView: renderer, TreeView: renderer})
 
 	frame := app.Frame()
@@ -416,7 +336,7 @@ func TestDo(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			app := New(Deps{Parser: &fakeParser{}, Files: fakeFiles{}, JSONView: &fakeRenderer{}, TreeView: &fakeRenderer{}})
+			app := New(Deps{Parser: &fakeParser{}, Files: fakeFileStore{}, JSONView: &spyRenderer{}, TreeView: &spyRenderer{}})
 
 			got := app.Do(tc.act)
 			if len(got) != len(tc.want) {
@@ -427,6 +347,37 @@ func TestDo(t *testing.T) {
 				if effect != tc.want[i] {
 					t.Errorf("Do(%T)[%d] = %v, want %v", tc.act, i, effect, tc.want[i])
 				}
+			}
+		})
+	}
+}
+
+// Nothing here may depend on a document being open: the terminal reports its
+// size before one necessarily is, and a key press is not refused either.
+func TestActionsWithoutDocument(t *testing.T) {
+	t.Parallel()
+
+	actions := map[string]Action{
+		"next":        ActionMoveNext{},
+		"prev":        ActionMovePrev{},
+		"in":          ActionMoveIn{},
+		"out":         ActionMoveOut{},
+		"resize":      ActionResize{Height: 10},
+		"toggle view": ActionToggleView{},
+	}
+
+	for name, act := range actions {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()})
+
+			if effects := app.Do(act); effects != nil {
+				t.Errorf("Do() = %v with no document open, want none", effects)
+			}
+
+			if frame := app.Frame(); frame.Cursor != -1 || frame.Scroll != 0 {
+				t.Errorf("Frame() = %+v with no document open", frame)
 			}
 		})
 	}

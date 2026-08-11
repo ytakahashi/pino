@@ -19,9 +19,10 @@ import (
 // key presses through to the session, draws what comes back, and stops on the
 // key that says so.
 //
-// They run against doubles for the ports rather than the real adapters, since
-// this layer is not allowed to name them. What is being tested is the loop,
-// not the parsing.
+// They are layer tests and not end-to-end ones: the ports are doubled, since
+// this layer is not allowed to name the adapters. What is being tested is the
+// loop, not the parsing. Driving the real adapters as far as the screen is
+// what internal/e2e does.
 //
 // Each one sends its keys and then reads the screen back from the model the
 // program ended with. What reached the terminal is never searched: a terminal

@@ -80,6 +80,19 @@ linters:
           deny:
             - pkg: github.com/ytakahashi/pino/internal/infrastructure
               desc: cli injects the concrete adapters
+        # The end-to-end tests are the one place that may name every layer at
+        # once, and they say so here rather than escaping the layering by
+        # having no rule written for them. The list is what they need: pino
+        # itself, the UI libraries the program is driven through, and the
+        # standard library.
+        e2e:
+          files:
+            - '**/internal/e2e/**'
+          allow:
+            - $gostd
+            - github.com/ytakahashi/pino
+            - charm.land
+            - github.com/charmbracelet
         # main exists to hand the process over to cli and to turn what comes
         # back into an exit code. Everything else it could reach is reachable
         # through cli, where it can be tested without starting a process.
