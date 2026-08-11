@@ -222,3 +222,48 @@ func TestRenderLineDrawsUnknownRoleUnstyled(t *testing.T) {
 		t.Errorf("RenderLine() = %q, want %q", got, "x")
 	}
 }
+
+func TestRenderTooSmall(t *testing.T) {
+	tests := map[string]struct {
+		width, height int
+		want          []string
+	}{
+		// The size in the mock of the design: what is needed, and what there is.
+		"the whole message": {
+			width: 34, height: 6,
+			want: []string{"terminal too small", "needs 60x10, has 34x6", "", "", "", ""},
+		},
+
+		// Narrower than the message, which is cut like any other row rather
+		// than wrapped onto a screen that has no rows to spare.
+		"cut to the width": {
+			width: 10, height: 3,
+			want: []string{"terminal t", "needs 60x1", ""},
+		},
+
+		// A screen of one row keeps the reason and gives up the numbers.
+		"one row": {width: 40, height: 1, want: []string{"terminal too small"}},
+
+		// Nothing to draw in is nothing drawn, rather than arithmetic on a
+		// negative height.
+		"no rows":        {width: 40, height: 0, want: []string{""}},
+		"nothing at all": {width: 0, height: 0, want: []string{""}},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := strings.Split(DefaultTheme().RenderTooSmall(tc.width, tc.height), "\n")
+
+			if len(got) != len(tc.want) {
+				t.Fatalf("RenderTooSmall(%d, %d) drew %d rows, want %d",
+					tc.width, tc.height, len(got), len(tc.want))
+			}
+
+			for i, w := range tc.want {
+				if got[i] != w {
+					t.Errorf("row %d = %q, want %q", i, got[i], w)
+				}
+			}
+		})
+	}
+}

@@ -2,6 +2,7 @@ package presentation
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -72,6 +73,45 @@ func tallDocument(t *testing.T) domain.Node {
 	}
 
 	root, err := domain.NewObject(members)
+	if err != nil {
+		t.Fatalf("NewObject() = %v", err)
+	}
+
+	return root
+}
+
+// longDocument draws as thirty-two rows, comfortably more than the shortest
+// terminal pino draws in can show, so that a window has somewhere to move to.
+func longDocument(t *testing.T) domain.Node {
+	t.Helper()
+
+	members := make([]domain.Member, 0, 30)
+	for i := range 30 {
+		members = append(members, domain.Member{
+			Key:   "k" + strconv.Itoa(i),
+			Value: domain.NewNumber(strconv.Itoa(i)),
+		})
+	}
+
+	root, err := domain.NewObject(members)
+	if err != nil {
+		t.Fatalf("NewObject() = %v", err)
+	}
+
+	return root
+}
+
+// wideDocument holds a value long enough to overrun the narrowest terminal
+// pino draws in, so that clipping has something to cut.
+func wideDocument(t *testing.T) domain.Node {
+	t.Helper()
+
+	long, err := domain.NewString(strings.Repeat("x", 100))
+	if err != nil {
+		t.Fatalf("NewString() = %v", err)
+	}
+
+	root, err := domain.NewObject([]domain.Member{{Key: "long", Value: long}})
 	if err != nil {
 		t.Fatalf("NewObject() = %v", err)
 	}
@@ -271,11 +311,11 @@ func TestViewIsEmptyBeforeTheSizeIsKnown(t *testing.T) {
 }
 
 func TestViewFillsTheScreen(t *testing.T) {
-	m := sized(t, openTestApp(t), 60, 8)
+	m := sized(t, openTestApp(t), 60, 10)
 
 	got := rows(t, m)
-	if len(got) != 8 {
-		t.Fatalf("View() drew %d rows, want 8", len(got))
+	if len(got) != 10 {
+		t.Fatalf("View() drew %d rows, want 10", len(got))
 	}
 
 	want := []string{
@@ -283,7 +323,7 @@ func TestViewFillsTheScreen(t *testing.T) {
 		`  "host": "localhost",`,
 		`  "port": 8080`,
 		"}",
-		"", "", "",
+		"", "", "", "", "",
 	}
 
 	for i, w := range want {
@@ -295,7 +335,7 @@ func TestViewFillsTheScreen(t *testing.T) {
 	// The bar is anchored to the last row, whatever the document is worth,
 	// with where the selection is at one end and what the document is at the
 	// other.
-	bar := got[7]
+	bar := got[9]
 
 	if !strings.HasPrefix(bar, " NORMAL  JSON  config.json  /  object") {
 		t.Errorf("the bar begins %q, want the session and the selection", bar)
@@ -309,32 +349,32 @@ func TestViewFillsTheScreen(t *testing.T) {
 // A document taller than the screen is shown from the top and cut off. It is
 // the whole document that is counted in the bar, not the part on screen.
 func TestViewCutsTheDocumentToTheBodyHeight(t *testing.T) {
-	m := sized(t, openTestApp(t), 40, 3)
+	m := sized(t, openApp(t, longDocument(t)), 60, 10)
 
 	got := rows(t, m)
-	if len(got) != 3 {
-		t.Fatalf("View() drew %d rows, want 3", len(got))
+	if len(got) != 10 {
+		t.Fatalf("View() drew %d rows, want 10", len(got))
 	}
 
 	if want := "{"; strings.TrimRight(got[0], " ") != want {
 		t.Errorf("row 0 = %q, want %q", got[0], want)
 	}
 
-	if want := `  "host": "localhost",`; strings.TrimRight(got[1], " ") != want {
+	if want := `  "k0": 0,`; strings.TrimRight(got[1], " ") != want {
 		t.Errorf("row 1 = %q, want %q", got[1], want)
 	}
 
-	if !strings.Contains(got[2], "4 lines") {
-		t.Errorf("status bar = %q, want the whole document counted", got[2])
+	if !strings.Contains(got[9], "32 lines") {
+		t.Errorf("status bar = %q, want the whole document counted", got[9])
 	}
 }
 
 // Every row is at most as wide as the terminal, so that a long line takes one
 // row rather than wrapping onto the next and displacing everything below it.
 func TestViewClipsRowsToTheWidth(t *testing.T) {
-	const width = 12
+	const width = minWidth
 
-	m := sized(t, openTestApp(t), width, 8)
+	m := sized(t, openApp(t, wideDocument(t)), width, 10)
 
 	for i, row := range rows(t, m) {
 		if w := lipgloss.Width(row); w > width {
@@ -353,19 +393,19 @@ func TestViewWithoutADocument(t *testing.T) {
 		TreeView: application.NewTreeRenderer(),
 	})
 
-	got := rows(t, sized(t, app, 40, 4))
-	if len(got) != 4 {
-		t.Fatalf("View() drew %d rows, want 4", len(got))
+	got := rows(t, sized(t, app, 60, 10))
+	if len(got) != 10 {
+		t.Fatalf("View() drew %d rows, want 10", len(got))
 	}
 
-	for i, row := range got[:3] {
+	for i, row := range got[:9] {
 		if strings.TrimRight(row, " ") != "" {
 			t.Errorf("row %d = %q, want it blank", i, row)
 		}
 	}
 
 	// Nothing is selected, so the bar says only what is true of the session.
-	bar := got[3]
+	bar := got[9]
 
 	if !strings.HasPrefix(bar, " NORMAL  JSON") {
 		t.Errorf("the bar begins %q, want the mode and the view", bar)
@@ -376,10 +416,9 @@ func TestViewWithoutADocument(t *testing.T) {
 	}
 }
 
-// A terminal too small to be useful is still a terminal pino is drawn on.
-// Telling the reader that it is too small belongs with the rest of the
-// responsive layout, which arrives with the tree view; until then the screen
-// is filled as far as it goes, and what this rules out is drawing outside it.
+// However absurd the terminal, pino draws exactly the screen it was given and
+// not a column more. The warning is what fills it below the minimum, and it
+// has to fit there too.
 func TestViewSurvivesATinyTerminal(t *testing.T) {
 	sizes := []struct{ width, height int }{
 		{width: 1, height: 1},
@@ -449,7 +488,7 @@ func selectedRow(t *testing.T, m Model) int {
 
 // The row the cursor is on is the one marked, and moving moves the mark.
 func TestViewMarksTheCursorRow(t *testing.T) {
-	m := sized(t, openTestApp(t), 40, 8)
+	m := sized(t, openTestApp(t), 60, 10)
 
 	if got := selectedRow(t, m); got != 0 {
 		t.Errorf("row %d is drawn as selected, want the root on row 0", got)
@@ -465,9 +504,9 @@ func TestViewMarksTheCursorRow(t *testing.T) {
 // The band reaches the edge of the screen, so that the row is marked whatever
 // it happens to hold.
 func TestViewFillsTheCursorRow(t *testing.T) {
-	const width = 40
+	const width = minWidth
 
-	m := sized(t, openTestApp(t), width, 8)
+	m := sized(t, openTestApp(t), width, 10)
 
 	row := strings.Split(m.View().Content, "\n")[0]
 
@@ -484,8 +523,8 @@ func TestViewFillsTheCursorRow(t *testing.T) {
 // The window follows the cursor, which is the application's decision; what is
 // checked here is that the part drawn is the part it asked for.
 func TestViewScrollsWithTheCursor(t *testing.T) {
-	// Three rows for the document, against a document of ten.
-	m := sized(t, openApp(t, tallDocument(t)), 40, 4)
+	// Nine rows for the document, against a document of thirty-two.
+	m := sized(t, openApp(t, longDocument(t)), minWidth, minHeight)
 
 	if got := rows(t, m)[0]; strings.TrimRight(got, " ") != "{" {
 		t.Fatalf("row 0 = %q, want the top of the document", got)
@@ -493,7 +532,7 @@ func TestViewScrollsWithTheCursor(t *testing.T) {
 
 	// Down past the bottom of the window: the document scrolls, and the row
 	// the cursor is on is still on screen.
-	for range 5 {
+	for range 12 {
 		m = press(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"})
 	}
 
@@ -516,10 +555,11 @@ func TestViewScrollsWithTheCursor(t *testing.T) {
 // Resizing tells the application how much room the document has, which is
 // what the window it asks for is worked out against.
 func TestUpdateReportsTheBodyHeight(t *testing.T) {
-	// Tall enough for the whole document, so nothing is scrolled.
-	m := sized(t, openApp(t, tallDocument(t)), 40, 24)
+	// Tall enough to reach well past what the shortest terminal could show,
+	// without the window having had to move.
+	m := sized(t, openApp(t, longDocument(t)), minWidth, 24)
 
-	for range 5 {
+	for range 15 {
 		m = press(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"})
 	}
 
@@ -528,7 +568,7 @@ func TestUpdateReportsTheBodyHeight(t *testing.T) {
 	}
 
 	// Shrunk to less than the cursor's position, the window has to follow it.
-	next, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 3})
+	next, _ := m.Update(tea.WindowSizeMsg{Width: minWidth, Height: minHeight})
 
 	small, ok := next.(Model)
 	if !ok {
@@ -542,7 +582,7 @@ func TestUpdateReportsTheBodyHeight(t *testing.T) {
 
 // The wheel moves the window, and the selection stays on the screen.
 func TestUpdateScrollsOnTheWheel(t *testing.T) {
-	m := sized(t, openApp(t, tallDocument(t)), 40, 5)
+	m := sized(t, openApp(t, longDocument(t)), minWidth, minHeight)
 
 	if got := rows(t, m)[0]; strings.TrimRight(got, " ") != "{" {
 		t.Fatalf("row 0 = %q, want the top of the document", got)
@@ -579,7 +619,7 @@ func TestUpdateScrollsOnTheWheel(t *testing.T) {
 // Sideways there is nothing to scroll: a row too wide for the screen is cut,
 // not moved.
 func TestUpdateIgnoresTheHorizontalWheel(t *testing.T) {
-	m := sized(t, openApp(t, tallDocument(t)), 40, 5)
+	m := sized(t, openApp(t, longDocument(t)), minWidth, minHeight)
 
 	next, cmd := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight})
 	if cmd != nil {
@@ -599,7 +639,7 @@ func TestUpdateIgnoresTheHorizontalWheel(t *testing.T) {
 // answers with a prefix, the model stores it, and the bar renders whichever
 // one it is handed, so only drawing a real frame joins the three.
 func TestViewShowsAPendingPrefix(t *testing.T) {
-	m := sized(t, openTestApp(t), 80, 8)
+	m := sized(t, openTestApp(t), 80, 12)
 
 	bar := func(m Model) string {
 		t.Helper()
@@ -635,7 +675,7 @@ func TestViewShowsAPendingPrefix(t *testing.T) {
 // The terminal only reports the wheel while it is asked to, and each frame is
 // what asks.
 func TestViewAsksForTheMouse(t *testing.T) {
-	m := sized(t, openTestApp(t), 40, 8)
+	m := sized(t, openTestApp(t), 60, 10)
 
 	if got := m.View().MouseMode; got != tea.MouseModeCellMotion {
 		t.Errorf("MouseMode = %v, want %v", got, tea.MouseModeCellMotion)
@@ -658,17 +698,17 @@ func TestViewAsksForTheMouse(t *testing.T) {
 // However the terminal is shaped, the cursor is somewhere on it.
 func TestViewKeepsTheCursorOnScreen(t *testing.T) {
 	sizes := []struct{ width, height int }{
-		{width: 40, height: 3},
-		{width: 40, height: 4},
-		{width: 12, height: 5},
+		{width: minWidth, height: minHeight},
+		{width: minWidth, height: 12},
+		{width: 120, height: minHeight},
 		{width: 80, height: 24},
 	}
 
 	for _, size := range sizes {
 		t.Run(strconv.Itoa(size.width)+"x"+strconv.Itoa(size.height), func(t *testing.T) {
-			m := sized(t, openApp(t, tallDocument(t)), size.width, size.height)
+			m := sized(t, openApp(t, longDocument(t)), size.width, size.height)
 
-			for range 9 {
+			for range 20 {
 				m = press(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"})
 
 				if row := selectedRow(t, m); row < 0 || row >= m.layout().BodyHeight {
@@ -696,7 +736,7 @@ func TestViewUsesTheAlternateScreen(t *testing.T) {
 		t.Error("the first frame is not on the alternate screen")
 	}
 
-	if !sized(t, app, 40, 10).View().AltScreen {
+	if !sized(t, app, 60, 10).View().AltScreen {
 		t.Error("the frame is not on the alternate screen")
 	}
 }
@@ -1016,4 +1056,100 @@ func TestUpdateDoesNotRepeatTheHeight(t *testing.T) {
 	if after.layout().Inspector != placeSide {
 		t.Errorf("the inspector is placed %v, want beside", after.layout().Inspector)
 	}
+}
+
+// Below the size pino draws in, the screen says why rather than showing part
+// of a document that cannot be arranged in the room left.
+func TestViewSaysWhenTheTerminalIsTooSmall(t *testing.T) {
+	got := rows(t, sized(t, openTestApp(t), 34, 6))
+
+	if len(got) != 6 {
+		t.Fatalf("View() drew %d rows, want 6", len(got))
+	}
+
+	want := []string{"terminal too small", "needs 60x10, has 34x6", "", "", "", ""}
+
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("row %d = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+// The warning is not a mode. The session is running behind it, so the keys go
+// on meaning what they meant — and a screen that could not be left would be a
+// worse answer than one that cannot be read.
+func TestViewTooSmallStillTakesKeys(t *testing.T) {
+	m := sized(t, openApp(t, longDocument(t)), 40, 6)
+
+	if !m.layout().TooSmall {
+		t.Fatal("the terminal is not too small, so this is testing nothing")
+	}
+
+	m = press(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"})
+
+	if got := m.app.Status().Pointer; got != "/k0" {
+		t.Errorf("j selected %q behind the warning, want /k0", got)
+	}
+
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatal("q produced no command behind the warning, want a quit")
+	}
+
+	if msg := cmd(); !isQuit(msg) {
+		t.Errorf("q produced %T behind the warning, want tea.QuitMsg", msg)
+	}
+}
+
+// Widening the terminal brings the document back as it was left: the warning
+// covered the session rather than replacing it.
+func TestViewComesBackWhenTheTerminalGrows(t *testing.T) {
+	m := sized(t, openApp(t, nestedDocument(t)), 80, 24)
+
+	// Somewhere into the document, with a container folded away.
+	m = press(t, m,
+		tea.KeyPressMsg{Code: 'j', Text: "j"},
+		tea.KeyPressMsg{Code: 'j', Text: "j"},
+		tea.KeyPressMsg{Code: 'h', Text: "h"},
+	)
+
+	before := m.app.Status()
+	if before.Pointer != "/server/cache" {
+		t.Fatalf("the cursor is at %q, want /server/cache", before.Pointer)
+	}
+
+	drawn := rows(t, m)
+
+	// Too small, and the document is gone from the screen.
+	m = sizedFrom(t, m, 34, 6)
+
+	if got := rows(t, m)[0]; got != "terminal too small" {
+		t.Fatalf("the screen reads %q, want the warning", got)
+	}
+
+	// And back, unchanged.
+	m = sizedFrom(t, m, 80, 24)
+
+	if got := m.app.Status().Pointer; got != before.Pointer {
+		t.Errorf("the cursor is at %q after the terminal grew, want %q", got, before.Pointer)
+	}
+
+	if got := rows(t, m); !slices.Equal(got, drawn) {
+		t.Errorf("the screen came back as\n%v\nwant\n%v", got, drawn)
+	}
+}
+
+// sizedFrom resizes a model that has already been drawn.
+func sizedFrom(t *testing.T, m Model, width, height int) Model {
+	t.Helper()
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: height})
+
+	model, ok := next.(Model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want Model", next)
+	}
+
+	return model
 }

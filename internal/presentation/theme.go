@@ -9,9 +9,11 @@
 package presentation
 
 import (
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ytakahashi/pino/internal/application"
 )
@@ -97,6 +99,44 @@ func DefaultTheme() Theme {
 		// every value colour legible and distinct from the bar's.
 		Cursor: lipgloss.NewStyle().Background(lipgloss.Color("237")),
 	}
+}
+
+// RenderTooSmall says why nothing is being drawn, in as few columns as it can:
+// exactly height rows, none of them wider than width.
+//
+// It replaces the screen rather than being fitted into it. There is no way to
+// arrange a document and an inspector in the room left, and part of one would
+// say less than the reason does.
+//
+// Nothing about it is a mode. The session goes on running behind it with the
+// cursor and the folded set where they were, every key still means what it
+// meant, and widening the terminal brings the document straight back.
+//
+// It is drawn without styling, being the only thing on the screen: there is
+// nothing here to be told apart from anything else.
+func (t Theme) RenderTooSmall(width, height int) string {
+	said := []string{
+		"terminal too small",
+		"needs " + sizeLabel(minWidth, minHeight) + ", has " + sizeLabel(width, height),
+	}
+
+	rows := make([]string, 0, max(height, 0))
+
+	for i := range max(height, 0) {
+		row := ""
+		if i < len(said) {
+			row = ansi.Truncate(said[i], max(width, 0), "")
+		}
+
+		rows = append(rows, row)
+	}
+
+	return strings.Join(rows, "\n")
+}
+
+// sizeLabel writes a terminal size the way one is usually spoken.
+func sizeLabel(width, height int) string {
+	return strconv.Itoa(width) + "x" + strconv.Itoa(height)
 }
 
 // style is how text in role r is drawn.

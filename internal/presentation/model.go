@@ -175,9 +175,16 @@ func (m Model) View() tea.View {
 		return fullScreen("", m.mouse)
 	}
 
+	// Below the size pino draws in, the screen says so instead. It is not a
+	// mode: the session behind it is untouched, and widening the terminal
+	// brings the document back exactly as it was left.
+	l := m.layout()
+	if l.TooSmall {
+		return fullScreen(m.theme.RenderTooSmall(m.width, m.height), m.mouse)
+	}
+
 	frame := m.app.Frame()
 	info := m.app.Status()
-	l := m.layout()
 
 	rows := make([]string, 0, m.height)
 
