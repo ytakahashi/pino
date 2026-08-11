@@ -80,25 +80,19 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	path := fs.Arg(0)
 
-	app := application.New(application.Deps{
-		Parser:   jsonparser.New(),
-		Files:    filestore.New(),
-		JSONView: application.NewJSONRenderer(),
-		TreeView: application.NewTreeRenderer(),
-	})
-
 	// The document is opened before the terminal is taken over: pino is a
 	// structural editor and has no way to repair a broken file, so the reason
 	// it cannot be opened is worth more on the terminal the user launched pino
 	// from than on a screen that would have nothing to offer them.
-	if err := app.Open(path); err != nil {
+	model, err := NewProgramModel(path)
+	if err != nil {
 		reportOpenError(stderr, path, err)
 
 		return exitError
 	}
 
 	program := tea.NewProgram(
-		presentation.NewModel(app, presentation.DefaultTheme()),
+		model,
 		// Output is the writer this function was given rather than os.Stdout,
 		// so that everything the run puts on the terminal goes through the
 		// same place.
@@ -112,6 +106,31 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	return exitOK
+}
+
+// NewProgramModel opens a document and answers the model that draws it.
+//
+// This is the assembly Run performs, kept apart from it because everything
+// around it — the flags, the writers, the exit code — needs a process to mean
+// anything, while the wiring itself does not. An end-to-end test drives the
+// model this returns and so exercises the adapters Run would have chosen,
+// rather than a second set of them written out beside it.
+//
+// The terminal is untouched here: the document is read, parsed and laid out,
+// and nothing is drawn until a program is given what comes back.
+func NewProgramModel(path string) (tea.Model, error) {
+	app := application.New(application.Deps{
+		Parser:   jsonparser.New(),
+		Files:    filestore.New(),
+		JSONView: application.NewJSONRenderer(),
+		TreeView: application.NewTreeRenderer(),
+	})
+
+	if err := app.Open(path); err != nil {
+		return nil, err
+	}
+
+	return presentation.NewModel(app, presentation.DefaultTheme()), nil
 }
 
 // printf puts a message on the terminal.

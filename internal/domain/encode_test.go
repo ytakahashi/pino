@@ -1,6 +1,10 @@
-package domain
+package domain_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ytakahashi/pino/internal/domain"
+)
 
 func TestQuoteString(t *testing.T) {
 	t.Parallel()
@@ -35,8 +39,8 @@ func TestQuoteString(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := QuoteString(tc.in); got != tc.want {
-				t.Errorf("QuoteString(%q) = %s, want %s", tc.in, got, tc.want)
+			if got := domain.QuoteString(tc.in); got != tc.want {
+				t.Errorf("domain.QuoteString(%q) = %s, want %s", tc.in, got, tc.want)
 			}
 		})
 	}
@@ -69,8 +73,8 @@ func TestEscapeString(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := EscapeString(tc.in); got != tc.want {
-				t.Errorf("EscapeString(%q) = %q, want %q", tc.in, got, tc.want)
+			if got := domain.EscapeString(tc.in); got != tc.want {
+				t.Errorf("domain.EscapeString(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
 	}
@@ -87,9 +91,9 @@ func TestQuoteStringIsEscapeStringInQuotes(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			want := `"` + EscapeString(tc.in) + `"`
-			if got := QuoteString(tc.in); got != want {
-				t.Errorf("QuoteString(%q) = %s, want %s", tc.in, got, want)
+			want := `"` + domain.EscapeString(tc.in) + `"`
+			if got := domain.QuoteString(tc.in); got != want {
+				t.Errorf("domain.QuoteString(%q) = %s, want %s", tc.in, got, want)
 			}
 		})
 	}

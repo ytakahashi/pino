@@ -164,6 +164,48 @@ func documents(t *testing.T) map[string]document {
 	}
 }
 
+// sample is a document with a container holding a container, an array of
+// scalars, and members on either side of them.
+//
+//	 0  open    /                {
+//	 1  single  /name            "name": "pino",
+//	 2  open    /server          "server": {
+//	 3  single  /server/host       "host": "localhost",
+//	 4  open    /server/ports      "ports": [
+//	 5  single  /server/ports/0      8080,
+//	 6  single  /server/ports/1      8443
+//	 7  close   /server/ports      ],
+//	 8  single  /server/tls        "tls": true
+//	 9  close   /server          },
+//	10  single  /debug           "debug": false
+//	11  close   /                }
+func sample(t *testing.T) domain.Node {
+	t.Helper()
+
+	return object(t,
+		member("name", text(t, "pino")),
+		member("server", object(t,
+			member("host", text(t, "localhost")),
+			member("ports", domain.NewArray([]domain.Node{
+				domain.NewNumber("8080"),
+				domain.NewNumber("8443"),
+			})),
+			member("tls", domain.NewBool(true)),
+		)),
+		member("debug", domain.NewBool(false)),
+	)
+}
+
+// path builds a Path the way the renderer walks a tree.
+func path(segs ...domain.Segment) domain.Path {
+	p := domain.Path{}
+	for _, s := range segs {
+		p = p.Child(s)
+	}
+
+	return p
+}
+
 // folded is a set of folded nodes, keyed the way RenderOptions wants it.
 func folded(pointers ...string) map[string]struct{} {
 	set := make(map[string]struct{}, len(pointers))

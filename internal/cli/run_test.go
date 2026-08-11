@@ -16,7 +16,7 @@ import (
 // None of these cases reach the terminal interface: every one of them is
 // answered before a document is open, which is what makes the whole of Run
 // testable without a terminal. The one path that does start it is covered by
-// the end-to-end test in the presentation layer.
+// the tests in internal/e2e.
 func run(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 
