@@ -2,14 +2,14 @@ version: '3'
 
 vars:
   BIN: '{{.ROOT_DIR}}/bin'
-  # .golangci-lint-version is the single source of truth for the linter
-  # version. CI reads the same file through the version-file input of
-  # golangci/golangci-lint-action.
+  # .golangci-lint-version is the single source of truth for the linter version.
   GOLANGCI_VERSION:
     sh: cat .golangci-lint-version
   # `golangci-lint version` prints the number without the leading "v".
   GOLANGCI_SEMVER:
     sh: sed 's/^v//' .golangci-lint-version
+  DPRINT_VERSION:
+    sh: cat .dprint-version
 
 tasks:
   default:
@@ -20,6 +20,10 @@ tasks:
 
   tools:
     desc: Install development tools into bin/
+    deps: [tools:golangci-lint, tools:dprint]
+
+  tools:golangci-lint:
+    internal: true
     status:
       - test -x {{.BIN}}/golangci-lint
       - '{{.BIN}}/golangci-lint version 2>&1 | grep -q {{.GOLANGCI_SEMVER}}'
@@ -31,19 +35,43 @@ tasks:
         https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh
         | sh -s -- -b {{.BIN}} {{.GOLANGCI_VERSION}}
 
+  tools:dprint:
+    internal: true
+    status:
+      - test -x {{.BIN}}/dprint
+      - '{{.BIN}}/dprint --version | grep -q {{.DPRINT_VERSION}}'
+    cmds:
+      # dprint's install.sh appends /bin to DPRINT_INSTALL.
+      - >-
+        curl -fsSL https://dprint.dev/install.sh
+        | DPRINT_INSTALL={{.ROOT_DIR}} sh -s {{.DPRINT_VERSION}}
+
   fmt:
     desc: Format the code
     deps: [tools]
     cmds:
       - '{{.BIN}}/golangci-lint fmt'
+      - '{{.BIN}}/dprint fmt --incremental=false'
 
   lint:
+    desc: Run every linter
+    cmds:
+      - task: lint:go
+      - task: lint:markdown
+
+  lint:go:
     desc: Run static analysis (formatting diffs are reported too)
-    deps: [tools]
+    deps: [tools:golangci-lint]
     cmds:
       # Formatters configured under `formatters` also run as linters here,
       # so a separate `fmt --diff` pass is unnecessary.
       - '{{.BIN}}/golangci-lint run'
+
+  lint:markdown:
+    desc: Check Markdown formatting
+    deps: [tools:dprint]
+    cmds:
+      - '{{.BIN}}/dprint check --incremental=false'
 
   test:
     desc: Run the tests
