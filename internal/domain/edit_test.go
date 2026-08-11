@@ -1,0 +1,1026 @@
+package domain_test
+
+import (
+	"errors"
+	"slices"
+	"testing"
+
+	"github.com/ytakahashi/pino/internal/domain"
+)
+
+func TestSetValueRebuildsOnlyThePathToTheNode(t *testing.T) {
+	t.Parallel()
+
+	d := newTree(t)
+	p := at(t, "/server/port")
+
+	res, err := domain.SetValue(d.root, p, domain.NewNumber("9090"))
+	if err != nil {
+		t.Fatalf("SetValue: %v", err)
+	}
+
+	if res.Root == domain.Node(d.root) {
+		t.Fatal("the root came back unchanged after a value was replaced")
+	}
+
+	if !res.Cursor.Equal(p) {
+		t.Errorf("Cursor = %q, want %q", res.Cursor, p)
+	}
+
+	if len(res.Renames) != 0 {
+		t.Errorf("Renames = %v, want none: replacing a value moves nothing", pairs(res.Renames))
+	}
+
+	if got := nodeAt(t, res.Root, "/server/port").(*domain.Number).Raw(); got != "9090" {
+		t.Errorf("/server/port = %s, want 9090", got)
+	}
+
+	// The ancestors of the edited node are rebuilt, and nothing else is.
+	if nodeAt(t, res.Root, "/server") == domain.Node(d.server) {
+		t.Error("/server was shared, want it rebuilt: it holds the replaced value")
+	}
+
+	if nodeAt(t, res.Root, "/server/host") != domain.Node(d.host) {
+		t.Error("/server/host was rebuilt, want it shared")
+	}
+
+	if nodeAt(t, res.Root, "/features") != domain.Node(d.features) {
+		t.Error("/features was rebuilt, want it shared")
+	}
+
+	// The tree that went in is a tree the history still holds, so it has to
+	// come out of the edit as it was.
+	if nodeAt(t, d.root, "/server/port") != domain.Node(d.port) {
+		t.Error("the original tree changed")
+	}
+}
+
+func TestSetValueAtTheRootReplacesTheWholeDocument(t *testing.T) {
+	t.Parallel()
+
+	d := newTree(t)
+	replacement := str(t, "nothing left")
+
+	res, err := domain.SetValue(d.root, domain.Path{}, replacement)
+	if err != nil {
+		t.Fatalf("SetValue: %v", err)
+	}
+
+	if res.Root != domain.Node(replacement) {
+		t.Errorf("Root = %v, want the replacement itself", res.Root.Kind())
+	}
+
+	if !res.Cursor.IsRoot() {
+		t.Errorf("Cursor = %q, want the root", res.Cursor)
+	}
+}
+
+func TestEditingAMemberKeepsTheCommentsAroundIt(t *testing.T) {
+	t.Parallel()
+
+	// Nothing can attach a comment to a node yet, but path copying is where
+	// they would be dropped once something can. The member is rebuilt whole so
+	// that its trivia travels with it.
+	trivia := domain.NewTrivia([]domain.Comment{{Text: " the listening port"}}, nil)
+	root := obj(t,
+		domain.Member{Key: "port", Value: domain.NewNumber("8080"), Trivia: trivia},
+		domain.Member{Key: "host", Value: str(t, "localhost")},
+	)
+
+	tests := []struct {
+		name string
+		edit func() (domain.EditResult, error)
+		key  string
+	}{
+		{
+			name: "replacing its value",
+			edit: func() (domain.EditResult, error) {
+				return domain.SetValue(root, at(t, "/port"), domain.NewNumber("9090"))
+			},
+			key: "port",
+		},
+		{
+			name: "renaming it",
+			edit: func() (domain.EditResult, error) {
+				return domain.Rename(root, at(t, "/port"), "listen")
+			},
+			key: "listen",
+		},
+		{
+			name: "adding a sibling",
+			edit: func() (domain.EditResult, error) {
+				return domain.Insert(root, domain.Path{}, 2, domain.Member{
+					Key:   "debug",
+					Value: domain.NewBool(false),
+				})
+			},
+			key: "port",
+		},
+		{
+			name: "deleting a sibling",
+			edit: func() (domain.EditResult, error) {
+				return domain.Delete(root, at(t, "/host"))
+			},
+			key: "port",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			res, err := tt.edit()
+			if err != nil {
+				t.Fatalf("edit: %v", err)
+			}
+
+			o := res.Root.(*domain.Object)
+
+			i, ok := o.IndexOf(tt.key)
+			if !ok {
+				t.Fatalf("the member %q is gone", tt.key)
+			}
+
+			if o.At(i).Trivia.IsEmpty() {
+				t.Errorf("the comments on %q were dropped", tt.key)
+			}
+		})
+	}
+}
+
+func TestEditsRefuseWhatTheDocumentCannotTake(t *testing.T) {
+	t.Parallel()
+
+	d := newTree(t)
+
+	tests := []struct {
+		name   string
+		edit   func() (domain.EditResult, error)
+		reason string
+	}{
+		{
+			name: "setting a value at a key that is not there",
+			edit: func() (domain.EditResult, error) {
+				return domain.SetValue(d.root, at(t, "/nope"), domain.NewNull())
+			},
+			reason: "no such node",
+		},
+		{
+			name: "setting a value beneath a scalar",
+			edit: func() (domain.EditResult, error) {
+				return domain.SetValue(d.root, at(t, "/debug/deeper"), domain.NewNull())
+			},
+			reason: "no such node",
+		},
+		{
+			name: "setting a value past the end of an array",
+			edit: func() (domain.EditResult, error) {
+				return domain.SetValue(d.root, at(t, "/features/3"), domain.NewNull())
+			},
+			reason: "no such node",
+		},
+		{
+			name: "renaming the root",
+			edit: func() (domain.EditResult, error) {
+				return domain.Rename(d.root, domain.Path{}, "anything")
+			},
+			reason: "not an object member",
+		},
+		{
+			name: "renaming an array element",
+			edit: func() (domain.EditResult, error) {
+				return domain.Rename(d.root, at(t, "/features/0"), "anything")
+			},
+			reason: "not an object member",
+		},
+		{
+			name: "renaming a member that is not there",
+			edit: func() (domain.EditResult, error) {
+				return domain.Rename(d.root, at(t, "/server/nope"), "anything")
+			},
+			reason: "no such node",
+		},
+		{
+			name: "inserting into a scalar",
+			edit: func() (domain.EditResult, error) {
+				return domain.Insert(d.root, at(t, "/debug"), 0, domain.Member{
+					Key:   "k",
+					Value: domain.NewNull(),
+				})
+			},
+			reason: "not a container",
+		},
+		{
+			name: "inserting into a container that is not there",
+			edit: func() (domain.EditResult, error) {
+				return domain.Insert(d.root, at(t, "/nope"), 0, domain.Member{
+					Key:   "k",
+					Value: domain.NewNull(),
+				})
+			},
+			reason: "no such node",
+		},
+		{
+			name: "inserting past the end of an object",
+			edit: func() (domain.EditResult, error) {
+				return domain.Insert(d.root, at(t, "/server"), 3, domain.Member{
+					Key:   "k",
+					Value: domain.NewNull(),
+				})
+			},
+			reason: "index out of range",
+		},
+		{
+			name: "inserting past the end of an array",
+			edit: func() (domain.EditResult, error) {
+				return domain.Insert(d.root, at(t, "/features"), 4, domain.Member{
+					Value: domain.NewNull(),
+				})
+			},
+			reason: "index out of range",
+		},
+		{
+			name: "giving an array element a key",
+			edit: func() (domain.EditResult, error) {
+				return domain.Insert(d.root, at(t, "/features"), 0, domain.Member{
+					Key:   "named",
+					Value: domain.NewNull(),
+				})
+			},
+			reason: "an array element cannot have a key",
+		},
+		{
+			name: "deleting the root",
+			edit: func() (domain.EditResult, error) {
+				return domain.Delete(d.root, domain.Path{})
+			},
+			reason: "the root cannot be deleted",
+		},
+		{
+			name: "deleting a node that is not there",
+			edit: func() (domain.EditResult, error) {
+				return domain.Delete(d.root, at(t, "/nope"))
+			},
+			reason: "no such node",
+		},
+		{
+			name: "changing the type of a node that is not there",
+			edit: func() (domain.EditResult, error) {
+				return domain.ChangeType(d.root, at(t, "/nope"), domain.KindString)
+			},
+			reason: "no such node",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			res, err := tt.edit()
+
+			var invalid *domain.EditError
+			if !errors.As(err, &invalid) {
+				t.Fatalf("error = %v, want *EditError", err)
+			}
+
+			if invalid.Reason != tt.reason {
+				t.Errorf("Reason = %q, want %q", invalid.Reason, tt.reason)
+			}
+
+			if res.Root != nil {
+				t.Error("a refused edit came back with a tree")
+			}
+		})
+	}
+}
+
+func TestEditsRefuseARepeatedKey(t *testing.T) {
+	t.Parallel()
+
+	d := newTree(t)
+
+	tests := []struct {
+		name string
+		edit func() (domain.EditResult, error)
+	}{
+		{
+			name: "renaming a member onto one of its siblings",
+			edit: func() (domain.EditResult, error) {
+				return domain.Rename(d.root, at(t, "/server/host"), "port")
+			},
+		},
+		{
+			name: "adding a member with a key already there",
+			edit: func() (domain.EditResult, error) {
+				return domain.Insert(d.root, at(t, "/server"), 2, domain.Member{
+					Key:   "host",
+					Value: domain.NewNull(),
+				})
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// The check comes from the constructor, so it holds for every edit
+			// that rebuilds an object rather than being written per operation.
+			res, err := tt.edit()
+
+			var dup *domain.DuplicateKeyError
+			if !errors.As(err, &dup) {
+				t.Fatalf("error = %v, want *DuplicateKeyError", err)
+			}
+
+			if dup.Key != "host" && dup.Key != "port" {
+				t.Errorf("Key = %q, want the repeated one", dup.Key)
+			}
+
+			if res.Root != nil {
+				t.Error("a refused edit came back with a tree")
+			}
+		})
+	}
+}
+
+func TestRenameMovesTheMemberAndWhatIsUnderIt(t *testing.T) {
+	t.Parallel()
+
+	d := newTree(t)
+
+	res, err := domain.Rename(d.root, at(t, "/server"), "listener")
+	if err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+
+	if !res.Cursor.Equal(at(t, "/listener")) {
+		t.Errorf("Cursor = %q, want /listener", res.Cursor)
+	}
+
+	// The member keeps its place: renaming is not a reordering.
+	if got := res.Root.(*domain.Object).At(0).Key; got != "listener" {
+		t.Errorf("the first member is %q, want listener", got)
+	}
+
+	// The value is shared, so the subtree moved without being copied.
+	if nodeAt(t, res.Root, "/listener") != domain.Node(d.server) {
+		t.Error("/listener was rebuilt, want the subtree shared")
+	}
+
+	if nodeAt(t, res.Root, "/listener/port") != domain.Node(d.port) {
+		t.Error("/listener/port is not the node that moved")
+	}
+
+	want := [][2]string{{"/server", "/listener"}}
+	if got := pairs(res.Renames); !slices.Equal(got, want) {
+		t.Errorf("Renames = %v, want %v", got, want)
+	}
+}
+
+func TestRenameMovesOnlyWhatItsKeyBegins(t *testing.T) {
+	t.Parallel()
+
+	// "/a" is a prefix of "/ab" as text and of nothing as a path. A rename that
+	// went by text alone would carry the wrong member.
+	root := obj(t,
+		domain.Member{Key: "a", Value: obj(t, domain.Member{
+			Key:   "x",
+			Value: domain.NewNull(),
+		})},
+		domain.Member{Key: "ab", Value: domain.NewNull()},
+	)
+
+	res, err := domain.Rename(root, at(t, "/a"), "z")
+	if err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+
+	pointers := []string{"/a", "/a/x", "/ab"}
+	want := []string{"/z", "/z/x", "/ab"}
+
+	if got := rewriteTogether(res.Renames, pointers); !slices.Equal(got, want) {
+		t.Errorf("moved %v, want %v", got, want)
+	}
+}
+
+func TestDeleteSaysWhereToStandAfterwards(t *testing.T) {
+	t.Parallel()
+
+	d := newTree(t)
+
+	tests := []struct {
+		name    string
+		target  string
+		cursor  string
+		renames [][2]string
+	}{
+		{
+			// The next sibling, so that d can be held down to clear a run of
+			// members from the same row.
+			name:   "a member with one after it",
+			target: "/server/host",
+			cursor: "/server/port",
+		},
+		{
+			name:   "the last member",
+			target: "/server/port",
+			cursor: "/server/host",
+		},
+		{
+			// The element that followed has moved down into this position.
+			name:    "an element with one after it",
+			target:  "/features/0",
+			cursor:  "/features/0",
+			renames: [][2]string{{"/features/1", "/features/0"}, {"/features/2", "/features/1"}},
+		},
+		{
+			name:    "an element in the middle",
+			target:  "/features/1",
+			cursor:  "/features/1",
+			renames: [][2]string{{"/features/2", "/features/1"}},
+		},
+		{
+			name:   "the last element",
+			target: "/features/2",
+			cursor: "/features/1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := at(t, tt.target)
+
+			res, err := domain.Delete(d.root, p)
+			if err != nil {
+				t.Fatalf("Delete: %v", err)
+			}
+
+			if !res.Cursor.Equal(at(t, tt.cursor)) {
+				t.Errorf("Cursor = %q, want %q", res.Cursor, tt.cursor)
+			}
+
+			if got := pairs(res.Renames); !slices.Equal(got, tt.renames) {
+				t.Errorf("Renames = %v, want %v", got, tt.renames)
+			}
+
+			// A deleted array element leaves its position occupied by the one
+			// that followed, so the count is what says it is gone.
+			container := p.Parent().String()
+
+			before := childCount(t, nodeAt(t, d.root, container))
+			if got := childCount(t, nodeAt(t, res.Root, container)); got != before-1 {
+				t.Errorf("%s holds %d children, want %d", container, got, before-1)
+			}
+		})
+	}
+}
+
+func TestDeletingTheOnlyChildLeavesTheCursorOnTheContainer(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		root   domain.Node
+		target string
+	}{
+		{
+			name: "the only member",
+			root: obj(t, domain.Member{
+				Key:   "server",
+				Value: obj(t, domain.Member{Key: "host", Value: str(t, "localhost")}),
+			}),
+			target: "/server/host",
+		},
+		{
+			name: "the only element",
+			root: obj(t, domain.Member{
+				Key:   "features",
+				Value: domain.NewArray([]domain.Node{str(t, "search")}),
+			}),
+			target: "/features/0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := at(t, tt.target)
+
+			res, err := domain.Delete(tt.root, p)
+			if err != nil {
+				t.Fatalf("Delete: %v", err)
+			}
+
+			if !res.Cursor.Equal(p.Parent()) {
+				t.Errorf("Cursor = %q, want %q", res.Cursor, p.Parent())
+			}
+		})
+	}
+}
+
+func TestInsertPutsTheChildWhereItWasAsked(t *testing.T) {
+	t.Parallel()
+
+	d := newTree(t)
+
+	t.Run("at the end of an object", func(t *testing.T) {
+		t.Parallel()
+
+		res, err := domain.Insert(d.root, at(t, "/server"), 2, domain.Member{
+			Key:   "timeout",
+			Value: domain.NewNumber("30"),
+		})
+		if err != nil {
+			t.Fatalf("Insert: %v", err)
+		}
+
+		if !res.Cursor.Equal(at(t, "/server/timeout")) {
+			t.Errorf("Cursor = %q, want /server/timeout", res.Cursor)
+		}
+
+		if got := nodeAt(t, res.Root, "/server").(*domain.Object).At(2).Key; got != "timeout" {
+			t.Errorf("the third member is %q, want timeout", got)
+		}
+
+		// The keys of an object do not depend on their order, so nothing moved.
+		if len(res.Renames) != 0 {
+			t.Errorf("Renames = %v, want none", pairs(res.Renames))
+		}
+	})
+
+	t.Run("before the members already there", func(t *testing.T) {
+		t.Parallel()
+
+		res, err := domain.Insert(d.root, at(t, "/server"), 0, domain.Member{
+			Key:   "timeout",
+			Value: domain.NewNumber("30"),
+		})
+		if err != nil {
+			t.Fatalf("Insert: %v", err)
+		}
+
+		o := nodeAt(t, res.Root, "/server").(*domain.Object)
+
+		var keys []string
+		for _, m := range o.All() {
+			keys = append(keys, m.Key)
+		}
+
+		want := []string{"timeout", "host", "port"}
+		if !slices.Equal(keys, want) {
+			t.Errorf("keys = %v, want %v", keys, want)
+		}
+	})
+
+	t.Run("in the middle of an array", func(t *testing.T) {
+		t.Parallel()
+
+		res, err := domain.Insert(d.root, at(t, "/features"), 1, domain.Member{
+			Value: str(t, "new"),
+		})
+		if err != nil {
+			t.Fatalf("Insert: %v", err)
+		}
+
+		if !res.Cursor.Equal(at(t, "/features/1")) {
+			t.Errorf("Cursor = %q, want /features/1", res.Cursor)
+		}
+
+		if nodeAt(t, res.Root, "/features/2") != domain.Node(d.second) {
+			t.Error("the element that was second did not move to third")
+		}
+
+		want := [][2]string{{"/features/1", "/features/2"}, {"/features/2", "/features/3"}}
+		if got := pairs(res.Renames); !slices.Equal(got, want) {
+			t.Errorf("Renames = %v, want %v", got, want)
+		}
+
+		// The tree that went in still has three.
+		if got := d.features.Len(); got != 3 {
+			t.Errorf("the original array holds %d elements, want 3", got)
+		}
+	})
+
+	t.Run("at the end of an array", func(t *testing.T) {
+		t.Parallel()
+
+		res, err := domain.Insert(d.root, at(t, "/features"), 3, domain.Member{
+			Value: str(t, "new"),
+		})
+		if err != nil {
+			t.Fatalf("Insert: %v", err)
+		}
+
+		if !res.Cursor.Equal(at(t, "/features/3")) {
+			t.Errorf("Cursor = %q, want /features/3", res.Cursor)
+		}
+
+		if len(res.Renames) != 0 {
+			t.Errorf("Renames = %v, want none: nothing follows the new element", pairs(res.Renames))
+		}
+	})
+
+	t.Run("into an empty container", func(t *testing.T) {
+		t.Parallel()
+
+		res, err := domain.Insert(d.root, at(t, "/empty"), 0, domain.Member{
+			Key:   "first",
+			Value: domain.NewNull(),
+		})
+		if err != nil {
+			t.Fatalf("Insert: %v", err)
+		}
+
+		if !res.Cursor.Equal(at(t, "/empty/first")) {
+			t.Errorf("Cursor = %q, want /empty/first", res.Cursor)
+		}
+	})
+}
+
+func TestChangeTypeCarriesTheValueOverAndDropsTheChildren(t *testing.T) {
+	t.Parallel()
+
+	d := newTree(t)
+
+	tests := []struct {
+		name   string
+		target string
+		kind   domain.Kind
+		want   string
+	}{
+		{
+			name:   "a number seen as text",
+			target: "/server/port",
+			kind:   domain.KindString,
+			want:   `"8080"`,
+		},
+		{
+			name:   "text that spells no number",
+			target: "/server/host",
+			kind:   domain.KindNumber,
+			want:   "0",
+		},
+		{
+			name:   "a container made a scalar",
+			target: "/server",
+			kind:   domain.KindString,
+			want:   `""`,
+		},
+		{
+			name:   "a container made another container",
+			target: "/server",
+			kind:   domain.KindArray,
+			want:   "[]",
+		},
+		{
+			name:   "the root",
+			target: "",
+			kind:   domain.KindArray,
+			want:   "[]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := at(t, tt.target)
+
+			res, err := domain.ChangeType(d.root, p, tt.kind)
+			if err != nil {
+				t.Fatalf("ChangeType: %v", err)
+			}
+
+			if !res.Cursor.Equal(p) {
+				t.Errorf("Cursor = %q, want %q", res.Cursor, p)
+			}
+
+			if got := describe(t, nodeAt(t, res.Root, tt.target)); got != tt.want {
+				t.Errorf("%s = %s, want %s", tt.target, got, tt.want)
+			}
+
+			// The children go with the type, and go nowhere else: the tree
+			// that went in still holds them for undo to come back to.
+			if got := domain.CountDescendants(d.server); got != 2 {
+				t.Errorf("the original /server holds %d nodes, want 2", got)
+			}
+		})
+	}
+}
+
+func TestAnEditThatChangesNothingReturnsTheSameTree(t *testing.T) {
+	t.Parallel()
+
+	d := newTree(t)
+
+	// Insert and Delete are missing because neither has a form that changes
+	// nothing: a document with a node added or taken away is a different one.
+	tests := []struct {
+		name string
+		edit func() (domain.EditResult, error)
+	}{
+		{
+			name: "a number typed back as it was",
+			edit: func() (domain.EditResult, error) {
+				return domain.SetValue(d.root, at(t, "/server/port"), domain.NewNumber("8080"))
+			},
+		},
+		{
+			name: "a string typed back as it was",
+			edit: func() (domain.EditResult, error) {
+				return domain.SetValue(d.root, at(t, "/server/host"), str(t, "localhost"))
+			},
+		},
+		{
+			name: "a boolean set to what it already is",
+			edit: func() (domain.EditResult, error) {
+				return domain.SetValue(d.root, at(t, "/debug"), domain.NewBool(false))
+			},
+		},
+		{
+			name: "a member renamed to its own key",
+			edit: func() (domain.EditResult, error) {
+				return domain.Rename(d.root, at(t, "/server/host"), "host")
+			},
+		},
+		{
+			name: "the type it already has",
+			edit: func() (domain.EditResult, error) {
+				return domain.ChangeType(d.root, at(t, "/server/port"), domain.KindNumber)
+			},
+		},
+		{
+			name: "the type the root already has",
+			edit: func() (domain.EditResult, error) {
+				return domain.ChangeType(d.root, domain.Path{}, domain.KindObject)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			res, err := tt.edit()
+			if err != nil {
+				t.Fatalf("edit: %v", err)
+			}
+
+			// One pointer comparison stands for three things above: no version
+			// is pushed, the unsaved mark stays off, and nothing follows paths
+			// that did not move.
+			if res.Root != domain.Node(d.root) {
+				t.Error("a new tree came back from an edit that changed nothing")
+			}
+
+			if len(res.Renames) != 0 {
+				t.Errorf("Renames = %v, want none", pairs(res.Renames))
+			}
+		})
+	}
+}
+
+func TestEveryEditLeavesTheCursorOnANodeThatIsThere(t *testing.T) {
+	t.Parallel()
+
+	d := newTree(t)
+
+	tests := []struct {
+		name string
+		edit func() (domain.EditResult, error)
+	}{
+		{"setting a value", func() (domain.EditResult, error) {
+			return domain.SetValue(d.root, at(t, "/server/port"), domain.NewNumber("1"))
+		}},
+		{"renaming a member", func() (domain.EditResult, error) {
+			return domain.Rename(d.root, at(t, "/server/port"), "listen")
+		}},
+		{"adding a member", func() (domain.EditResult, error) {
+			return domain.Insert(d.root, at(t, "/server"), 0, domain.Member{
+				Key:   "timeout",
+				Value: domain.NewNumber("30"),
+			})
+		}},
+		{"adding an element", func() (domain.EditResult, error) {
+			return domain.Insert(d.root, at(t, "/features"), 1, domain.Member{
+				Value: domain.NewNull(),
+			})
+		}},
+		{"deleting a member", func() (domain.EditResult, error) {
+			return domain.Delete(d.root, at(t, "/server/port"))
+		}},
+		{"deleting an element", func() (domain.EditResult, error) {
+			return domain.Delete(d.root, at(t, "/features/2"))
+		}},
+		{"deleting the only child", func() (domain.EditResult, error) {
+			return domain.Delete(d.root, at(t, "/features/0"))
+		}},
+		{"changing a type", func() (domain.EditResult, error) {
+			return domain.ChangeType(d.root, at(t, "/server"), domain.KindNull)
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			res, err := tt.edit()
+			if err != nil {
+				t.Fatalf("edit: %v", err)
+			}
+
+			// The version an edit pushes is read back with this cursor, so a
+			// path that does not resolve would be a position undo cannot
+			// restore.
+			if _, ok := domain.Resolve(res.Root, res.Cursor); !ok {
+				t.Errorf("Cursor %q does not resolve in the tree the edit produced", res.Cursor)
+			}
+		})
+	}
+}
+
+func TestAnEditSaysWhichSubtreesItTookOut(t *testing.T) {
+	t.Parallel()
+
+	d := newTree(t)
+
+	tests := []struct {
+		name string
+		edit func() (domain.EditResult, error)
+		want []string
+	}{
+		{
+			name: "deleting a scalar",
+			edit: func() (domain.EditResult, error) {
+				return domain.Delete(d.root, at(t, "/server/port"))
+			},
+			want: []string{"/server/port"},
+		},
+		{
+			name: "deleting a container",
+			edit: func() (domain.EditResult, error) {
+				return domain.Delete(d.root, at(t, "/server"))
+			},
+			want: []string{"/server"},
+		},
+		{
+			name: "changing a container to a scalar",
+			edit: func() (domain.EditResult, error) {
+				return domain.ChangeType(d.root, at(t, "/server"), domain.KindString)
+			},
+			want: []string{"/server"},
+		},
+		{
+			name: "changing an empty container",
+			edit: func() (domain.EditResult, error) {
+				return domain.ChangeType(d.root, at(t, "/empty"), domain.KindString)
+			},
+			want: nil,
+		},
+		{
+			name: "changing a scalar",
+			edit: func() (domain.EditResult, error) {
+				return domain.ChangeType(d.root, at(t, "/server/port"), domain.KindString)
+			},
+			want: nil,
+		},
+		{
+			name: "replacing a container with a scalar",
+			edit: func() (domain.EditResult, error) {
+				return domain.SetValue(d.root, at(t, "/server"), domain.NewNull())
+			},
+			want: []string{"/server"},
+		},
+		{
+			name: "replacing a scalar",
+			edit: func() (domain.EditResult, error) {
+				return domain.SetValue(d.root, at(t, "/server/port"), domain.NewNumber("1"))
+			},
+			want: nil,
+		},
+		{
+			// The member and everything under it moved; nothing went away.
+			name: "renaming a member",
+			edit: func() (domain.EditResult, error) {
+				return domain.Rename(d.root, at(t, "/server"), "listener")
+			},
+			want: nil,
+		},
+		{
+			name: "adding an element",
+			edit: func() (domain.EditResult, error) {
+				return domain.Insert(d.root, at(t, "/features"), 0, domain.Member{
+					Value: domain.NewNull(),
+				})
+			},
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			res, err := tt.edit()
+			if err != nil {
+				t.Fatalf("edit: %v", err)
+			}
+
+			if got := paths(res.Removed); !slices.Equal(got, tt.want) {
+				t.Errorf("Removed = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRenamesMoveEverythingBeneathThePathThatMoved(t *testing.T) {
+	t.Parallel()
+
+	d := newTree(t)
+
+	// The pointers a collapsed set might hold over this array, including one
+	// that is only a prefix as text.
+	pointers := []string{
+		"/features",
+		"/features/0",
+		"/features/1",
+		"/features/1/name",
+		"/features/2",
+		"/features/2/name",
+	}
+
+	t.Run("an element removed pulls the rest down", func(t *testing.T) {
+		t.Parallel()
+
+		res, err := domain.Delete(d.root, at(t, "/features/1"))
+		if err != nil {
+			t.Fatalf("Delete: %v", err)
+		}
+
+		// The deleted element has no rename, because it went nowhere. Its path
+		// still resolves afterwards — to the element that moved up into its
+		// place — so a holder of paths has to be told, and Removed is how.
+		if got := paths(res.Removed); !slices.Equal(got, []string{"/features/1"}) {
+			t.Errorf("Removed = %v, want [/features/1]", got)
+		}
+
+		want := []string{
+			"/features",
+			"/features/0",
+			"/features/1",
+			"/features/1/name",
+		}
+
+		got := rewriteTogether(res.Renames, dropRemoved(res.Removed, pointers))
+		if !slices.Equal(got, want) {
+			t.Errorf("moved %v, want %v", got, want)
+		}
+
+		// The other order drops the element that has just arrived at
+		// "/features/1" along with the one that left it, which is why Removed
+		// is defined to apply first.
+		reversed := dropRemoved(res.Removed, rewriteTogether(res.Renames, pointers))
+		if slices.Equal(reversed, want) {
+			t.Error("dropping the removed paths last gave the right answer, " +
+				"so this input no longer shows that it has to come first")
+		}
+	})
+
+	t.Run("an element added pushes the rest up", func(t *testing.T) {
+		t.Parallel()
+
+		res, err := domain.Insert(d.root, at(t, "/features"), 1, domain.Member{
+			Value: domain.NewNull(),
+		})
+		if err != nil {
+			t.Fatalf("Insert: %v", err)
+		}
+
+		want := []string{
+			"/features",
+			"/features/0",
+			"/features/2",
+			"/features/2/name",
+			"/features/3",
+			"/features/3/name",
+		}
+
+		got := rewriteTogether(res.Renames, pointers)
+		if !slices.Equal(got, want) {
+			t.Errorf("moved %v, want %v", got, want)
+		}
+
+		// The same maps applied one after another carry "/features/1" through
+		// "/features/2" and on to "/features/3". The maps of one edit describe
+		// a single move of the whole set, which is why they are defined to
+		// apply at once.
+		if inTurn := rewriteInTurn(res.Renames, pointers); slices.Equal(inTurn, want) {
+			t.Error("applying the renames in turn gave the right answer, " +
+				"so this input no longer shows that they have to apply at once")
+		}
+	})
+}

@@ -6,17 +6,6 @@ import (
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
-func obj(t *testing.T, members ...domain.Member) *domain.Object {
-	t.Helper()
-
-	o, err := domain.NewObject(members)
-	if err != nil {
-		t.Fatalf("NewObject: %v", err)
-	}
-
-	return o
-}
-
 // document is a tree with each of its nodes named, so that a test can assert
 // which one came back rather than only what it looks like.
 type document struct {

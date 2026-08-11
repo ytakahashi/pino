@@ -26,41 +26,65 @@ func Resolve(root Node, p Path) (Node, bool) {
 	n := root
 
 	for _, seg := range p.All() {
-		// The switch is on Kind rather than on the concrete type so that a
-		// kind added later is reported here by the exhaustive linter instead
-		// of quietly resolving to nothing, which is the wrong answer if what
-		// was added holds children. domain sets the two together, so the
-		// assertions below cannot fail.
-		switch n.Kind() {
-		case KindObject:
-			m, ok := n.(*Object).Lookup(seg.Token())
-			if !ok {
-				return nil, false
-			}
-
-			n = m.Value
-
-		case KindArray:
-			a := n.(*Array)
-
-			// The token has to be the plain spelling of the position. RFC 6901
-			// allows neither a leading zero nor a sign, and Atoi on its own
-			// would read "01" and "+1" as elements the pointer does not name.
-			i, err := strconv.Atoi(seg.Token())
-			if err != nil || i < 0 || i >= a.Len() || strconv.Itoa(i) != seg.Token() {
-				return nil, false
-			}
-
-			n = a.At(i)
-
-		case KindString, KindNumber, KindBool, KindNull:
-			// A value with no children, with the path still going on.
-			return nil, false
-
-		default:
+		child, _, ok := childAt(n, seg)
+		if !ok {
 			return nil, false
 		}
+
+		n = child
 	}
 
 	return n, true
+}
+
+// childAt is the child of n that seg addresses, together with its position
+// among its siblings.
+//
+// Walking a path and editing along one have to agree on what a segment names,
+// so both come here: a segment that resolves to a node must reach the same
+// node when that node is replaced, or the cursor would be able to select
+// something no edit could touch. The position is what an edit needs in order
+// to put a rebuilt child back where the old one stood, and it saves the
+// second search a rebuild would otherwise do.
+//
+// It reports false when the path leads nowhere: a key the object does not
+// have, a position past the end of an array, or a step taken from a value
+// that has no children.
+func childAt(n Node, seg Segment) (Node, int, bool) {
+	// The switch is on Kind rather than on the concrete type so that a kind
+	// added later is reported here by the exhaustive linter instead of quietly
+	// resolving to nothing, which is the wrong answer if what was added holds
+	// children. domain sets the two together, so the assertions below cannot
+	// fail.
+	switch n.Kind() {
+	case KindObject:
+		o := n.(*Object)
+
+		i, ok := o.IndexOf(seg.Token())
+		if !ok {
+			return nil, 0, false
+		}
+
+		return o.At(i).Value, i, true
+
+	case KindArray:
+		a := n.(*Array)
+
+		// The token has to be the plain spelling of the position. RFC 6901
+		// allows neither a leading zero nor a sign, and Atoi on its own would
+		// read "01" and "+1" as elements the pointer does not name.
+		i, err := strconv.Atoi(seg.Token())
+		if err != nil || i < 0 || i >= a.Len() || strconv.Itoa(i) != seg.Token() {
+			return nil, 0, false
+		}
+
+		return a.At(i), i, true
+
+	case KindString, KindNumber, KindBool, KindNull:
+		// A value with no children, with the path still going on.
+		return nil, 0, false
+
+	default:
+		return nil, 0, false
+	}
 }
