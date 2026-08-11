@@ -28,6 +28,15 @@ type Model struct {
 	// document.
 	pending Pending
 
+	// reported is the last body height the session was told about.
+	//
+	// It is here rather than asked of the session because what matters is that
+	// the number is sent when it changes, not when a particular message
+	// arrives. A resized terminal is one cause of a change; a view that
+	// brought an inspector with it is another, and that one comes of a key
+	// press.
+	reported int
+
 	// mouse is whether the terminal is asked to report the wheel.
 	//
 	// Asking costs the terminal's own text selection: there is no mode that
@@ -63,12 +72,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 
-		// The application follows the cursor with the window, so it has to be
-		// told how big that window is. What it is told is the room left for
-		// the document rather than the height of the terminal: taking the
-		// status bar off the top of it, and later an inspector, is a decision
-		// about laying out a screen and stays on this side of the boundary.
-		return m, m.dispatch(m.app.Do(application.ActionResize{Height: m.bodyHeight()}))
+		return m.syncHeight(nil)
 
 	case tea.KeyPressMsg:
 		act, pending := Resolve(msg, m.app.Mode(), m.pending)
@@ -78,7 +82,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		return m, m.dispatch(m.app.Do(act))
+		return m.syncHeight(m.dispatch(m.app.Do(act)))
 
 	case tea.MouseWheelMsg:
 		rows, ok := wheelDistance(msg)
@@ -86,10 +90,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		return m, m.dispatch(m.app.Do(application.ActionScrollBy{Rows: rows}))
+		return m.syncHeight(m.dispatch(m.app.Do(application.ActionScrollBy{Rows: rows})))
 	}
 
 	return m, nil
+}
+
+// syncHeight tells the session how much room the document has, whenever that
+// changes, and carries cmd along with whatever saying so produced.
+//
+// The application follows the cursor with the window, so it has to be told how
+// big that window is. What it is told is the room left for the document rather
+// than the height of the terminal: taking off the status bar, and the
+// inspector standing under the tree, is a decision about laying out a screen
+// and stays on this side of the boundary.
+//
+// Every branch of Update ends here, including the ones that cannot change the
+// height today. What may change it is what the session is allowed to do, and
+// that grows; a branch that reported only because someone remembered to add it
+// would be the one to go quiet later.
+//
+// The report is an ActionResize whatever brought it about. To the session this
+// says "the document has this many rows now", and why is not its business —
+// the same generalisation that made Height the room for the document rather
+// than the height of the terminal.
+func (m Model) syncHeight(cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	h := m.layout().BodyHeight
+	if h == m.reported {
+		return m, cmd
+	}
+
+	m.reported = h
+
+	return m, tea.Batch(cmd, m.dispatch(m.app.Do(application.ActionResize{Height: h})))
 }
 
 // wheelRows is how far one turn of the wheel reaches. Three is what terminals
@@ -144,15 +177,15 @@ func (m Model) View() tea.View {
 
 	frame := m.app.Frame()
 	info := m.app.Status()
-	body := m.layout().BodyWidth
+	l := m.layout()
 
 	rows := make([]string, 0, m.height)
 
-	window, start := m.visible(frame)
+	window, start := visible(frame, l.BodyHeight)
 
-	for i, l := range window {
+	for i, line := range window {
 		selected := start+i == frame.Cursor
-		row := clip(m.theme.RenderLine(l, indentFor(info), selected), body)
+		row := clip(m.theme.RenderLine(line, indentFor(info), selected), l.BodyWidth)
 
 		// The band behind the selected row runs to the far side of the
 		// document, not to the far side of the text. Where a row happens to
@@ -161,7 +194,7 @@ func (m Model) View() tea.View {
 		// at. It stops at the document's own edge so that it cannot reach into
 		// the inspector standing beside it.
 		if selected {
-			row += m.theme.RenderCursorFill(body - ansi.StringWidth(row))
+			row += m.theme.RenderCursorFill(l.BodyWidth - ansi.StringWidth(row))
 		}
 
 		rows = append(rows, row)
@@ -169,13 +202,54 @@ func (m Model) View() tea.View {
 
 	// Blank rows hold the bar at the bottom when the document is shorter than
 	// the screen.
-	for len(rows) < m.bodyHeight() {
+	for len(rows) < l.BodyHeight {
 		rows = append(rows, "")
 	}
 
+	rows = m.withInspector(rows, l)
 	rows = append(rows, m.theme.RenderStatusBar(info, len(frame.Lines), m.pending, m.width))
 
 	return fullScreen(strings.Join(rows, "\n"), m.mouse)
+}
+
+// withInspector puts the inspector where the layout says it goes.
+//
+// Beside the document, each row of the pane is joined to the row of the
+// document it sits next to, which is why the two are built as rows rather than
+// as blocks: lipgloss would fill the ragged right of the document with plain
+// spaces, and the band behind the selected row has to carry its own colour all
+// the way to the rule. Under the document, there is nothing to join and the
+// pane is simply stacked.
+func (m Model) withInspector(rows []string, l layout) []string {
+	switch l.Inspector {
+	case placeSide:
+		pane := m.theme.RenderInspectorPane(m.app.Inspector(), l.InspectorWidth, l.BodyHeight)
+		rule := m.theme.RenderVerticalRule()
+
+		// The selected row arrives already filled to this width, in the
+		// cursor's own styling, so padding leaves it alone; the rest are
+		// filled with plain space.
+		for i := range rows {
+			rows[i] = pad(rows[i], l.BodyWidth) + rule + pane[i]
+		}
+
+	case placeBelow:
+		// The rule is counted in the height the layout set aside, so it comes
+		// out of the pane's rows rather than out of the document's.
+		if l.InspectorHeight <= 0 {
+			break
+		}
+
+		rows = append(rows, m.theme.RenderHorizontalRule(m.width))
+		rows = append(rows, m.theme.RenderInspectorStrip(
+			m.app.Inspector(), m.width, l.InspectorHeight-ruleRows)...)
+
+	case placeNone:
+		// The JSON view has no pane. The status bar already names the pointer
+		// and the type of the selection, which is what one would repeat.
+	}
+
+	return rows
 }
 
 // fullScreen is a frame drawn on a screen of pino's own.
@@ -206,18 +280,6 @@ func (m Model) layout() layout {
 	return layoutFor(m.width, m.height, m.app.ViewMode())
 }
 
-// bodyHeight is how many rows the document has to itself.
-//
-// The status bar takes the last one. The inspector standing under the tree
-// will take more, and this becomes the layout's BodyHeight when it does. Until
-// then it stays the height of the terminal less the bar, because the number is
-// also what the session is told: reserving rows on screen without saying so
-// would leave the session scrolling for a window taller than the one being
-// drawn, and the cursor could sit below what anyone can see.
-func (m Model) bodyHeight() int {
-	return max(m.height-statusBarRows, 0)
-}
-
 // treeIndent is one level of the tree, which is also the width of a marker:
 // a child's name therefore sits under its parent's.
 const treeIndent = "  "
@@ -245,7 +307,7 @@ func indentFor(info application.StatusInfo) string {
 	return info.Indent
 }
 
-// visible is the part of the document that fits on the screen, along with the
+// visible is the part of the document that fits in height rows, along with the
 // row number it starts at.
 //
 // Where it starts is the application's to decide, since that is what follows
@@ -256,9 +318,9 @@ func indentFor(info application.StatusInfo) string {
 // The offset is brought into range rather than trusted: it was worked out
 // against a height this layer reported, and a frame drawn between the two
 // would otherwise index outside the document.
-func (m Model) visible(frame application.Frame) ([]application.Line, int) {
+func visible(frame application.Frame, height int) ([]application.Line, int) {
 	start := min(max(frame.Scroll, 0), len(frame.Lines))
-	end := min(start+m.bodyHeight(), len(frame.Lines))
+	end := min(start+max(height, 0), len(frame.Lines))
 
 	return frame.Lines[start:end], start
 }

@@ -501,8 +501,8 @@ func TestViewScrollsWithTheCursor(t *testing.T) {
 		t.Error("the window did not move, so the cursor has left the screen")
 	}
 
-	if row := selectedRow(t, m); row < 0 || row >= m.bodyHeight() {
-		t.Errorf("the selected row is %d, outside the %d rows drawn", row, m.bodyHeight())
+	if row := selectedRow(t, m); row < 0 || row >= m.layout().BodyHeight {
+		t.Errorf("the selected row is %d, outside the %d rows drawn", row, m.layout().BodyHeight)
 	}
 
 	// Back to the top, and so is the window.
@@ -535,8 +535,8 @@ func TestUpdateReportsTheBodyHeight(t *testing.T) {
 		t.Fatalf("Update() returned %T, want Model", next)
 	}
 
-	if row := selectedRow(t, small); row < 0 || row >= small.bodyHeight() {
-		t.Errorf("the selected row is %d, outside the %d rows drawn", row, small.bodyHeight())
+	if row := selectedRow(t, small); row < 0 || row >= small.layout().BodyHeight {
+		t.Errorf("the selected row is %d, outside the %d rows drawn", row, small.layout().BodyHeight)
 	}
 }
 
@@ -559,8 +559,8 @@ func TestUpdateScrollsOnTheWheel(t *testing.T) {
 		t.Error("the wheel did not move the window")
 	}
 
-	if row := selectedRow(t, down); row < 0 || row >= down.bodyHeight() {
-		t.Errorf("the selected row is %d, outside the %d rows drawn", row, down.bodyHeight())
+	if row := selectedRow(t, down); row < 0 || row >= down.layout().BodyHeight {
+		t.Errorf("the selected row is %d, outside the %d rows drawn", row, down.layout().BodyHeight)
 	}
 
 	// And back up again.
@@ -671,8 +671,8 @@ func TestViewKeepsTheCursorOnScreen(t *testing.T) {
 			for range 9 {
 				m = press(t, m, tea.KeyPressMsg{Code: 'j', Text: "j"})
 
-				if row := selectedRow(t, m); row < 0 || row >= m.bodyHeight() {
-					t.Fatalf("the selected row is %d, outside the %d rows drawn", row, m.bodyHeight())
+				if row := selectedRow(t, m); row < 0 || row >= m.layout().BodyHeight {
+					t.Fatalf("the selected row is %d, outside the %d rows drawn", row, m.layout().BodyHeight)
 				}
 			}
 		})
@@ -836,10 +836,11 @@ func TestViewDrawsTheTreeWithItsOwnIndent(t *testing.T) {
 	}
 }
 
-// On a terminal wide enough for the inspector to stand beside the tree, the
-// document is drawn in the columns left to it. The band behind the selected
-// row stops there too, or it would reach across the rule into the pane.
-func TestViewKeepsTheTreeWithinTheBody(t *testing.T) {
+// On a terminal wide enough for the inspector to stand beside the tree, each
+// row of the screen is a row of the document, the rule, and a row of the pane.
+// The rule stands in the same column throughout, whatever each row happens to
+// hold.
+func TestViewJoinsTheInspectorBesideTheTree(t *testing.T) {
 	const width = 120
 
 	m := press(t, sized(t, openApp(t, nestedDocument(t)), width, 20), tabKey)
@@ -851,15 +852,90 @@ func TestViewKeepsTheTreeWithinTheBody(t *testing.T) {
 
 	drawn := rows(t, m)
 
-	// The status bar is the one row that does run the whole way across.
+	// The status bar is the one row that is not divided.
 	for i, row := range drawn[:len(drawn)-1] {
-		if w := lipgloss.Width(row); w > l.BodyWidth {
-			t.Errorf("row %d is %d wide, want at most the body's %d: %q", i, w, l.BodyWidth, row)
+		if got := lipgloss.Width(row); got != width {
+			t.Errorf("row %d is %d wide, want the full %d: %q", i, got, width, row)
+		}
+
+		if got := []rune(row)[l.BodyWidth]; got != '│' {
+			t.Errorf("row %d has %q where the rule belongs, want the rule: %q", i, got, row)
 		}
 	}
 
-	if got := lipgloss.Width(drawn[selectedRow(t, m)]); got != l.BodyWidth {
-		t.Errorf("the selected row is %d wide, want the body's %d", got, l.BodyWidth)
+	// The document is on the left of it and the pane on the right.
+	if got, want := strings.TrimRight(bodyOf(drawn[0], l), " "), "▼ / {2}"; got != want {
+		t.Errorf("the first row of the document is %q, want %q", got, want)
+	}
+
+	if got, want := strings.TrimSpace(paneOf(drawn[0], l)), "Path"; got != want {
+		t.Errorf("the pane begins with %q, want %q", got, want)
+	}
+}
+
+// bodyOf and paneOf are the two sides of an assembled row, the rule between
+// them dropped.
+func bodyOf(row string, l layout) string { return string([]rune(row)[:l.BodyWidth]) }
+
+func paneOf(row string, l layout) string { return string([]rune(row)[l.BodyWidth+1:]) }
+
+// The band behind the selected row stops at the rule. Reaching past it would
+// paint the pane as though the selection were in it.
+func TestViewKeepsTheCursorBandOutOfTheInspector(t *testing.T) {
+	m := press(t, sized(t, openApp(t, nestedDocument(t)), 120, 20), tabKey)
+
+	l := m.layout()
+	styled := strings.Split(m.View().Content, "\n")[selectedRow(t, m)]
+
+	// The document's side of the row is filled with the band all the way to
+	// the rule, so that the mark is not ragged.
+	if got := lipgloss.Width(bodyOf(ansi.Strip(styled), l)); got != l.BodyWidth {
+		t.Errorf("the selected row is %d wide before the rule, want the body's %d", got, l.BodyWidth)
+	}
+
+	marker := cursorBackground(t, m.theme)
+
+	rule := strings.Index(styled, "│")
+	if rule < 0 {
+		t.Fatalf("the selected row holds no rule: %q", styled)
+	}
+
+	if rest := styled[rule:]; strings.Contains(rest, marker) {
+		t.Errorf("the cursor's background reaches into the pane: %q", rest)
+	}
+}
+
+// Under the tree, the pane is stacked below the document with a rule between
+// them, and the rows add up to the height of the terminal.
+func TestViewStacksTheInspectorUnderTheTree(t *testing.T) {
+	const width, height = 80, 20
+
+	m := press(t, sized(t, openApp(t, nestedDocument(t)), width, height), tabKey)
+
+	l := m.layout()
+	if l.Inspector != placeBelow {
+		t.Fatalf("the inspector is placed %v on a %d column terminal, want below", l.Inspector, width)
+	}
+
+	drawn := rows(t, m)
+
+	if len(drawn) != height {
+		t.Fatalf("View() drew %d rows, want %d", len(drawn), height)
+	}
+
+	// The rule sits between the last row of the document and the first of the
+	// pane, and runs the whole way across.
+	if got := drawn[l.BodyHeight]; got != strings.Repeat("─", width) {
+		t.Errorf("the row below the document is %q, want a rule", got)
+	}
+
+	// One field to a row, the values lined up under one another.
+	want := []string{" Path      /", " Type      object", " Children  2", ""}
+
+	for i, w := range want {
+		if got := strings.TrimRight(drawn[l.BodyHeight+1+i], " "); got != w {
+			t.Errorf("row %d of the pane is %q, want %q", i, got, w)
+		}
 	}
 }
 
@@ -872,5 +948,72 @@ func TestViewFillsTheCursorRowInTheJSONView(t *testing.T) {
 
 	if got := lipgloss.Width(rows(t, m)[selectedRow(t, m)]); got != width {
 		t.Errorf("the selected row is %d wide, want the full %d", got, width)
+	}
+}
+
+// The session is told how much room the document has whenever that changes,
+// and a view that brings an inspector with it changes it without the terminal
+// having been touched.
+func TestUpdateReportsTheHeightOnAViewSwitch(t *testing.T) {
+	// Narrow enough for the inspector to go underneath, which is where it
+	// costs the document rows.
+	const width, height = 80, 20
+
+	m := sized(t, openApp(t, tallDocument(t)), width, height)
+
+	if got, want := m.reported, height-statusBarRows; got != want {
+		t.Fatalf("the session was told %d rows, want %d", got, want)
+	}
+
+	m = press(t, m, tabKey)
+
+	l := m.layout()
+	if l.Inspector != placeBelow {
+		t.Fatalf("the inspector is placed %v on a %d column terminal, want below", l.Inspector, width)
+	}
+
+	if got, want := m.reported, height-statusBarRows-l.InspectorHeight; got != want {
+		t.Errorf("the session was told %d rows after Tab, want %d", got, want)
+	}
+
+	// The document is drawn in the rows it was told about, and the cursor is
+	// among them.
+	if row := selectedRow(t, m); row < 0 || row >= m.reported {
+		t.Errorf("the selected row is %d, outside the %d rows the document has", row, m.reported)
+	}
+
+	// And back, which restores what the JSON view had.
+	m = press(t, m, tabKey)
+
+	if got, want := m.reported, height-statusBarRows; got != want {
+		t.Errorf("the session was told %d rows after switching back, want %d", got, want)
+	}
+}
+
+// Nothing is reported when the number has not moved. Saying it again would
+// settle the session a second time for no reason on every key press.
+func TestUpdateDoesNotRepeatTheHeight(t *testing.T) {
+	// Wide enough that the inspector stands beside the tree, where it costs
+	// columns rather than rows.
+	m := sized(t, openApp(t, tallDocument(t)), 120, 20)
+
+	before := m.reported
+
+	next, cmd := m.Update(tabKey)
+	if cmd != nil {
+		t.Errorf("Update(tab) = %v, want no command; the height did not change", cmd)
+	}
+
+	after, ok := next.(Model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want Model", next)
+	}
+
+	if after.reported != before {
+		t.Errorf("the session was told %d rows, want the %d it already had", after.reported, before)
+	}
+
+	if after.layout().Inspector != placeSide {
+		t.Errorf("the inspector is placed %v, want beside", after.layout().Inspector)
 	}
 }

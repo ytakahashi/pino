@@ -38,6 +38,13 @@ type Theme struct {
 	// rather than as part of it.
 	StatusBar lipgloss.Style
 
+	// Rule divides the document from the inspector, and FieldName is what the
+	// inspector calls each of the things it says. Neither is a Role, for the
+	// reason StatusBar is not: no renderer produces them, and they belong to
+	// how the screen is divided rather than to what the document holds.
+	Rule      lipgloss.Style
+	FieldName lipgloss.Style
+
 	// Cursor is laid over the row the selection is on, keeping each span's own
 	// colour: it says which row, not what is in it.
 	//
@@ -75,6 +82,13 @@ func DefaultTheme() Theme {
 		StatusBar: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("252")).
 			Background(lipgloss.Color("238")),
+
+		// The rule divides without being read, so it is the dimmest thing on
+		// the screen. The names in the inspector are read but are not the
+		// answer to anything, so they are dimmer than what stands beside them
+		// and brighter than the rule.
+		Rule:      lipgloss.NewStyle().Foreground(lipgloss.Color("238")),
+		FieldName: lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
 
 		// The selected row is marked by a band behind it rather than by an
 		// arrow in front of it: an arrow would need a column of its own and
