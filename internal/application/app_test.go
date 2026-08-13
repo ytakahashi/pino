@@ -9,13 +9,13 @@ import (
 
 // Opening a document, and the frame a session hands back to be drawn.
 
-func TestOpen(t *testing.T) {
+func TestOpenLoadsAndInitialisesADocument(t *testing.T) {
 	t.Parallel()
 
 	root := testTree(t)
 	meta := &fakeMeta{}
 	parser := &fakeParser{root: root}
-	renderer := &spyRenderer{lines: []Line{{Kind: LineSingle}}}
+	renderer := &fakeRenderer{lines: []Line{{Kind: LineSingle}}}
 	app := New(Deps{
 		Parser:   parser,
 		Files:    fakeFileStore{data: map[string][]byte{"conf/app.json": []byte(testSource)}, meta: meta},
@@ -63,10 +63,10 @@ func TestOpen(t *testing.T) {
 	}
 }
 
-// TestOpenAgain covers a second document arriving in a session that has
-// already been looked at: what is left of the first one must not describe the
-// second.
-func TestOpenAgain(t *testing.T) {
+// TestOpenReplacesTheCurrentDocument covers a second document arriving in a
+// session that has already been looked at: what is left of the first one must
+// not describe the second.
+func TestOpenReplacesTheCurrentDocument(t *testing.T) {
 	t.Parallel()
 
 	app := New(Deps{
@@ -75,8 +75,8 @@ func TestOpenAgain(t *testing.T) {
 			"first.json":  []byte(testSource),
 			"second.json": []byte("{\n  \"a\": 1\n}\n"),
 		}},
-		JSONView: &spyRenderer{},
-		TreeView: &spyRenderer{},
+		JSONView: &fakeRenderer{},
+		TreeView: &fakeRenderer{},
 	})
 
 	if err := app.Open("first.json"); err != nil {
@@ -115,7 +115,7 @@ func TestOpenAgain(t *testing.T) {
 	}
 }
 
-func TestOpenFailure(t *testing.T) {
+func TestOpenLeavesTheStateAloneOnFailure(t *testing.T) {
 	t.Parallel()
 
 	readErr := errors.New("read failed")
@@ -142,7 +142,7 @@ func TestOpenFailure(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			renderer := &spyRenderer{}
+			renderer := &fakeRenderer{}
 			app := New(Deps{Parser: tc.parser, Files: tc.files, JSONView: renderer, TreeView: renderer})
 
 			// The error travels out as it was raised: the command line turns
@@ -171,12 +171,12 @@ func TestOpenFailure(t *testing.T) {
 	}
 }
 
-func TestFrame(t *testing.T) {
+func TestFrameReturnsTheRenderedWindow(t *testing.T) {
 	t.Parallel()
 
 	root := testTree(t)
 	want := []Line{{Kind: LineOpen}, {Kind: LineClose}}
-	renderer := &spyRenderer{lines: want}
+	renderer := &fakeRenderer{lines: want}
 	app := New(Deps{
 		Parser:   &fakeParser{root: root},
 		Files:    fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
@@ -227,10 +227,10 @@ func TestFrame(t *testing.T) {
 
 // A session with nothing open still has to answer, since the terminal draws
 // before a document is necessarily there.
-func TestFrameWithoutDocument(t *testing.T) {
+func TestFrameIsEmptyWithoutADocument(t *testing.T) {
 	t.Parallel()
 
-	renderer := &spyRenderer{lines: []Line{{Kind: LineOpen}}}
+	renderer := &fakeRenderer{lines: []Line{{Kind: LineOpen}}}
 	app := New(Deps{JSONView: renderer, TreeView: renderer})
 
 	frame := app.Frame()
@@ -248,7 +248,7 @@ func TestFrameWithoutDocument(t *testing.T) {
 	}
 }
 
-func TestViewStateFolding(t *testing.T) {
+func TestViewStateTogglesFolds(t *testing.T) {
 	t.Parallel()
 
 	view := NewViewState()
@@ -310,12 +310,7 @@ func TestViewStateFoldsTheRoot(t *testing.T) {
 	}
 }
 
-// otherAction is an Action this layer has no handling for.
-type otherAction struct{}
-
-func (otherAction) isAction() {}
-
-func TestDo(t *testing.T) {
+func TestDoAppliesEveryAction(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -336,7 +331,7 @@ func TestDo(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			app := New(Deps{Parser: &fakeParser{}, Files: fakeFileStore{}, JSONView: &spyRenderer{}, TreeView: &spyRenderer{}})
+			app := New(Deps{Parser: &fakeParser{}, Files: fakeFileStore{}, JSONView: &fakeRenderer{}, TreeView: &fakeRenderer{}})
 
 			got := app.Do(tc.act)
 			if len(got) != len(tc.want) {
@@ -354,7 +349,7 @@ func TestDo(t *testing.T) {
 
 // Nothing here may depend on a document being open: the terminal reports its
 // size before one necessarily is, and a key press is not refused either.
-func TestActionsWithoutDocument(t *testing.T) {
+func TestActionsDoNothingWithoutADocument(t *testing.T) {
 	t.Parallel()
 
 	actions := map[string]Action{

@@ -1,25 +1,23 @@
-package domain_test
+package domain
 
 import (
 	"errors"
 	"testing"
-
-	"github.com/ytakahashi/pino/internal/domain"
 )
 
-func TestKindString(t *testing.T) {
+func TestKindStringNamesEveryKind(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		kind domain.Kind
+		kind Kind
 		want string
 	}{
-		{domain.KindObject, "object"},
-		{domain.KindArray, "array"},
-		{domain.KindString, "string"},
-		{domain.KindNumber, "number"},
-		{domain.KindBool, "boolean"},
-		{domain.KindNull, "null"},
+		{KindObject, "object"},
+		{KindArray, "array"},
+		{KindString, "string"},
+		{KindNumber, "number"},
+		{KindBool, "boolean"},
+		{KindNull, "null"},
 	}
 
 	for _, tt := range tests {
@@ -33,25 +31,25 @@ func TestKindString(t *testing.T) {
 	}
 }
 
-func TestNodeKinds(t *testing.T) {
+func TestEveryNodeReportsItsKind(t *testing.T) {
 	t.Parallel()
 
-	obj, err := domain.NewObject(nil)
+	obj, err := NewObject(nil)
 	if err != nil {
 		t.Fatalf("NewObject() error = %v", err)
 	}
 
 	tests := []struct {
 		name string
-		node domain.Node
-		want domain.Kind
+		node Node
+		want Kind
 	}{
-		{"object", obj, domain.KindObject},
-		{"array", domain.NewArray(nil), domain.KindArray},
-		{"string", str(t, "x"), domain.KindString},
-		{"number", domain.NewNumber("1"), domain.KindNumber},
-		{"bool", domain.NewBool(true), domain.KindBool},
-		{"null", domain.NewNull(), domain.KindNull},
+		{"object", obj, KindObject},
+		{"array", NewArray(nil), KindArray},
+		{"string", str(t, "x"), KindString},
+		{"number", NewNumber("1"), KindNumber},
+		{"bool", NewBool(true), KindBool},
+		{"null", NewNull(), KindNull},
 	}
 
 	for _, tt := range tests {
@@ -75,17 +73,17 @@ func TestNodeKinds(t *testing.T) {
 func TestNodesAreComparable(t *testing.T) {
 	t.Parallel()
 
-	obj, err := domain.NewObject([]domain.Member{{Key: "a", Value: domain.NewNull()}})
+	obj, err := NewObject([]Member{{Key: "a", Value: NewNull()}})
 	if err != nil {
 		t.Fatalf("NewObject() error = %v", err)
 	}
 
 	var (
-		same  domain.Node = obj
-		other domain.Node = domain.NewArray([]domain.Node{str(t, "x")})
+		same  Node = obj
+		other Node = NewArray([]Node{str(t, "x")})
 	)
 
-	if same != domain.Node(obj) {
+	if same != Node(obj) {
 		t.Error("the same node did not compare equal to itself")
 	}
 
@@ -97,13 +95,13 @@ func TestNodesAreComparable(t *testing.T) {
 func TestNewObjectPreservesOrder(t *testing.T) {
 	t.Parallel()
 
-	members := []domain.Member{
-		{Key: "zebra", Value: domain.NewNumber("1")},
-		{Key: "apple", Value: domain.NewNumber("2")},
-		{Key: "mango", Value: domain.NewNumber("3")},
+	members := []Member{
+		{Key: "zebra", Value: NewNumber("1")},
+		{Key: "apple", Value: NewNumber("2")},
+		{Key: "mango", Value: NewNumber("3")},
 	}
 
-	obj, err := domain.NewObject(members)
+	obj, err := NewObject(members)
 	if err != nil {
 		t.Fatalf("NewObject() error = %v", err)
 	}
@@ -139,18 +137,18 @@ func TestNewObjectPreservesOrder(t *testing.T) {
 func TestNewObjectRejectsDuplicateKey(t *testing.T) {
 	t.Parallel()
 
-	members := []domain.Member{
-		{Key: "port", Value: domain.NewNumber("8080")},
+	members := []Member{
+		{Key: "port", Value: NewNumber("8080")},
 		{Key: "host", Value: str(t, "localhost")},
-		{Key: "port", Value: domain.NewNumber("9090")},
+		{Key: "port", Value: NewNumber("9090")},
 	}
 
-	_, err := domain.NewObject(members)
+	_, err := NewObject(members)
 	if err == nil {
 		t.Fatal("NewObject() succeeded, want a duplicate key error")
 	}
 
-	var dup *domain.DuplicateKeyError
+	var dup *DuplicateKeyError
 	if !errors.As(err, &dup) {
 		t.Fatalf("NewObject() error = %v, want *DuplicateKeyError", err)
 	}
@@ -190,12 +188,12 @@ func TestNewStringRejectsInvalidUTF8(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := domain.NewString(tc.in)
+			_, err := NewString(tc.in)
 			if err == nil {
 				t.Fatalf("NewString(%q) succeeded, want an invalid UTF-8 error", tc.in)
 			}
 
-			var bad *domain.InvalidUTF8Error
+			var bad *InvalidUTF8Error
 			if !errors.As(err, &bad) {
 				t.Fatalf("NewString(%q) error = %v, want *InvalidUTF8Error", tc.in, err)
 			}
@@ -220,7 +218,7 @@ func TestNewStringAcceptsValidUTF8(t *testing.T) {
 		t.Run(in, func(t *testing.T) {
 			t.Parallel()
 
-			s, err := domain.NewString(in)
+			s, err := NewString(in)
 			if err != nil {
 				t.Fatalf("NewString(%q) error = %v", in, err)
 			}
@@ -237,15 +235,15 @@ func TestNewStringAcceptsValidUTF8(t *testing.T) {
 func TestNewObjectRejectsInvalidKey(t *testing.T) {
 	t.Parallel()
 
-	_, err := domain.NewObject([]domain.Member{
+	_, err := NewObject([]Member{
 		{Key: "host", Value: str(t, "localhost")},
-		{Key: "po\xffrt", Value: domain.NewNumber("8080")},
+		{Key: "po\xffrt", Value: NewNumber("8080")},
 	})
 	if err == nil {
 		t.Fatal("NewObject() succeeded, want an invalid UTF-8 error")
 	}
 
-	var bad *domain.InvalidUTF8Error
+	var bad *InvalidUTF8Error
 	if !errors.As(err, &bad) {
 		t.Fatalf("NewObject() error = %v, want *InvalidUTF8Error", err)
 	}
@@ -255,12 +253,12 @@ func TestNewObjectRejectsInvalidKey(t *testing.T) {
 	}
 }
 
-func TestObjectLookup(t *testing.T) {
+func TestObjectFindsMembersByKey(t *testing.T) {
 	t.Parallel()
 
-	obj, err := domain.NewObject([]domain.Member{
+	obj, err := NewObject([]Member{
 		{Key: "host", Value: str(t, "localhost")},
-		{Key: "port", Value: domain.NewNumber("8080")},
+		{Key: "port", Value: NewNumber("8080")},
 	})
 	if err != nil {
 		t.Fatalf("NewObject() error = %v", err)
@@ -271,9 +269,9 @@ func TestObjectLookup(t *testing.T) {
 		t.Fatal("Lookup(\"port\") not found")
 	}
 
-	num, ok := m.Value.(*domain.Number)
+	num, ok := m.Value.(*Number)
 	if !ok {
-		t.Fatalf("member value is %T, want *domain.Number", m.Value)
+		t.Fatalf("member value is %T, want *Number", m.Value)
 	}
 
 	if num.Raw() != "8080" {
@@ -299,14 +297,14 @@ func TestObjectLookup(t *testing.T) {
 func TestConstructorsCopyTheirInput(t *testing.T) {
 	t.Parallel()
 
-	members := []domain.Member{{Key: "host", Value: str(t, "localhost")}}
+	members := []Member{{Key: "host", Value: str(t, "localhost")}}
 
-	obj, err := domain.NewObject(members)
+	obj, err := NewObject(members)
 	if err != nil {
 		t.Fatalf("NewObject() error = %v", err)
 	}
 
-	members[0] = domain.Member{Key: "hijacked", Value: domain.NewNull()}
+	members[0] = Member{Key: "hijacked", Value: NewNull()}
 
 	if got := obj.At(0).Key; got != "host" {
 		t.Errorf("At(0).Key = %q, want %q: the members slice was not copied", got, "host")
@@ -316,59 +314,18 @@ func TestConstructorsCopyTheirInput(t *testing.T) {
 		t.Error("Lookup(\"host\") failed after the caller mutated its slice")
 	}
 
-	elements := []domain.Node{str(t, "search")}
+	elements := []Node{str(t, "search")}
 
-	arr := domain.NewArray(elements)
+	arr := NewArray(elements)
 	elements[0] = str(t, "hijacked")
 
-	first, ok := arr.At(0).(*domain.String)
+	first, ok := arr.At(0).(*String)
 	if !ok {
-		t.Fatalf("element is %T, want *domain.String", arr.At(0))
+		t.Fatalf("element is %T, want *String", arr.At(0))
 	}
 
 	if first.Value() != "search" {
 		t.Errorf("At(0) = %q, want %q: the elements slice was not copied", first.Value(), "search")
-	}
-}
-
-// Trivia travels inside Member, which is handed out by value. Copying the
-// Member copies the slice headers but not their backing arrays, so Trivia has
-// to be immutable in its own right for a handed-out Member to be harmless.
-func TestNewTriviaCopiesItsInput(t *testing.T) {
-	t.Parallel()
-
-	before := []domain.Comment{{Text: "above"}}
-	after := []domain.Comment{{Text: "trailing", Block: true}}
-
-	tv := domain.NewTrivia(before, after)
-
-	before[0].Text = "hijacked"
-	after[0].Text = "hijacked"
-
-	var gotBefore []domain.Comment
-	for c := range tv.Before() {
-		gotBefore = append(gotBefore, c)
-	}
-
-	if len(gotBefore) != 1 || gotBefore[0].Text != "above" {
-		t.Errorf("Before() = %+v, want one comment %q", gotBefore, "above")
-	}
-
-	var gotAfter []domain.Comment
-	for c := range tv.After() {
-		gotAfter = append(gotAfter, c)
-	}
-
-	if len(gotAfter) != 1 || gotAfter[0].Text != "trailing" || !gotAfter[0].Block {
-		t.Errorf("After() = %+v, want one block comment %q", gotAfter, "trailing")
-	}
-
-	if tv.IsEmpty() {
-		t.Error("IsEmpty() = true for a Trivia holding comments")
-	}
-
-	if !domain.NewTrivia(nil, nil).IsEmpty() {
-		t.Error("IsEmpty() = false for a Trivia with no comments")
 	}
 }
 
@@ -377,15 +334,15 @@ func TestNewTriviaCopiesItsInput(t *testing.T) {
 func TestObjectKeepsTriviaOutOfReach(t *testing.T) {
 	t.Parallel()
 
-	comments := []domain.Comment{{Text: "the listening port"}}
+	comments := []Comment{{Text: "the listening port"}}
 
-	members := []domain.Member{{
+	members := []Member{{
 		Key:    "port",
-		Value:  domain.NewNumber("8080"),
-		Trivia: domain.NewTrivia(comments, nil),
+		Value:  NewNumber("8080"),
+		Trivia: NewTrivia(comments, nil),
 	}}
 
-	obj, err := domain.NewObject(members)
+	obj, err := NewObject(members)
 	if err != nil {
 		t.Fatalf("NewObject() error = %v", err)
 	}
@@ -404,28 +361,28 @@ func TestObjectKeepsTriviaOutOfReach(t *testing.T) {
 func TestMemberIsHandedOutByValue(t *testing.T) {
 	t.Parallel()
 
-	obj, err := domain.NewObject([]domain.Member{{Key: "host", Value: str(t, "localhost")}})
+	obj, err := NewObject([]Member{{Key: "host", Value: str(t, "localhost")}})
 	if err != nil {
 		t.Fatalf("NewObject() error = %v", err)
 	}
 
 	m := obj.At(0)
 	m.Key = "hijacked"
-	m.Value = domain.NewNull()
+	m.Value = NewNull()
 
 	if got := obj.At(0).Key; got != "host" {
 		t.Errorf("At(0).Key = %q, want %q", got, "host")
 	}
 
-	if obj.At(0).Value.Kind() != domain.KindString {
+	if obj.At(0).Value.Kind() != KindString {
 		t.Error("the member value changed through a copy")
 	}
 }
 
-func TestArray(t *testing.T) {
+func TestArrayKeepsElementsInOrder(t *testing.T) {
 	t.Parallel()
 
-	arr := domain.NewArray([]domain.Node{
+	arr := NewArray([]Node{
 		str(t, "search"),
 		str(t, "history"),
 	})
@@ -437,9 +394,9 @@ func TestArray(t *testing.T) {
 	var got []string
 
 	for _, n := range arr.All() {
-		s, ok := n.(*domain.String)
+		s, ok := n.(*String)
 		if !ok {
-			t.Fatalf("element is %T, want *domain.String", n)
+			t.Fatalf("element is %T, want *String", n)
 		}
 
 		got = append(got, s.Value())
@@ -461,9 +418,73 @@ func TestNumberKeepsSourceText(t *testing.T) {
 		t.Run(raw, func(t *testing.T) {
 			t.Parallel()
 
-			if got := domain.NewNumber(raw).Raw(); got != raw {
+			if got := NewNumber(raw).Raw(); got != raw {
 				t.Errorf("Raw() = %q, want %q", got, raw)
 			}
+		})
+	}
+}
+
+// A member with no value would leave a hole in the tree that panics in
+// whichever walk reaches it first, far from where it was put there.
+func TestNewObjectRejectsMissingValue(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no value at all", func(t *testing.T) {
+		t.Parallel()
+
+		defer func() {
+			if recover() == nil {
+				t.Error("NewObject returned normally, want a panic")
+			}
+		}()
+
+		_, _ = NewObject([]Member{{Key: "host"}})
+	})
+
+	for kind, nilNode := range typedNils() {
+		t.Run("a nil "+kind, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				if recover() == nil {
+					t.Errorf("NewObject with a nil %s returned normally, want a panic", kind)
+				}
+			}()
+
+			_, _ = NewObject([]Member{{Key: "host", Value: nilNode}})
+		})
+	}
+}
+
+func TestNewArrayRejectsMissingElement(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no value at all", func(t *testing.T) {
+		t.Parallel()
+
+		defer func() {
+			if recover() == nil {
+				t.Error("NewArray returned normally, want a panic")
+			}
+		}()
+
+		_ = NewArray([]Node{nil})
+	})
+
+	for kind, nilNode := range typedNils() {
+		t.Run("a nil "+kind, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				if recover() == nil {
+					t.Errorf("NewArray with a nil %s returned normally, want a panic", kind)
+				}
+			}()
+
+			// Not in first position, so that a check looking only at the head
+			// of the slice would not pass.
+			_ = NewArray([]Node{str(t, "search"), nilNode})
 		})
 	}
 }

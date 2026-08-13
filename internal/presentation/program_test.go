@@ -1,16 +1,13 @@
 package presentation
 
 import (
-	"bytes"
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	teatest "github.com/charmbracelet/x/exp/teatest/v2"
 
 	"github.com/ytakahashi/pino/internal/application"
-	"github.com/ytakahashi/pino/internal/domain"
 )
 
 // The tests here drive a real Bubble Tea program writing to a pretend
@@ -35,66 +32,9 @@ import (
 // has something to say. What the screens in between hold is settled where the
 // view is drawn, against a model rather than a program.
 
-// waitTime is how long a test allows for the program to draw or to stop. It is
-// generous because it bounds a failure rather than a success.
-const waitTime = 10 * time.Second
-
-// start puts a document on a pretend terminal and waits for the opening screen
-// to be drawn.
-//
-// The wait is a barrier and not an assertion: keys sent before the program is
-// running would be answered by nothing at all. The opening screen is the one
-// written whole rather than as a difference, so looking for a piece of it says
-// only that the program has started.
-func start(t *testing.T, root domain.Node, onFirstScreen string) *teatest.TestModel {
-	t.Helper()
-
-	tm := teatest.NewTestModel(
-		t,
-		NewModel(openApp(t, root), DefaultTheme()),
-		teatest.WithInitialTermSize(80, 24),
-	)
-
-	teatest.WaitFor(
-		t,
-		tm.Output(),
-		func(out []byte) bool { return bytes.Contains(out, []byte(onFirstScreen)) },
-		teatest.WithDuration(waitTime),
-	)
-
-	return tm
-}
-
-// finalScreen quits and answers the screen the program stopped on, one entry
-// per row, taken from the model it ended with.
-func finalScreen(t *testing.T, tm *teatest.TestModel) []string {
-	t.Helper()
-
-	tm.Type("q")
-
-	final, ok := tm.FinalModel(t, teatest.WithFinalTimeout(waitTime)).(Model)
-	if !ok {
-		t.Fatalf("the program ended with a %T, want a Model", final)
-	}
-
-	return rows(t, final)
-}
-
-// screenRow is one row of a screen with the filling taken off its right hand
-// end, since a row is drawn out to the width it has.
-func screenRow(screen []string, i int) string {
-	if i < 0 || i >= len(screen) {
-		return ""
-	}
-
-	return strings.TrimRight(screen[i], " ")
-}
-
-func statusRow(screen []string) string { return screenRow(screen, len(screen)-1) }
-
 // Moving through a document: the keys reach the key table, the session moves
 // the selection, and the rows and the bar are both drawn from what comes back.
-func TestReadsADocument(t *testing.T) {
+func TestTheProgramReadsADocument(t *testing.T) {
 	t.Parallel()
 
 	tm := start(t, nestedDocument(t), "localhost")
@@ -128,7 +68,7 @@ func TestReadsADocument(t *testing.T) {
 // A key that means nothing on its own, followed by the one that completes it.
 // Only a real program joins the prefix the table answers with, the model that
 // holds it, and the session that is finally asked to act.
-func TestFoldsWithAPrefixKey(t *testing.T) {
+func TestAPrefixKeyFoldsAContainer(t *testing.T) {
 	t.Parallel()
 
 	tm := start(t, nestedDocument(t), "localhost")
@@ -197,7 +137,7 @@ func TestTabShowsTheTreeView(t *testing.T) {
 
 // The folded set belongs to the session rather than to either view: folded
 // from the tree, the node comes back folded in the document as it is written.
-func TestFoldingCrossesTheViews(t *testing.T) {
+func TestFoldStateCarriesAcrossViews(t *testing.T) {
 	t.Parallel()
 
 	tm := start(t, nestedDocument(t), "localhost")

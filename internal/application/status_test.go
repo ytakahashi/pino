@@ -42,7 +42,7 @@ func TestStatusFollowsTheCursor(t *testing.T) {
 	}
 }
 
-func TestStatusOfANullValue(t *testing.T) {
+func TestStatusDescribesANullValue(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, object(t, member("nothing", domain.NewNull())))
@@ -56,7 +56,7 @@ func TestStatusOfANullValue(t *testing.T) {
 
 // Nothing is selected before a document is open, and an empty pointer alone
 // cannot say so: the root has one too.
-func TestStatusWithoutDocument(t *testing.T) {
+func TestStatusIsEmptyWithoutADocument(t *testing.T) {
 	t.Parallel()
 
 	info := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()}).Status()
@@ -76,7 +76,7 @@ func TestStatusWithoutDocument(t *testing.T) {
 func TestStatusDoesNotRender(t *testing.T) {
 	t.Parallel()
 
-	renderer := &spyRenderer{lines: []Line{{Kind: LineOpen}}}
+	renderer := &fakeRenderer{lines: []Line{{Kind: LineOpen}}}
 	app := New(Deps{
 		Parser:   &fakeParser{root: sample(t)},
 		Files:    fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},

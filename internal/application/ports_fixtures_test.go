@@ -61,9 +61,9 @@ func (p *fakeParser) Parse(src []byte, d domain.Dialect) (domain.Node, error) {
 	return p.root, nil
 }
 
-// spyRenderer records renderer delegation. Tests of rendered content use the
+// fakeRenderer records renderer delegation. Tests of rendered content use the
 // real renderers instead.
-type spyRenderer struct {
+type fakeRenderer struct {
 	lines []Line
 
 	gotRoot domain.Node
@@ -71,7 +71,7 @@ type spyRenderer struct {
 	calls   int
 }
 
-func (r *spyRenderer) Render(root domain.Node, opt RenderOptions) []Line {
+func (r *fakeRenderer) Render(root domain.Node, opt RenderOptions) []Line {
 	r.gotRoot, r.gotOpt = root, opt
 	r.calls++
 

@@ -1,10 +1,8 @@
-package domain_test
+package domain
 
 import (
 	"errors"
 	"testing"
-
-	"github.com/ytakahashi/pino/internal/domain"
 )
 
 func TestParseNumberAcceptsTheJSONGrammar(t *testing.T) {
@@ -30,7 +28,7 @@ func TestParseNumberAcceptsTheJSONGrammar(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			n, err := domain.ParseNumber(tt.text)
+			n, err := ParseNumber(tt.text)
 			if err != nil {
 				t.Fatalf("ParseNumber(%q): %v", tt.text, err)
 			}
@@ -77,12 +75,12 @@ func TestParseNumberRefusesWhatIsNotOne(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			n, err := domain.ParseNumber(tt.text)
+			n, err := ParseNumber(tt.text)
 			if n != nil {
 				t.Fatalf("ParseNumber(%q) = %q, want no number", tt.text, n.Raw())
 			}
 
-			var invalid *domain.InvalidNumberError
+			var invalid *InvalidNumberError
 			if !errors.As(err, &invalid) {
 				t.Fatalf("ParseNumber(%q) error = %v, want *InvalidNumberError", tt.text, err)
 			}
@@ -101,7 +99,7 @@ func TestParseNumberRefusesWhatIsNotOne(t *testing.T) {
 func TestInvalidNumberErrorNamesTheTextAndTheRule(t *testing.T) {
 	t.Parallel()
 
-	err := &domain.InvalidNumberError{Text: "80x0", Reason: "not a JSON number"}
+	err := &InvalidNumberError{Text: "80x0", Reason: "not a JSON number"}
 
 	want := `invalid JSON number "80x0": not a JSON number`
 	if got := err.Error(); got != want {

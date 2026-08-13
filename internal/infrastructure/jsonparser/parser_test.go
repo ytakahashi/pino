@@ -2,126 +2,13 @@ package jsonparser
 
 import (
 	"errors"
-	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
-// esc spells the JSON escape for a UTF-16 code unit.
-//
-// Fixtures build their escapes with this instead of writing them out, so that
-// what reaches the parser is unmistakably the escape rather than the character
-// it stands for. A fixture holding the character never reaches the code that
-// reads escapes at all, and would go on passing if that code started refusing
-// every escape it saw.
-func esc(unit uint16) string { return fmt.Sprintf(`\u%04x`, unit) }
-
-// escUpper is esc with the uppercase hexadecimal digits JSON also allows.
-func escUpper(unit uint16) string { return fmt.Sprintf(`\u%04X`, unit) }
-
-// dump renders a tree on one line, tagging each scalar with its kind and
-// showing numbers as the text they were parsed from, so that a table can say
-// what it expects without building a tree to compare against.
-func dump(n domain.Node) string {
-	var b strings.Builder
-
-	writeNode(&b, n)
-
-	return b.String()
-}
-
-func writeNode(b *strings.Builder, n domain.Node) {
-	switch v := n.(type) {
-	case *domain.Object:
-		b.WriteByte('{')
-
-		for i, m := range v.All() {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-
-			b.WriteString(strconv.Quote(m.Key))
-			b.WriteByte(':')
-			writeNode(b, m.Value)
-		}
-
-		b.WriteByte('}')
-
-	case *domain.Array:
-		b.WriteByte('[')
-
-		for i, e := range v.All() {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-
-			writeNode(b, e)
-		}
-
-		b.WriteByte(']')
-
-	case *domain.String:
-		b.WriteByte('s')
-		b.WriteString(strconv.Quote(v.Value()))
-
-	case *domain.Number:
-		b.WriteByte('n')
-		b.WriteString(v.Raw())
-
-	case *domain.Bool:
-		b.WriteByte('b')
-		b.WriteString(strconv.FormatBool(v.Value()))
-
-	case *domain.Null:
-		b.WriteString("null")
-
-	default:
-		b.WriteString("?")
-	}
-}
-
-// parseStrict parses src as standard JSON and fails the test if it will not.
-func parseStrict(t *testing.T, src string) domain.Node {
-	t.Helper()
-
-	node, err := New().Parse([]byte(src), domain.StrictJSON)
-	if err != nil {
-		t.Fatalf("Parse(%q): %v", src, err)
-	}
-
-	return node
-}
-
-// syntaxErrorFor parses src expecting a *SyntaxError, and returns it.
-func syntaxErrorFor(t *testing.T, src string, d domain.Dialect) *SyntaxError {
-	t.Helper()
-
-	node, err := New().Parse([]byte(src), d)
-	if err == nil {
-		t.Fatalf("Parse(%q) = %s, want an error", src, dump(node))
-	}
-
-	var syntaxErr *SyntaxError
-	if !errors.As(err, &syntaxErr) {
-		t.Fatalf("Parse(%q) returned %T, want *SyntaxError", src, err)
-	}
-
-	return syntaxErr
-}
-
-// wantPosition checks where an error was reported.
-func wantPosition(t *testing.T, err *SyntaxError, line, column int) {
-	t.Helper()
-
-	if err.Line != line || err.Column != column {
-		t.Errorf("reported at %d:%d, want %d:%d (%s)", err.Line, err.Column, line, column, err.Msg)
-	}
-}
-
-func TestParse(t *testing.T) {
+func TestParseBuildsEveryJSONNodeKind(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
@@ -223,7 +110,7 @@ func TestParseCopiesSource(t *testing.T) {
 	}
 }
 
-func TestParseSyntaxError(t *testing.T) {
+func TestParseReportsSyntaxErrors(t *testing.T) {
 	tests := []struct {
 		name         string
 		src          string
@@ -258,9 +145,9 @@ func TestParseSyntaxError(t *testing.T) {
 	}
 }
 
-// TestParseDuplicateKey covers pino's rule that every path in a document is
+// TestParseReportsDuplicateKeys covers pino's rule that every path in a document is
 // unique, and that the offending key is pointed at rather than the object.
-func TestParseDuplicateKey(t *testing.T) {
+func TestParseReportsDuplicateKeys(t *testing.T) {
 	tests := []struct {
 		name         string
 		src          string
@@ -292,10 +179,10 @@ func TestParseDuplicateKey(t *testing.T) {
 	}
 }
 
-// TestParseInvalidUTF8 covers text the document cannot be written back with.
+// TestParseReportsInvalidUTF8 covers text the document cannot be written back with.
 // The library unescapes through encoding/json, which substitutes U+FFFD rather
 // than failing, so these would otherwise enter the tree silently changed.
-func TestParseInvalidUTF8(t *testing.T) {
+func TestParseReportsInvalidUTF8(t *testing.T) {
 	tests := []struct {
 		name         string
 		src          string
@@ -322,10 +209,10 @@ func TestParseInvalidUTF8(t *testing.T) {
 	}
 }
 
-// TestParseUnpairedSurrogateEscape covers the case the byte-level UTF-8 check
+// TestParseReportsUnpairedSurrogateEscapes covers the case the byte-level UTF-8 check
 // cannot see: the escape is ASCII, but encoding/json still decodes it to
 // U+FFFD, so the document would be rewritten on save.
-func TestParseUnpairedSurrogateEscape(t *testing.T) {
+func TestParseReportsUnpairedSurrogateEscapes(t *testing.T) {
 	tests := []struct {
 		name         string
 		src          string
@@ -352,7 +239,7 @@ func TestParseUnpairedSurrogateEscape(t *testing.T) {
 	}
 }
 
-func TestLoneSurrogateIndex(t *testing.T) {
+func TestParseLocatesALoneSurrogate(t *testing.T) {
 	tests := []struct {
 		name string
 		lit  string
@@ -386,7 +273,7 @@ func TestLoneSurrogateIndex(t *testing.T) {
 	}
 }
 
-func TestInvalidUTF8Index(t *testing.T) {
+func TestParseLocatesInvalidUTF8(t *testing.T) {
 	tests := []struct {
 		name string
 		text string

@@ -6,7 +6,7 @@ import (
 	"github.com/ytakahashi/pino/internal/application"
 )
 
-func TestLayoutFor(t *testing.T) {
+func TestLayoutForChoosesAPlacementFromTheAvailableSpace(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -223,7 +223,7 @@ func TestLayoutForKeepsItsBoundariesWithAPrompt(t *testing.T) {
 	}
 }
 
-func TestPlacementString(t *testing.T) {
+func TestPlacementStringNamesEveryPlacement(t *testing.T) {
 	t.Parallel()
 
 	tests := map[placement]string{

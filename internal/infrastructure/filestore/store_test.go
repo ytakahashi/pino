@@ -14,30 +14,6 @@ import (
 	"github.com/ytakahashi/pino/internal/application"
 )
 
-// writeFile puts content at name inside dir and returns the path.
-func writeFile(t *testing.T, dir, name string, content []byte) string {
-	t.Helper()
-
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, content, 0o644); err != nil {
-		t.Fatalf("WriteFile(%s): %v", path, err)
-	}
-
-	return path
-}
-
-// readFile reads path through a Store, failing the test if it will not.
-func readFile(t *testing.T, path string) ([]byte, application.Meta) {
-	t.Helper()
-
-	data, m, err := New().Read(path)
-	if err != nil {
-		t.Fatalf("Read(%s): %v", path, err)
-	}
-
-	return data, m
-}
-
 // TestReadReturnsContentsVerbatim covers the store not knowing what is in the
 // files it reads. Nothing here is JSON, and none of it may be inspected,
 // rejected or repaired on the way through.
@@ -66,19 +42,6 @@ func TestReadReturnsContentsVerbatim(t *testing.T) {
 			}
 		})
 	}
-}
-
-// recorded recovers what the store put in m, from inside the package, which is
-// the only place that can see it.
-func recorded(t *testing.T, m application.Meta) meta {
-	t.Helper()
-
-	got, err := fromMeta(m)
-	if err != nil {
-		t.Fatalf("fromMeta: %v", err)
-	}
-
-	return got
 }
 
 // TestReadMetaDescribesTheContents checks that what is recorded is the hash of
@@ -111,17 +74,6 @@ func TestReadMetaDistinguishesContents(t *testing.T) {
 	if recorded(t, m1) == recorded(t, m2) {
 		t.Errorf("different contents recorded the same hash %x", recorded(t, m1).hash)
 	}
-}
-
-func sizeOf(t *testing.T, path string) int64 {
-	t.Helper()
-
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("Stat(%s): %v", path, err)
-	}
-
-	return info.Size()
 }
 
 // TestReadMetaIgnoresTimestamps is the property that recording only a hash
@@ -179,52 +131,7 @@ func TestReadMetaIsOpaque(t *testing.T) {
 	}
 }
 
-// lookalike has the shape of meta without being it, standing in for a Meta
-// issued by some other store.
-type lookalike struct {
-	hash [32]byte
-}
-
-func TestFromMetaRejectsForeignValues(t *testing.T) {
-	tests := []struct {
-		name string
-		m    application.Meta
-	}{
-		{"a string", "meta"},
-		{"bytes", []byte("meta")},
-		{"a time", time.Now()},
-		{"a struct of the same shape", lookalike{hash: sha256.Sum256([]byte(`{"a":1}`))}},
-		{"a pointer to meta rather than a value", &meta{}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if _, err := fromMeta(tt.m); !errors.Is(err, errForeignMeta) {
-				t.Errorf("fromMeta returned %v, want errForeignMeta", err)
-			}
-		})
-	}
-}
-
-// TestFromMetaSeparatesAnUnknownFile covers the port allowing a nil Meta and
-// giving it a meaning of its own. Folding it in with a Meta that is merely
-// wrong would leave the save flow unable to tell "there is nothing to compare
-// against" from "the caller carried the wrong value", which are answered
-// differently: the first is an ordinary state for a document that never came
-// from disk, the second is a bug.
-func TestFromMetaSeparatesAnUnknownFile(t *testing.T) {
-	_, err := fromMeta(nil)
-
-	if !errors.Is(err, errNoMeta) {
-		t.Errorf("fromMeta(nil) returned %v, want errNoMeta", err)
-	}
-
-	if errors.Is(err, errForeignMeta) {
-		t.Error("fromMeta(nil) is reported as a meta from another store")
-	}
-}
-
-func TestReadFailures(t *testing.T) {
+func TestReadRefusesWhatItCannotRead(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "f", []byte(`{"a":1}`))
 
@@ -275,7 +182,7 @@ func TestReadFailureNamesThePath(t *testing.T) {
 	}
 }
 
-func TestReadPermissionDenied(t *testing.T) {
+func TestReadReportsPermissionDenied(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("running as root, which reads a file whatever its mode says")
 	}
@@ -315,9 +222,9 @@ func TestReadFollowsSymlinks(t *testing.T) {
 	}
 }
 
-// TestBrokenSymlink checks that a link to nothing is reported as a missing
+// TestReadReportsABrokenSymlink checks that a link to nothing is reported as a missing
 // file rather than as one of the store's own refusals.
-func TestBrokenSymlink(t *testing.T) {
+func TestReadReportsABrokenSymlink(t *testing.T) {
 	dir := t.TempDir()
 
 	link := filepath.Join(dir, "link")

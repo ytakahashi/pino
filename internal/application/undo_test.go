@@ -12,18 +12,6 @@ import (
 // choosing an earlier root, so "the document came back" is one pointer
 // comparison and needs no notion of two trees being equal.
 
-// commitEdit makes an edit current, the way the editing flow will once it is
-// wired up: the new tree, a version to come back to, and the folded set
-// following where things moved.
-func commitEdit(t *testing.T, a *App, res domain.EditResult, label string) {
-	t.Helper()
-
-	a.doc.Replace(res.Root)
-	a.history.Push(Revision{Root: res.Root, Cursor: res.Cursor, Label: label})
-	a.view.Apply(res)
-	a.settle(a.render())
-}
-
 func TestUndoBringsBackTheTreeThatWasThere(t *testing.T) {
 	t.Parallel()
 
@@ -214,22 +202,6 @@ func TestOpeningAnotherDocumentStartsTheHistoryAgain(t *testing.T) {
 	if app.doc.Root() != opened {
 		t.Error("undo reached back into the document opened before this one")
 	}
-}
-
-// featureList is an array of containers, which is the one shape where a fold
-// has to move: deleting an element brings the ones after it down, and a fold
-// sits on one of those.
-//
-//	{ "features": [ {"name": "first"}, {"name": "second"} ] }
-func featureList(t *testing.T) domain.Node {
-	t.Helper()
-
-	return object(t,
-		member("features", domain.NewArray([]domain.Node{
-			object(t, member("name", text(t, "first"))),
-			object(t, member("name", text(t, "second"))),
-		})),
-	)
 }
 
 func TestUndoDoesNotPutFoldsBack(t *testing.T) {
