@@ -100,7 +100,7 @@ func TestViewClipsRowsToTheWidth(t *testing.T) {
 
 // Nothing is open until a document has been read, and drawing has to survive
 // that: the program is on the screen before the first file arrives.
-func TestViewWithoutADocument(t *testing.T) {
+func TestViewDrawsAnEmptyScreenWithoutADocument(t *testing.T) {
 	app := application.New(application.Deps{
 		Parser:   fakeParser{},
 		Files:    fakeFileStore{},

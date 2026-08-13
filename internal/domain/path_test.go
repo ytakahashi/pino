@@ -1,18 +1,16 @@
-package domain_test
+package domain
 
 import (
 	"errors"
 	"math"
 	"strconv"
 	"testing"
-
-	"github.com/ytakahashi/pino/internal/domain"
 )
 
-func TestSegment(t *testing.T) {
+func TestSegmentsExposeTheirKeyOrIndex(t *testing.T) {
 	t.Parallel()
 
-	key := domain.KeySegment("host")
+	key := KeySegment("host")
 	if !key.IsKey() {
 		t.Error("KeySegment().IsKey() = false")
 	}
@@ -25,7 +23,7 @@ func TestSegment(t *testing.T) {
 		t.Errorf("Token() = %q, want %q", key.Token(), "host")
 	}
 
-	idx := domain.IndexSegment(12)
+	idx := IndexSegment(12)
 	if idx.IsKey() {
 		t.Error("IndexSegment().IsKey() = true")
 	}
@@ -38,7 +36,7 @@ func TestSegment(t *testing.T) {
 		t.Errorf("Token() = %q, want %q", idx.Token(), "12")
 	}
 
-	if domain.KeySegment("host") != key {
+	if KeySegment("host") != key {
 		t.Error("segments built the same way did not compare equal")
 	}
 }
@@ -59,7 +57,7 @@ func TestIndexSegmentRejectsNegativeIndex(t *testing.T) {
 				}
 			}()
 
-			_ = domain.IndexSegment(i)
+			_ = IndexSegment(i)
 		})
 	}
 }
@@ -67,7 +65,7 @@ func TestIndexSegmentRejectsNegativeIndex(t *testing.T) {
 func TestIndexSegmentAcceptsZero(t *testing.T) {
 	t.Parallel()
 
-	seg := domain.IndexSegment(0)
+	seg := IndexSegment(0)
 
 	if seg.IsKey() {
 		t.Error("IndexSegment(0).IsKey() = true")
@@ -82,10 +80,10 @@ func TestIndexSegmentAcceptsZero(t *testing.T) {
 	}
 }
 
-func TestPathRoot(t *testing.T) {
+func TestTheZeroPathIsTheRoot(t *testing.T) {
 	t.Parallel()
 
-	root := domain.Path{}
+	root := Path{}
 
 	if !root.IsRoot() {
 		t.Error("the zero Path is not the root")
@@ -100,57 +98,57 @@ func TestPathRoot(t *testing.T) {
 	}
 }
 
-func TestPathString(t *testing.T) {
+func TestPathStringUsesJSONPointerSyntax(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		path domain.Path
+		path Path
 		want string
 	}{
 		{
 			name: "object member",
-			path: path(domain.KeySegment("server"), domain.KeySegment("host")),
+			path: path(KeySegment("server"), KeySegment("host")),
 			want: "/server/host",
 		},
 		{
 			name: "array element",
-			path: path(domain.KeySegment("features"), domain.IndexSegment(1)),
+			path: path(KeySegment("features"), IndexSegment(1)),
 			want: "/features/1",
 		},
 		{
 			name: "empty key",
-			path: path(domain.KeySegment("")),
+			path: path(KeySegment("")),
 			want: "/",
 		},
 		{
 			name: "key containing a slash",
-			path: path(domain.KeySegment("a/b")),
+			path: path(KeySegment("a/b")),
 			want: "/a~1b",
 		},
 		{
 			name: "key containing a tilde",
-			path: path(domain.KeySegment("m~n")),
+			path: path(KeySegment("m~n")),
 			want: "/m~0n",
 		},
 		{
 			// Escaping "~" first must not turn the "0" it produces into "~00".
 			name: "key that already looks escaped",
-			path: path(domain.KeySegment("~1")),
+			path: path(KeySegment("~1")),
 			want: "/~01",
 		},
 		{
 			name: "key with both specials",
-			path: path(domain.KeySegment("~/")),
+			path: path(KeySegment("~/")),
 			want: "/~0~1",
 		},
 		{
 			name: "deep path",
 			path: path(
-				domain.KeySegment("a"),
-				domain.IndexSegment(0),
-				domain.KeySegment("b"),
-				domain.IndexSegment(10),
+				KeySegment("a"),
+				IndexSegment(0),
+				KeySegment("b"),
+				IndexSegment(10),
 			),
 			want: "/a/0/b/10",
 		},
@@ -167,7 +165,7 @@ func TestPathString(t *testing.T) {
 	}
 }
 
-func TestParsePointer(t *testing.T) {
+func TestParsePointerBuildsKeySegments(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -191,7 +189,7 @@ func TestParsePointer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := domain.ParsePointer(tt.pointer)
+			got, err := ParsePointer(tt.pointer)
 			if err != nil {
 				t.Fatalf("ParsePointer(%q) error = %v", tt.pointer, err)
 			}
@@ -216,7 +214,7 @@ func TestParsePointer(t *testing.T) {
 
 // Text going through ParsePointer and back must come out unchanged, escapes
 // included.
-func TestPointerRoundTrip(t *testing.T) {
+func TestPointersSurviveAStringRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	pointers := []string{
@@ -237,7 +235,7 @@ func TestPointerRoundTrip(t *testing.T) {
 		t.Run(pointer, func(t *testing.T) {
 			t.Parallel()
 
-			p, err := domain.ParsePointer(pointer)
+			p, err := ParsePointer(pointer)
 			if err != nil {
 				t.Fatalf("ParsePointer(%q) error = %v", pointer, err)
 			}
@@ -268,12 +266,12 @@ func TestParsePointerRejectsMalformed(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := domain.ParsePointer(tt.pointer)
+			_, err := ParsePointer(tt.pointer)
 			if err == nil {
 				t.Fatalf("ParsePointer(%q) succeeded, want an error", tt.pointer)
 			}
 
-			var invalid *domain.InvalidPointerError
+			var invalid *InvalidPointerError
 			if !errors.As(err, &invalid) {
 				t.Fatalf("error = %v, want *InvalidPointerError", err)
 			}
@@ -296,10 +294,10 @@ func TestParsePointerRejectsMalformed(t *testing.T) {
 func TestChildDoesNotDisturbTheParent(t *testing.T) {
 	t.Parallel()
 
-	parent := path(domain.KeySegment("server"))
+	parent := path(KeySegment("server"))
 
-	host := parent.Child(domain.KeySegment("host"))
-	port := parent.Child(domain.KeySegment("port"))
+	host := parent.Child(KeySegment("host"))
+	port := parent.Child(KeySegment("port"))
 
 	if got := parent.String(); got != "/server" {
 		t.Errorf("parent = %q, want %q", got, "/server")
@@ -314,13 +312,13 @@ func TestChildDoesNotDisturbTheParent(t *testing.T) {
 	}
 
 	// Deeper, where a shared backing array would have more room to bite.
-	deep := domain.Path{}
+	deep := Path{}
 	for _, key := range []string{"a", "b", "c", "d"} {
-		deep = deep.Child(domain.KeySegment(key))
+		deep = deep.Child(KeySegment(key))
 	}
 
-	left := deep.Child(domain.IndexSegment(0))
-	right := deep.Child(domain.IndexSegment(1))
+	left := deep.Child(IndexSegment(0))
+	right := deep.Child(IndexSegment(1))
 
 	if got := left.String(); got != "/a/b/c/d/0" {
 		t.Errorf("left = %q, want %q", got, "/a/b/c/d/0")
@@ -335,34 +333,34 @@ func TestChildDoesNotDisturbTheParent(t *testing.T) {
 	}
 }
 
-func TestPathParent(t *testing.T) {
+func TestPathParentRemovesTheLastSegment(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		path domain.Path
+		path Path
 		want string
 	}{
 		{
 			name: "deep path",
-			path: path(domain.KeySegment("a"), domain.KeySegment("b"), domain.KeySegment("c")),
+			path: path(KeySegment("a"), KeySegment("b"), KeySegment("c")),
 			want: "/a/b",
 		},
 		{
 			name: "array element",
-			path: path(domain.KeySegment("features"), domain.IndexSegment(1)),
+			path: path(KeySegment("features"), IndexSegment(1)),
 			want: "/features",
 		},
 		{
 			name: "one level down",
-			path: path(domain.KeySegment("server")),
+			path: path(KeySegment("server")),
 			want: "",
 		},
 		{
 			// The root being its own parent is what lets a walk upwards stop on
 			// IsRoot instead of on a second return value.
 			name: "the root",
-			path: domain.Path{},
+			path: Path{},
 			want: "",
 		},
 	}
@@ -384,10 +382,10 @@ func TestPathParentClimbsToTheRoot(t *testing.T) {
 	t.Parallel()
 
 	p := path(
-		domain.KeySegment("a"),
-		domain.IndexSegment(0),
-		domain.KeySegment("b"),
-		domain.KeySegment("c"),
+		KeySegment("a"),
+		IndexSegment(0),
+		KeySegment("b"),
+		KeySegment("c"),
 	)
 
 	steps := 0
@@ -412,15 +410,15 @@ func TestParentDoesNotDisturbTheOriginalPath(t *testing.T) {
 	t.Parallel()
 
 	original := path(
-		domain.KeySegment("server"),
-		domain.KeySegment("features"),
-		domain.IndexSegment(0),
+		KeySegment("server"),
+		KeySegment("features"),
+		IndexSegment(0),
 	)
 
 	parent := original.Parent()
 
-	first := parent.Child(domain.IndexSegment(7))
-	second := parent.Child(domain.IndexSegment(8))
+	first := parent.Child(IndexSegment(7))
+	second := parent.Child(IndexSegment(8))
 
 	if got := original.String(); got != "/server/features/0" {
 		t.Errorf("original = %q, want %q", got, "/server/features/0")
@@ -439,50 +437,50 @@ func TestParentDoesNotDisturbTheOriginalPath(t *testing.T) {
 	}
 }
 
-func TestPathEqual(t *testing.T) {
+func TestPathEqualComparesTokensAcrossSegmentTypes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		a, b domain.Path
+		a, b Path
 		want bool
 	}{
 		{
 			name: "both root",
-			a:    domain.Path{},
-			b:    domain.Path{},
+			a:    Path{},
+			b:    Path{},
 			want: true,
 		},
 		{
 			name: "same keys",
-			a:    path(domain.KeySegment("server"), domain.KeySegment("host")),
-			b:    path(domain.KeySegment("server"), domain.KeySegment("host")),
+			a:    path(KeySegment("server"), KeySegment("host")),
+			b:    path(KeySegment("server"), KeySegment("host")),
 			want: true,
 		},
 		{
 			name: "different keys",
-			a:    path(domain.KeySegment("server"), domain.KeySegment("host")),
-			b:    path(domain.KeySegment("server"), domain.KeySegment("port")),
+			a:    path(KeySegment("server"), KeySegment("host")),
+			b:    path(KeySegment("server"), KeySegment("port")),
 			want: false,
 		},
 		{
 			name: "different depth",
-			a:    path(domain.KeySegment("server")),
-			b:    path(domain.KeySegment("server"), domain.KeySegment("host")),
+			a:    path(KeySegment("server")),
+			b:    path(KeySegment("server"), KeySegment("host")),
 			want: false,
 		},
 		{
 			// A parsed pointer yields key segments, while the cursor holds an
 			// index segment. Both name the same node.
 			name: "index segment against the key segment parsed from it",
-			a:    path(domain.KeySegment("features"), domain.IndexSegment(0)),
-			b:    path(domain.KeySegment("features"), domain.KeySegment("0")),
+			a:    path(KeySegment("features"), IndexSegment(0)),
+			b:    path(KeySegment("features"), KeySegment("0")),
 			want: true,
 		},
 		{
 			name: "index segments differing",
-			a:    path(domain.IndexSegment(1)),
-			b:    path(domain.IndexSegment(2)),
+			a:    path(IndexSegment(1)),
+			b:    path(IndexSegment(2)),
 			want: false,
 		},
 	}
@@ -508,13 +506,13 @@ func TestParsedPointerEqualsTheOriginalPath(t *testing.T) {
 	t.Parallel()
 
 	original := path(
-		domain.KeySegment("server"),
-		domain.KeySegment("features"),
-		domain.IndexSegment(2),
-		domain.KeySegment("a/b"),
+		KeySegment("server"),
+		KeySegment("features"),
+		IndexSegment(2),
+		KeySegment("a/b"),
 	)
 
-	parsed, err := domain.ParsePointer(original.String())
+	parsed, err := ParsePointer(original.String())
 	if err != nil {
 		t.Fatalf("ParsePointer(%q) error = %v", original.String(), err)
 	}
@@ -524,10 +522,10 @@ func TestParsedPointerEqualsTheOriginalPath(t *testing.T) {
 	}
 }
 
-func TestPathAll(t *testing.T) {
+func TestPathAllYieldsEverySegmentInOrder(t *testing.T) {
 	t.Parallel()
 
-	p := path(domain.KeySegment("server"), domain.IndexSegment(3), domain.KeySegment("host"))
+	p := path(KeySegment("server"), IndexSegment(3), KeySegment("host"))
 
 	var got []string
 	for i, s := range p.All() {

@@ -8,63 +8,10 @@ import (
 	"github.com/ytakahashi/pino/internal/application"
 )
 
-// allModes is every mode the application defines. Only normal is reachable
-// so far; the rest are listed so that a binding said to work everywhere is
-// checked everywhere rather than only where it happens to be used today.
-var allModes = []application.Mode{
-	application.ModeNormal,
-	application.ModeEdit,
-	application.ModeInsert,
-	application.ModeConfirm,
-	application.ModeHelp,
-}
-
 // The keystrokes below are built the way a terminal reports them, since the
 // table is matched against their textual form and that is what produces it.
 
-func key(r rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: r, Text: string(r)} }
-
-func shifted(base, upper rune) tea.KeyPressMsg {
-	return tea.KeyPressMsg{Code: base, Mod: tea.ModShift, ShiftedCode: upper, Text: string(upper)}
-}
-
-func ctrl(r rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: r, Mod: tea.ModCtrl} }
-
-func special(code rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: code} }
-
-// feed types a sequence of keys, answering the Actions it produced and the
-// prefix left waiting at the end.
-func feed(mode application.Mode, keys ...tea.KeyPressMsg) ([]application.Action, Pending) {
-	var (
-		got     []application.Action
-		pending Pending
-	)
-
-	for _, k := range keys {
-		var act application.Action
-
-		act, pending = Resolve(k, mode, pending)
-		if act != nil {
-			got = append(got, act)
-		}
-	}
-
-	return got, pending
-}
-
-func assertOneAction(t *testing.T, got []application.Action, want application.Action) {
-	t.Helper()
-
-	if len(got) != 1 {
-		t.Fatalf("produced %v, want exactly %v", got, want)
-	}
-
-	if got[0] != want {
-		t.Errorf("produced %v, want %v", got[0], want)
-	}
-}
-
-func TestResolveInNormalMode(t *testing.T) {
+func TestResolveMapsNormalModeKeysToActions(t *testing.T) {
 	tests := []struct {
 		name string
 		key  tea.KeyPressMsg
@@ -262,7 +209,7 @@ func TestResolveQuitsDuringAPrefix(t *testing.T) {
 // Every mode but normal is unreachable so far, and none of them borrows the
 // bindings of the one they will be entered from: a key pressed while editing
 // belongs to the editor, not to the document.
-func TestResolveOutsideNormalMode(t *testing.T) {
+func TestResolveIgnoresNormalModeKeysOutsideNormalMode(t *testing.T) {
 	for _, mode := range allModes {
 		if mode == application.ModeNormal {
 			continue
@@ -298,7 +245,7 @@ func TestResolveDropsAPrefixOnAChangeOfMode(t *testing.T) {
 
 // What a key means while a list of choices is on screen. The list comes from
 // the prompt, because it is the prompt that wrote the keys down.
-func TestResolveChoice(t *testing.T) {
+func TestResolveChoiceMapsKeysToAnswers(t *testing.T) {
 	t.Parallel()
 
 	p := application.PromptInfo{

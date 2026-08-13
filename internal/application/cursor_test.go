@@ -9,27 +9,7 @@ import (
 // The arithmetic of moving around rendered rows: which row a step leads to,
 // and where the window has to sit for it to be seen.
 
-// rows renders a document the way the session does, so that the fixtures obey
-// what the walking functions rely on: an open row for every close row, and a
-// depth that grows by one per level. Hand-written rows can say things a
-// renderer never would.
-func rows(t *testing.T, root domain.Node, folded map[string]struct{}) []Line {
-	t.Helper()
-
-	return NewJSONRenderer().Render(root, RenderOptions{Collapsed: folded})
-}
-
-func pointerAt(t *testing.T, lines []Line, row int) string {
-	t.Helper()
-
-	if row < 0 || row >= len(lines) {
-		t.Fatalf("row %d is out of range for %d rows", row, len(lines))
-	}
-
-	return lines[row].Path.String()
-}
-
-func TestIndexOf(t *testing.T) {
+func TestIndexOfFindsTheNodeAtAPath(t *testing.T) {
 	t.Parallel()
 
 	lines := rows(t, sample(t), nil)
@@ -71,7 +51,7 @@ func TestIndexOfPrefersTheOpeningRow(t *testing.T) {
 	}
 }
 
-func TestVisibleRow(t *testing.T) {
+func TestVisibleRowFindsTheNearestVisibleAncestor(t *testing.T) {
 	t.Parallel()
 
 	deep := path(domain.KeySegment("server"), domain.KeySegment("ports"), domain.IndexSegment(1))
@@ -124,7 +104,7 @@ func TestVisibleRow(t *testing.T) {
 	}
 }
 
-func TestVisibleRowWithoutRows(t *testing.T) {
+func TestVisibleRowFindsNothingWithoutRows(t *testing.T) {
 	t.Parallel()
 
 	if got := visibleRow(nil, path(domain.KeySegment("a"))); got != -1 {
@@ -136,7 +116,7 @@ func TestVisibleRowWithoutRows(t *testing.T) {
 	}
 }
 
-func TestFirstRow(t *testing.T) {
+func TestFirstRowFindsTheFirstNode(t *testing.T) {
 	t.Parallel()
 
 	if got := firstRow(rows(t, sample(t), nil)); got != 0 {
@@ -243,7 +223,7 @@ func TestNextAndPrevRowStopAtTheEnds(t *testing.T) {
 	}
 }
 
-func TestParentRow(t *testing.T) {
+func TestParentRowFindsTheContainerAbove(t *testing.T) {
 	t.Parallel()
 
 	lines := rows(t, sample(t), nil)
@@ -293,7 +273,7 @@ func TestParentRow(t *testing.T) {
 	}
 }
 
-func TestParentRowOfTheRoot(t *testing.T) {
+func TestParentRowKeepsTheRootAtTheRoot(t *testing.T) {
 	t.Parallel()
 
 	lines := rows(t, sample(t), nil)
@@ -307,7 +287,7 @@ func TestParentRowOfTheRoot(t *testing.T) {
 	}
 }
 
-func TestFirstChildRow(t *testing.T) {
+func TestFirstChildRowFindsTheFirstChild(t *testing.T) {
 	t.Parallel()
 
 	lines := rows(t, sample(t), nil)
@@ -332,7 +312,7 @@ func TestFirstChildRow(t *testing.T) {
 
 // A folded container has no children on screen, so moving in has to unfold it
 // first rather than stepping onto whatever row follows.
-func TestFirstChildRowOfAFoldedContainer(t *testing.T) {
+func TestFirstChildRowFindsNothingInAFoldedContainer(t *testing.T) {
 	t.Parallel()
 
 	lines := rows(t, sample(t), folded("/server"))
@@ -344,7 +324,7 @@ func TestFirstChildRowOfAFoldedContainer(t *testing.T) {
 }
 
 // An empty container is drawn on one row and has nothing to step into either.
-func TestFirstChildRowOfAnEmptyContainer(t *testing.T) {
+func TestFirstChildRowFindsNothingInAnEmptyContainer(t *testing.T) {
 	t.Parallel()
 
 	lines := rows(t, object(t, member("opts", object(t))), nil)
@@ -356,7 +336,7 @@ func TestFirstChildRowOfAnEmptyContainer(t *testing.T) {
 
 // The end of a document is its last node, not its last row: the rows closing
 // everything still open come after it.
-func TestLastRow(t *testing.T) {
+func TestLastRowFindsTheFinalNode(t *testing.T) {
 	t.Parallel()
 
 	lines := rows(t, sample(t), nil)
@@ -376,7 +356,7 @@ func TestLastRow(t *testing.T) {
 	}
 }
 
-func TestNearestRow(t *testing.T) {
+func TestNearestRowFindsTheClosestNode(t *testing.T) {
 	t.Parallel()
 
 	lines := rows(t, sample(t), nil)
@@ -440,7 +420,7 @@ func TestNearestRowAlwaysLandsOnANode(t *testing.T) {
 	}
 }
 
-func TestClampScroll(t *testing.T) {
+func TestClampScrollKeepsTheOffsetWithinItsBounds(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {

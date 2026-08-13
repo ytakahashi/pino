@@ -6,7 +6,7 @@ import (
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
-func TestJSONRender(t *testing.T) {
+func TestJSONRenderDrawsTheWholeDocument(t *testing.T) {
 	t.Parallel()
 
 	for name, doc := range documents(t) {
@@ -18,7 +18,7 @@ func TestJSONRender(t *testing.T) {
 	}
 }
 
-func TestJSONRenderWithoutDocument(t *testing.T) {
+func TestJSONRenderReturnsNoLinesWithoutADocument(t *testing.T) {
 	t.Parallel()
 
 	if lines := NewJSONRenderer().Render(nil, RenderOptions{}); lines != nil {

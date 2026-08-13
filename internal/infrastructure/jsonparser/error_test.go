@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestLineColumn(t *testing.T) {
+func TestLineColumnMapsOffsetsToPositions(t *testing.T) {
 	src := []byte("ab\ncde\n\nf")
 
 	tests := []struct {
@@ -46,9 +46,9 @@ func TestLineColumnCountsBytes(t *testing.T) {
 	}
 }
 
-// TestParseHujsonError covers taking apart the one string the library reports
-// a failure in.
-func TestParseHujsonError(t *testing.T) {
+// TestParseHujsonErrorExtractsThePositionAndMessage covers taking apart the
+// one string the library reports a failure in.
+func TestParseHujsonErrorExtractsThePositionAndMessage(t *testing.T) {
 	tests := []struct {
 		name         string
 		err          string
@@ -90,11 +90,11 @@ func TestParseHujsonError(t *testing.T) {
 	}
 }
 
-// TestParseHujsonErrorFallback is the reason the shape is matched rather than
-// assumed. The library gives no typed error and could reword or restructure
-// its messages; pino then loses the position, and must not lose the message
-// with it or fail trying to read one that is not there.
-func TestParseHujsonErrorFallback(t *testing.T) {
+// TestParseHujsonErrorKeepsAnUnrecognisedMessage is the reason the shape is
+// matched rather than assumed. The library gives no typed error and could
+// reword or restructure its messages; pino then loses the position, and must
+// not lose the message with it or fail trying to read one that is not there.
+func TestParseHujsonErrorKeepsAnUnrecognisedMessage(t *testing.T) {
 	tests := []struct {
 		name string
 		err  string
@@ -122,7 +122,7 @@ func TestParseHujsonErrorFallback(t *testing.T) {
 	}
 }
 
-func TestSyntaxErrorError(t *testing.T) {
+func TestSyntaxErrorNamesThePositionAndMessage(t *testing.T) {
 	tests := []struct {
 		name string
 		err  *SyntaxError
@@ -141,7 +141,7 @@ func TestSyntaxErrorError(t *testing.T) {
 	}
 }
 
-func TestSyntaxErrorUnwrap(t *testing.T) {
+func TestSyntaxErrorUnwrapsItsCause(t *testing.T) {
 	cause := errors.New("cause")
 	err := &SyntaxError{Msg: "oops", Err: cause}
 

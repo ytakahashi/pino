@@ -9,7 +9,7 @@ import (
 // Moving the window: what the reader is shown as the selection travels past
 // the top or the bottom of it.
 
-func TestScrollHalf(t *testing.T) {
+func TestScrollHalfMovesByHalfAWindow(t *testing.T) {
 	t.Parallel()
 
 	// A document long enough to scroll through: ten members of two rows each.
@@ -76,7 +76,7 @@ func TestScrollHalf(t *testing.T) {
 // Turning a wheel moves the window. The selection comes along only when the
 // window would otherwise leave it behind, since the status bar names the node
 // it is on and naming one off the screen says nothing.
-func TestScrollBy(t *testing.T) {
+func TestScrollByMovesByTheRequestedRows(t *testing.T) {
 	t.Parallel()
 
 	const height = 5
@@ -181,7 +181,7 @@ func TestScrollByStopsAtTheEnds(t *testing.T) {
 
 // Without a window there is nothing to scroll, and nothing to be pushed out
 // of either.
-func TestScrollByWithoutAWindow(t *testing.T) {
+func TestScrollByDoesNothingWithoutAWindow(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, sample(t))
@@ -206,7 +206,7 @@ func TestScrollByWithoutAWindow(t *testing.T) {
 
 // A document that fits has nowhere to scroll to, and the selection is left
 // alone rather than dragged to an edge.
-func TestScrollByOnADocumentThatFits(t *testing.T) {
+func TestScrollByLeavesADocumentThatFitsAtTheTop(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, sample(t))
@@ -264,7 +264,7 @@ func TestReachingTheLastNodeShowsTheEnd(t *testing.T) {
 
 // A document that fits is drawn from the top wherever the cursor is, so
 // reaching the end of one does not scroll it.
-func TestReachingTheLastNodeOfADocumentThatFits(t *testing.T) {
+func TestReachingTheLastNodeOfADocumentThatFitsKeepsItAtTheTop(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, sample(t))
@@ -333,7 +333,7 @@ func TestScrollHalfStopsAtTheEnds(t *testing.T) {
 }
 
 // A document that fits has nothing to scroll, but the cursor still travels.
-func TestScrollHalfOnADocumentThatFits(t *testing.T) {
+func TestScrollHalfLeavesADocumentThatFitsAtTheTop(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, sample(t))
@@ -352,7 +352,7 @@ func TestScrollHalfOnADocumentThatFits(t *testing.T) {
 
 // The terminal has not said how big it is yet, and there may be no document at
 // all. Neither is a reason to fail.
-func TestScrollHalfWithoutAWindow(t *testing.T) {
+func TestScrollHalfDoesNothingWithoutAWindow(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, sample(t))

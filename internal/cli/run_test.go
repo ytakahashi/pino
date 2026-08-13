@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,35 +10,7 @@ import (
 	"github.com/ytakahashi/pino/internal/infrastructure/jsonparser"
 )
 
-// run drives Run with its output captured.
-//
-// None of these cases reach the terminal interface: every one of them is
-// answered before a document is open, which is what makes the whole of Run
-// testable without a terminal. The one path that does start it is covered by
-// the tests in internal/e2e.
-func run(t *testing.T, args ...string) (code int, stdout, stderr string) {
-	t.Helper()
-
-	var out, errOut bytes.Buffer
-
-	code = Run(args, &out, &errOut)
-
-	return code, out.String(), errOut.String()
-}
-
-// write puts contents in a file of its own and returns the path.
-func write(t *testing.T, name, contents string) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), name)
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
-		t.Fatalf("writing %s: %v", path, err)
-	}
-
-	return path
-}
-
-func TestUsageErrors(t *testing.T) {
+func TestRunReportsUsageErrors(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -85,7 +56,7 @@ func TestUnknownFlagIsNamed(t *testing.T) {
 }
 
 // Help was asked for, so it is output rather than a complaint.
-func TestHelp(t *testing.T) {
+func TestHelpPrintsUsage(t *testing.T) {
 	t.Parallel()
 
 	code, stdout, stderr := run(t, "-help")
@@ -109,7 +80,7 @@ func TestHelp(t *testing.T) {
 	}
 }
 
-func TestVersion(t *testing.T) {
+func TestVersionPrintsTheBuildVersion(t *testing.T) {
 	t.Parallel()
 
 	code, stdout, stderr := run(t, "-version")
@@ -129,7 +100,7 @@ func TestVersion(t *testing.T) {
 
 // The version is answered before the argument is looked at, so that it can be
 // asked for on its own.
-func TestVersionWithoutAFile(t *testing.T) {
+func TestVersionNeedsNoFile(t *testing.T) {
 	t.Parallel()
 
 	if code, _, _ := run(t, "-version"); code != exitOK {
@@ -140,7 +111,7 @@ func TestVersionWithoutAFile(t *testing.T) {
 // A file that cannot be read is reported by the error the file store raised,
 // which names the path itself. Nothing is added around it, so the path is not
 // printed twice.
-func TestUnreadableFile(t *testing.T) {
+func TestRunNamesAnUnreadableFile(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -193,7 +164,7 @@ func TestUnreadableFile(t *testing.T) {
 
 // Everything that stops a document from being read is reported the same way:
 // one line, naming the file and the position within it.
-func TestDocumentThatCannotBeOpened(t *testing.T) {
+func TestRunReportsADocumentThatCannotBeOpened(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -268,7 +239,7 @@ func TestDocumentThatCannotBeOpened(t *testing.T) {
 // A failure the parser could not place is still reported, with the file it was
 // found in and without a position. The error is reached through a wrapping, as
 // it would be by the time it comes back from opening a document.
-func TestReportOpenErrorWithoutAPosition(t *testing.T) {
+func TestReportOpenErrorOmitsAnUnknownPosition(t *testing.T) {
 	t.Parallel()
 
 	var b bytes.Buffer

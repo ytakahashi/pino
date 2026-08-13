@@ -16,16 +16,13 @@ import (
 //
 // The path is parsed from text rather than built segment by segment, so that a
 // test names the node the way the status bar does.
-func standOn(t *testing.T, a *App, pointer string) {
+func standOn(t *testing.T, a *App, ptr string) {
 	t.Helper()
 
-	p, err := domain.ParsePointer(pointer)
-	if err != nil {
-		t.Fatalf("ParsePointer(%q): %v", pointer, err)
-	}
+	p := pointer(t, ptr)
 
 	if _, ok := domain.Resolve(a.doc.Root(), p); !ok {
-		t.Fatalf("%q is not in the document", pointer)
+		t.Fatalf("%q is not in the document", ptr)
 	}
 
 	a.view.Cursor = p

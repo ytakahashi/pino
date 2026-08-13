@@ -11,51 +11,7 @@ import (
 	"github.com/ytakahashi/pino/internal/application"
 )
 
-// stripped is a pane read back without styling, one entry per row, every row
-// still filled out to the width the pane was asked for.
-func stripped(pane []string) []string {
-	rows := make([]string, 0, len(pane))
-	for _, row := range pane {
-		rows = append(rows, ansi.Strip(row))
-	}
-
-	return rows
-}
-
-// plain is stripped with the filling dropped, for the tests whose rows carry
-// nothing meaningful at their right hand end.
-func plain(pane []string) []string {
-	rows := stripped(pane)
-	for i, row := range rows {
-		rows[i] = strings.TrimRight(row, " ")
-	}
-
-	return rows
-}
-
-// scalarInfo and containerInfo stand for the two shapes the pane describes.
-func scalarInfo() application.InspectorInfo {
-	return application.InspectorInfo{
-		Pointer: "/server/port",
-		Type:    "number",
-		Value:   application.Span{Text: "8080", Role: application.RoleNumberValue},
-		Label:   "port",
-		Naming:  application.NamedKey,
-	}
-}
-
-func containerInfo() application.InspectorInfo {
-	return application.InspectorInfo{
-		Pointer:   "/server",
-		Type:      "object",
-		Container: true,
-		Children:  3,
-		Label:     "server",
-		Naming:    application.NamedKey,
-	}
-}
-
-func TestInspectorFields(t *testing.T) {
+func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 	tests := map[string]struct {
 		info application.InspectorInfo
 		want []string // "Name=Value"
@@ -133,7 +89,7 @@ func TestInspectorFields(t *testing.T) {
 
 // A key holding a control character would break a row in two or be obeyed by
 // the terminal. The pointer carries the same key and is guarded the same way.
-func TestInspectorFieldsMakesOutsideTextPrintable(t *testing.T) {
+func TestInspectorFieldsMakeOutsideTextPrintable(t *testing.T) {
 	info := application.InspectorInfo{
 		Pointer: "/nl\nhere",
 		Type:    "number",
@@ -168,7 +124,7 @@ func TestInspectorFieldsStyleOnlyTheValue(t *testing.T) {
 
 // The pane beside the tree puts a field's name above its value, with a blank
 // row between one field and the next.
-func TestRenderInspectorPane(t *testing.T) {
+func TestRenderInspectorPaneDrawsLabelledRows(t *testing.T) {
 	got := plain(DefaultTheme().RenderInspectorPane(scalarInfo(), 32, 14))
 
 	want := []string{
@@ -227,7 +183,7 @@ func TestRenderInspectorPaneCutsAtTheHeight(t *testing.T) {
 
 // The stacked pane puts a field on a row of its own, the values lined up in
 // one column.
-func TestRenderInspectorStrip(t *testing.T) {
+func TestRenderInspectorStripDrawsCompactFields(t *testing.T) {
 	got := plain(DefaultTheme().RenderInspectorStrip(scalarInfo(), 60, 4))
 
 	want := []string{
@@ -297,17 +253,7 @@ func TestInspectorPanesAreExactlyTheSizeAsked(t *testing.T) {
 	}
 }
 
-func longValueInfo() application.InspectorInfo {
-	info := scalarInfo()
-	info.Value = application.Span{
-		Text: `"` + strings.Repeat("long ", 40) + `"`,
-		Role: application.RoleStringValue,
-	}
-
-	return info
-}
-
-func TestRenderHorizontalRule(t *testing.T) {
+func TestRenderHorizontalRuleFillsTheWidth(t *testing.T) {
 	if got := ansi.Strip(DefaultTheme().RenderHorizontalRule(5)); got != "─────" {
 		t.Errorf("RenderHorizontalRule(5) = %q, want five rules", got)
 	}
@@ -321,7 +267,7 @@ func TestRenderHorizontalRule(t *testing.T) {
 	}
 }
 
-func TestRenderVerticalRule(t *testing.T) {
+func TestRenderVerticalRuleDrawsOneCell(t *testing.T) {
 	if got := ansi.Strip(DefaultTheme().RenderVerticalRule()); got != "│" {
 		t.Errorf("RenderVerticalRule() = %q, want one rule", got)
 	}

@@ -26,8 +26,8 @@ func TestViewModeCyclesThroughEveryView(t *testing.T) {
 func TestRendererFollowsTheView(t *testing.T) {
 	t.Parallel()
 
-	jsonView := &spyRenderer{lines: []Line{{Kind: LineSingle}}}
-	treeView := &spyRenderer{lines: []Line{
+	jsonView := &fakeRenderer{lines: []Line{{Kind: LineSingle}}}
+	treeView := &fakeRenderer{lines: []Line{
 		{Kind: LineOpen},
 		{Path: path(domain.KeySegment("a")), Kind: LineSingle, Depth: 1},
 	}}
@@ -180,7 +180,7 @@ func TestToggleViewReturnsToTheSameNode(t *testing.T) {
 // This fixes how much is given up: the selection is exactly where it was, the
 // cursor is on screen throughout, and the shift the ends impose happens once
 // instead of growing with every press.
-func TestToggleViewAtTheEndOfADocument(t *testing.T) {
+func TestToggleViewKeepsTheEndOfADocumentVisible(t *testing.T) {
 	t.Parallel()
 
 	const height = 5
@@ -228,7 +228,7 @@ func TestToggleViewAtTheEndOfADocument(t *testing.T) {
 
 // A folded document is where the two views have least in common on screen and
 // most in common underneath: the same nodes are hidden, by the same set.
-func TestToggleViewWithDeepFolding(t *testing.T) {
+func TestToggleViewPreservesDeepFolding(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, sample(t))
@@ -265,7 +265,7 @@ func TestToggleViewWithDeepFolding(t *testing.T) {
 	}
 }
 
-func TestToggleViewWithoutDocument(t *testing.T) {
+func TestToggleViewDoesNothingWithoutADocument(t *testing.T) {
 	t.Parallel()
 
 	app := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()})

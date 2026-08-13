@@ -89,7 +89,7 @@ func TestCollapseAllLeavesEmptyContainers(t *testing.T) {
 }
 
 // A document that is a single value has no container to fold.
-func TestCollapseAllOnAScalarDocument(t *testing.T) {
+func TestCollapseAllLeavesAScalarDocumentAlone(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, text(t, "only"))
@@ -175,7 +175,7 @@ func TestExpandAllRestoresEveryContainer(t *testing.T) {
 	}
 }
 
-func TestFoldAllWithoutDocument(t *testing.T) {
+func TestFoldAllDoesNothingWithoutADocument(t *testing.T) {
 	t.Parallel()
 
 	for name, act := range map[string]Action{

@@ -9,7 +9,7 @@ import (
 // this is the real one, which is what the assertions turn on: the rows are
 // indented the way the file on disk is, and the bar counts the lines of the
 // document that was parsed rather than of one a test built.
-func TestReadsAFileFromDisk(t *testing.T) {
+func TestTheProgramReadsAFileFromDisk(t *testing.T) {
 	t.Parallel()
 
 	tm := start(t, "localhost")

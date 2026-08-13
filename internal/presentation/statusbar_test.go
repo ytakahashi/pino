@@ -1,7 +1,6 @@
 package presentation
 
 import (
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -12,19 +11,7 @@ import (
 	"github.com/ytakahashi/pino/internal/application"
 )
 
-// statusText is the bar without styling, with the run of spaces between its
-// two ends collapsed to the separator that divides the fields. What is left is
-// the fields in the order they are drawn.
-func statusText(theme Theme, info application.StatusInfo, lines int, pending Pending, width int) string {
-	bar := ansi.Strip(theme.RenderStatusBar(info, lines, pending, width))
-
-	return strings.TrimRight(gapPattern.ReplaceAllString(bar, separator), " ")
-}
-
-// gapPattern matches the space holding the two ends of the bar apart.
-var gapPattern = regexp.MustCompile(` {3,}`)
-
-func TestRenderStatusBarFields(t *testing.T) {
+func TestRenderStatusBarDrawsEveryField(t *testing.T) {
 	open := application.StatusInfo{
 		Mode:     application.ModeNormal,
 		ViewMode: application.ViewJSON,
@@ -351,24 +338,6 @@ func TestRenderStatusBarNeutralisesTheFileName(t *testing.T) {
 	}
 }
 
-func withDirty(info application.StatusInfo) application.StatusInfo {
-	info.Dirty = true
-
-	return info
-}
-
-func withIndent(info application.StatusInfo, indent string) application.StatusInfo {
-	info.Indent = indent
-
-	return info
-}
-
-func withCursor(info application.StatusInfo, pointer, typ string) application.StatusInfo {
-	info.Pointer, info.Type = pointer, typ
-
-	return info
-}
-
 // The tree view leaves the pointer and the type off the bar, because the
 // inspector says both a row below and says them at more length. What the bar
 // reports about the document itself does not change with the view.
@@ -436,10 +405,4 @@ func TestRenderStatusBarKeepsTheRightEndAcrossViews(t *testing.T) {
 			}
 		})
 	}
-}
-
-func withView(info application.StatusInfo, view application.ViewMode) application.StatusInfo {
-	info.ViewMode = view
-
-	return info
 }

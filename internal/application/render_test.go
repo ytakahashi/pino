@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestStringSpan(t *testing.T) {
+func TestStringSpanShortensAndEscapesAValue(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {

@@ -9,7 +9,7 @@ import (
 // Moving the selection from one node to the next: through the rows, in and
 // out of containers, and to the ends of the document.
 
-func TestMoveNextAndPrev(t *testing.T) {
+func TestMoveNextAndPrevWalkVisibleRows(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, sample(t))
@@ -62,7 +62,7 @@ func TestMoveNextAndPrev(t *testing.T) {
 	}
 }
 
-func TestMoveInAndOut(t *testing.T) {
+func TestMoveInAndOutFollowTreeDepth(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, sample(t))
@@ -239,7 +239,7 @@ func TestMoveOutWalksOutAndStops(t *testing.T) {
 
 // An empty container is drawn on one row and holds nothing, so neither
 // direction has anywhere to go.
-func TestMoveInAndOutOfAnEmptyContainer(t *testing.T) {
+func TestMoveInAndOutStayOnAnEmptyContainer(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, object(t,
@@ -335,7 +335,7 @@ func TestCursorRecoversFromBeingFoldedAway(t *testing.T) {
 	}
 }
 
-func TestMoveFirstAndLast(t *testing.T) {
+func TestMoveFirstAndLastReachTheDocumentEnds(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, sample(t))
@@ -386,7 +386,7 @@ func TestMoveFirstRecoversALostCursor(t *testing.T) {
 }
 
 // A document of one node has the same row for both ends.
-func TestMoveFirstAndLastOnASingleValue(t *testing.T) {
+func TestMoveFirstAndLastStayOnASingleValue(t *testing.T) {
 	t.Parallel()
 
 	app := session(t, text(t, "only"))

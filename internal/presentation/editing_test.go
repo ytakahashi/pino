@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/ytakahashi/pino/internal/domain"
 )
 
 // Editing a document through the terminal: the keys that open a prompt, where
@@ -15,38 +13,6 @@ import (
 // These drive the model rather than the session, so what they check is the
 // wiring: the same edits are checked for what they do to a document one layer
 // down.
-
-var (
-	enterKey  = special(tea.KeyEnter)
-	escapeKey = special(tea.KeyEscape)
-)
-
-// band is the rows the prompt takes, as they reach the screen.
-func band(t *testing.T, m Model) []string {
-	t.Helper()
-
-	l := m.layout()
-	if l.PromptHeight == 0 {
-		return nil
-	}
-
-	drawn := rows(t, m)
-
-	// The band sits between the document and the status bar, which is the last
-	// row of the screen.
-	end := len(drawn) - statusBarRows
-
-	return drawn[end-l.PromptHeight : end]
-}
-
-// statusRowOf is the bar along the bottom, without styling.
-func statusRowOf(t *testing.T, m Model) string {
-	t.Helper()
-
-	drawn := rows(t, m)
-
-	return drawn[len(drawn)-1]
-}
 
 func TestTypingAValueChangesTheDocument(t *testing.T) {
 	t.Parallel()
@@ -137,7 +103,7 @@ func TestAnAnswerThatCannotBeCommittedStaysOnTheBand(t *testing.T) {
 	}
 }
 
-func TestChoosingATypeFromTheList(t *testing.T) {
+func TestChoosingATypeFromTheListChangesTheValue(t *testing.T) {
 	t.Parallel()
 
 	m := press(t, sized(t, openTestApp(t), 60, 12), key('j'), key('j'), key('t'))
@@ -288,7 +254,7 @@ func TestTheBandIsDrawnBetweenTheDocumentAndTheBar(t *testing.T) {
 	}
 }
 
-func TestUndoAndRedoFromTheKeyboard(t *testing.T) {
+func TestKeyboardUndoAndRedoRestoreVersions(t *testing.T) {
 	t.Parallel()
 
 	m := press(t, sized(t, openTestApp(t), 60, 12), key('j'), key('j'), enterKey, key('1'), enterKey)
@@ -312,20 +278,6 @@ func TestUndoAndRedoFromTheKeyboard(t *testing.T) {
 	if got := rows(t, m); !strings.Contains(got[2], "80801") {
 		t.Errorf("the document reads %q after redo, want the edit back", got[2])
 	}
-}
-
-func equalRows(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-
-	return true
 }
 
 // The screen is exactly as tall as the terminal however little is left for the
@@ -358,24 +310,6 @@ func TestTheScreenIsWholeWithABandOnTheSmallestTerminal(t *testing.T) {
 			}
 		})
 	}
-}
-
-// awkwardDocument holds one value under "v", so that a value can be opened for
-// editing by moving down one row.
-func awkwardDocument(t *testing.T, value string) domain.Node {
-	t.Helper()
-
-	v, err := domain.NewString(value)
-	if err != nil {
-		t.Fatalf("NewString(%q) = %v", value, err)
-	}
-
-	root, err := domain.NewObject([]domain.Member{{Key: "v", Value: v}})
-	if err != nil {
-		t.Fatalf("NewObject() = %v", err)
-	}
-
-	return root
 }
 
 // A value is not changed by being looked at.
@@ -427,7 +361,7 @@ func TestOpeningAValueAndCommittingItChangesNothing(t *testing.T) {
 	}
 }
 
-func TestPastingIntoTheBox(t *testing.T) {
+func TestPastingIntoTheBoxInsertsClipboardText(t *testing.T) {
 	t.Parallel()
 
 	m := press(t, sized(t, openTestApp(t), 60, 12), key('j'), enterKey)
