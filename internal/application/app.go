@@ -30,8 +30,14 @@ type App struct {
 
 	doc    *Document
 	view   ViewState
-	mode   Mode
 	source Source
+
+	// flow is the edit in progress, and nil when there is none.
+	//
+	// The mode is derived from it rather than held beside it. Two fields could
+	// disagree — a session in ModeConfirm with nothing to confirm would take
+	// keys that led nowhere — and one value cannot.
+	flow *flow
 
 	// history is every version of the open document. Like the view state it
 	// belongs to the document rather than to the session: undoing in one file
@@ -65,7 +71,6 @@ func New(d Deps) *App {
 	return &App{
 		deps:   d,
 		view:   NewViewState(),
-		mode:   ModeNormal,
 		format: domain.DefaultFormat(),
 	}
 }
@@ -97,11 +102,11 @@ func (a *App) Open(path string) error {
 
 	// The view state describes the document being looked at, so it does not
 	// outlive it: a cursor, a scroll position and a folded set carried over
-	// from another file would point at nodes this one does not have. The
-	// mode is reset for the same reason, since a confirmation or an edit
-	// left open would be answered against the wrong document.
+	// from another file would point at nodes this one does not have. The edit
+	// in progress goes for the same reason, since a confirmation or a half
+	// typed value left open would be answered against the wrong document.
 	a.view = NewViewState()
-	a.mode = ModeNormal
+	a.flow = nil
 
 	// The history starts again for the same reason, at the document as it was
 	// read. The root is where a reader begins, and it resolves in any tree,
@@ -166,7 +171,17 @@ func (a *App) renderer() Renderer {
 }
 
 // Mode is what the next key press means.
-func (a *App) Mode() Mode { return a.mode }
+//
+// It follows from whether an edit is in progress and how far it has got, so
+// there is no state to reset: dropping the flow is returning to normal, and
+// the two cannot come apart.
+func (a *App) Mode() Mode {
+	if a.flow == nil {
+		return ModeNormal
+	}
+
+	return a.flow.mode()
+}
 
 // ViewMode is which of the views is drawing.
 //
@@ -210,7 +225,7 @@ type StatusInfo struct {
 // Status describes the session for the status bar.
 func (a *App) Status() StatusInfo {
 	info := StatusInfo{
-		Mode:     a.mode,
+		Mode:     a.Mode(),
 		ViewMode: a.view.ViewMode,
 		Indent:   a.format.Indent,
 	}
@@ -277,6 +292,31 @@ func (a *App) Do(act Action) []Effect {
 
 	case ActionToggleView:
 		a.toggleView()
+
+	case ActionEdit:
+		return a.edit()
+
+	case ActionRenameKey:
+		return a.renameKey()
+
+	case ActionChangeType:
+		a.changeType()
+
+	// The four below answer a prompt. They do nothing when no edit is in
+	// progress: they cannot arrive then, since nothing is on screen to send
+	// them, but an Action that could not be delivered is a better answer than
+	// one that reaches into a flow that is not there.
+	case ActionPromptChange:
+		a.validate(act.Text)
+
+	case ActionPromptSubmit:
+		a.submit(act.Text)
+
+	case ActionPromptChoose:
+		a.choose(act.Key)
+
+	case ActionCancel:
+		a.cancel()
 
 	case ActionUndo:
 		a.restore(a.history.Undo())
@@ -538,10 +578,12 @@ func (a *App) toggleView() {
 
 // collapseAll folds the document down to an overview of its shape.
 //
-// It is the one action needing the tree rather than the rows: what is folded
+// It is the one movement needing the tree rather than the rows: what is folded
 // away cannot be found among what is drawn, so the containers to fold are
-// collected by walking the document itself. That is also why this is the one
-// place left checking whether a document is open at all.
+// collected by walking the document itself. Reaching for the tree is what
+// raises the question of whether there is one, which is why this asks and the
+// rest of the movements do not. Editing reaches for it too, and asks through
+// selected.
 func (a *App) collapseAll() {
 	if a.doc == nil {
 		return

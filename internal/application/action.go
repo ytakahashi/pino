@@ -93,6 +93,58 @@ type ActionToggleView struct{}
 
 func (ActionToggleView) isAction() {}
 
+// ActionEdit asks for the selected node to be edited.
+//
+// What editing one means is decided where the document is, because it depends
+// on what is selected: a value to type over, a boolean to flip, a container to
+// fold. One key says "act on this"; the answers are not several keys.
+type ActionEdit struct{}
+
+func (ActionEdit) isAction() {}
+
+// ActionRenameKey asks for the key of the selected member to be changed. Only
+// a member of an object has one.
+type ActionRenameKey struct{}
+
+func (ActionRenameKey) isAction() {}
+
+// ActionChangeType asks for the selected node to become a value of another
+// type, carrying over what can be carried.
+type ActionChangeType struct{}
+
+func (ActionChangeType) isAction() {}
+
+// ActionPromptChange reports what has been typed so far, so that an answer
+// which cannot be committed says so while it is being typed rather than when
+// Enter is pressed.
+//
+// The text arrives with the report instead of being held here: the widget
+// collecting it belongs to the layer that owns the terminal, and a copy on
+// this side is a copy that could differ from what is on screen.
+type ActionPromptChange struct{ Text string }
+
+func (ActionPromptChange) isAction() {}
+
+// ActionPromptSubmit is Enter on a prompt being typed into: the answer, whole.
+type ActionPromptSubmit struct{ Text string }
+
+func (ActionPromptSubmit) isAction() {}
+
+// ActionPromptChoose is a key pressed on a prompt that offers keys.
+//
+// It carries the key rather than the meaning, because what the keys mean is
+// written on the prompt and is therefore the prompt's to say: the layer that
+// drew "[s] string" is the one that knows s asked for a string.
+type ActionPromptChoose struct{ Key rune }
+
+func (ActionPromptChoose) isAction() {}
+
+// ActionCancel is Esc: the edit in progress is dropped, however many answers
+// it had gathered.
+type ActionCancel struct{}
+
+func (ActionCancel) isAction() {}
+
 // ActionUndo and ActionRedo ask for the version of the document before the
 // last change, and for the one after it.
 //
@@ -131,3 +183,19 @@ type Effect interface{ isEffect() }
 type EffectQuit struct{}
 
 func (EffectQuit) isEffect() {}
+
+// EffectBeginInput asks for a text box holding Text, ready to be typed in.
+//
+// It is an Effect rather than a field of PromptInfo because seeding happens
+// once, when the prompt appears, while PromptInfo is read on every redraw. A
+// field would have to be paired with something telling the drawing side that
+// this is a new prompt rather than the same one a keystroke later.
+//
+// Text is the value in full, however much of it a row had room for: what is
+// edited is the document, not the abbreviation of it that was on screen.
+type EffectBeginInput struct {
+	Text      string
+	Multiline bool
+}
+
+func (EffectBeginInput) isEffect() {}
