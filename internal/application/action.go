@@ -192,9 +192,18 @@ func (EffectQuit) isEffect() {}
 // this is a new prompt rather than the same one a keystroke later.
 //
 // Text is the value in full, however much of it a row had room for: what is
-// edited is the document, not the abbreviation of it that was on screen.
+// edited is the document, not the abbreviation of it that was on screen. It is
+// spelled the way the document spells it, since a terminal can neither show
+// nor take the characters JSON writes as escapes.
+//
+// OneLine is the same value with its line breaks spelled as escapes too. It is
+// there for a box that cannot hold as many rows as the value has: what such a
+// box would otherwise do is take the value as far as its own limit, leaving
+// someone who only looked at a value able to commit it short. Both spellings
+// are read back the same way, so a box may use either.
 type EffectBeginInput struct {
 	Text      string
+	OneLine   string
 	Multiline bool
 }
 

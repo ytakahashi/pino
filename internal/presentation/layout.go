@@ -69,25 +69,42 @@ type layout struct {
 	Inspector       placement
 	InspectorWidth  int // placeSide
 	InspectorHeight int // placeBelow, the rule counted
+
+	// PromptHeight is the band between the document and the status bar, the
+	// rule above it counted. It is zero whenever nothing is being asked.
+	PromptHeight int
 }
 
 // layoutFor divides a terminal of the given size between the parts of the
 // screen.
 //
-// It is a function of three numbers rather than a method on the model so that
+// It is a function of its arguments rather than a method on the model so that
 // the boundaries, which are the whole of what it says, can be checked without
 // building a terminal and reading a drawn screen back. The same judgement made
 // clampScroll a function in the layer below.
 //
+// prompt is how many rows the band asking a question wants, which is worked out
+// from what is on it rather than from the size of the screen. It arrives as a
+// number so that this stays arithmetic: what the band holds is no business of
+// how the screen is divided, and the boundaries below do not move when a
+// question is asked.
+//
 // Every result is bounded below at zero. A terminal shorter than the parts
 // asked of it is not an error to report but a screen with nothing left for the
 // document, and rows of a negative height would be arithmetic nobody can draw.
-func layoutFor(width, height int, view application.ViewMode) layout {
+func layoutFor(width, height int, view application.ViewMode, prompt int) layout {
 	l := layout{
 		TooSmall:   width < minWidth || height < minHeight,
 		BodyWidth:  max(width, 0),
 		BodyHeight: max(height-statusBarRows, 0),
 	}
+
+	// The band comes out of the screen before the inspector does. It is where
+	// an answer is being typed, so a screen too short for both keeps the part
+	// that is being used; the inspector describes the selection, which the
+	// prompt is about to change anyway.
+	l.PromptHeight = min(max(prompt, 0), l.BodyHeight)
+	l.BodyHeight -= l.PromptHeight
 
 	switch view {
 	case application.ViewTree:

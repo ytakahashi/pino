@@ -112,6 +112,21 @@ func resolveNormal(k tea.KeyPressMsg) (application.Action, Pending) {
 	case "ctrl+u":
 		return application.ActionScrollHalfUp{}, PendingNone
 
+	// Editing. What Enter does depends on what is selected, which is why one
+	// key covers six answers: this table says that the document is to be acted
+	// on, and the layer holding it says what acting on it means.
+	case "enter":
+		return application.ActionEdit{}, PendingNone
+	case "r":
+		return application.ActionRenameKey{}, PendingNone
+	case "t":
+		return application.ActionChangeType{}, PendingNone
+
+	case "u":
+		return application.ActionUndo{}, PendingNone
+	case "ctrl+r":
+		return application.ActionRedo{}, PendingNone
+
 	// Nothing is bound to g or z alone, so there is no ambiguity to time out
 	// of: the next key press decides, however long it takes to arrive.
 	case "g":
@@ -127,6 +142,32 @@ func resolveNormal(k tea.KeyPressMsg) (application.Action, Pending) {
 	// nothing, and cancelling a half-typed sequence is what falling through
 	// already does.
 	return nil, PendingNone
+}
+
+// ResolveChoice is the Action a key press stands for while a list of choices
+// is on screen.
+//
+// The choices come from the prompt rather than from a table here, because they
+// are drawn on it: "[s] string" is a promise that s does something, and the
+// promise and its keeping are then one thing. The line this draws with the
+// table above is that a key written on the screen belongs to whatever wrote it,
+// while a key a reader has to know already belongs here.
+//
+// A key that is not on offer does nothing. Esc is, at every step of every
+// edit, which is why it is taken before the offered keys are looked at rather
+// than being one of them.
+func ResolveChoice(k tea.KeyPressMsg, p application.PromptInfo) application.Action {
+	if k.String() == "esc" {
+		return application.ActionCancel{}
+	}
+
+	for _, c := range p.Choices {
+		if k.String() == string(c.Key) {
+			return application.ActionPromptChoose{Key: c.Key}
+		}
+	}
+
+	return nil
 }
 
 // resolvePending is the key that completes a prefix.

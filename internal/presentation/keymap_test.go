@@ -90,6 +90,14 @@ func TestResolveInNormalMode(t *testing.T) {
 			want: nil,
 		},
 
+		// One key for editing, whatever is selected: what acting on a node
+		// means is decided where the document is.
+		{name: "enter edits", key: special(tea.KeyEnter), want: application.ActionEdit{}},
+		{name: "r renames a key", key: key('r'), want: application.ActionRenameKey{}},
+		{name: "t changes a type", key: key('t'), want: application.ActionChangeType{}},
+		{name: "u undoes", key: key('u'), want: application.ActionUndo{}},
+		{name: "ctrl+r redoes", key: ctrl('r'), want: application.ActionRedo{}},
+
 		{name: "G goes to the end", key: shifted('g', 'G'), want: application.ActionMoveLast{}},
 		{name: "ctrl+d reads on", key: ctrl('d'), want: application.ActionScrollHalfDown{}},
 		{name: "ctrl+u reads back", key: ctrl('u'), want: application.ActionScrollHalfUp{}},
@@ -285,5 +293,54 @@ func TestResolveDropsAPrefixOnAChangeOfMode(t *testing.T) {
 
 	if pending != PendingNone {
 		t.Errorf("Resolve(g, edit) left %v waiting, want nothing", pending)
+	}
+}
+
+// What a key means while a list of choices is on screen. The list comes from
+// the prompt, because it is the prompt that wrote the keys down.
+func TestResolveChoice(t *testing.T) {
+	t.Parallel()
+
+	p := application.PromptInfo{
+		Kind:    application.PromptChoice,
+		Choices: []application.Choice{{Key: 's', Label: "string"}, {Key: 'z', Label: "null"}},
+	}
+
+	tests := map[string]struct {
+		key  tea.KeyPressMsg
+		want application.Action
+	}{
+		"a key on offer":         {key('s'), application.ActionPromptChoose{Key: 's'}},
+		"another key on offer":   {key('z'), application.ActionPromptChoose{Key: 'z'}},
+		"escape withdraws":       {special(tea.KeyEscape), application.ActionCancel{}},
+		"a key not on offer":     {key('n'), nil},
+		"a key bound elsewhere":  {key('j'), nil},
+		"the way out of a table": {key('q'), nil},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := ResolveChoice(tc.key, p); got != tc.want {
+				t.Errorf("ResolveChoice(%q) = %v, want %v", tc.key.String(), got, tc.want)
+			}
+		})
+	}
+}
+
+// A prompt offering nothing accepts nothing but the way out, which is what
+// keeps a question from becoming a dead end however it was built.
+func TestResolveChoiceOffersNothingOfItsOwn(t *testing.T) {
+	t.Parallel()
+
+	empty := application.PromptInfo{Kind: application.PromptChoice}
+
+	if got := ResolveChoice(key('y'), empty); got != nil {
+		t.Errorf("ResolveChoice(y) = %v, want nil", got)
+	}
+
+	if got := ResolveChoice(special(tea.KeyEscape), empty); got != (application.ActionCancel{}) {
+		t.Errorf("ResolveChoice(esc) = %v, want a cancellation", got)
 	}
 }

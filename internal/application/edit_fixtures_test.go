@@ -128,3 +128,24 @@ func nested(t *testing.T) domain.Node {
 		member("empty", object(t)),
 	)
 }
+
+// awkwardValues are the strings that go wrong when what is typed over is not
+// exactly what was there: each holds something a terminal cannot show, cannot
+// take, or would take as something else.
+func awkwardValues() map[string]string {
+	return map[string]string{
+		"plain text":         "localhost",
+		"a tab":              "a\tb",
+		"a carriage return":  "a\rb",
+		"a line break":       "a\nb",
+		"a null":             "a\x00b",
+		"a bell":             "a\x07b",
+		"delete":             "a\x7fb",
+		"a C1 control":       "a\u0085b",
+		"a replacement char": "a\ufffdb",
+		"a quotation mark":   `he said "hi"`,
+		"a backslash":        `C:\Users\pino`,
+		"an emoji":           "🎉",
+		"nothing at all":     "",
+	}
+}

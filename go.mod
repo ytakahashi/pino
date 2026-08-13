@@ -5,6 +5,7 @@ go 1.26.5
 tool github.com/go-task/task/v3/cmd/task
 
 require (
+	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.8
 	charm.land/lipgloss/v2 v2.0.5
 	github.com/charmbracelet/x/ansi v0.11.7
@@ -14,7 +15,6 @@ require (
 
 require (
 	cel.dev/expr v0.25.2 // indirect
-	charm.land/bubbles/v2 v2.1.0 // indirect
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect

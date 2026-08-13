@@ -47,6 +47,17 @@ type Theme struct {
 	Rule      lipgloss.Style
 	FieldName lipgloss.Style
 
+	// The band pino asks a question in: what it asks and what is being typed
+	// into it, the keys it will take, and why the last answer was refused.
+	//
+	// None of the three is a Role either. What a prompt says is pino speaking
+	// rather than the document, which is the whole reason the answer being
+	// typed is drawn plainly: a value gets the colours of its type once it is
+	// in the document, and not before.
+	Prompt      lipgloss.Style
+	PromptHint  lipgloss.Style
+	PromptError lipgloss.Style
+
 	// Cursor is laid over the row the selection is on, keeping each span's own
 	// colour: it says which row, not what is in it.
 	//
@@ -91,6 +102,15 @@ func DefaultTheme() Theme {
 		// and brighter than the rule.
 		Rule:      lipgloss.NewStyle().Foreground(lipgloss.Color("238")),
 		FieldName: lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
+
+		// The question and the answer are the brightest thing on the screen
+		// while they are up, since they are what is being attended to. The keys
+		// on offer are dimmer, being a reminder rather than a message, and a
+		// refusal is red: it is the one thing here that has to be noticed
+		// rather than read in turn.
+		Prompt:      lipgloss.NewStyle().Foreground(lipgloss.Color("252")),
+		PromptHint:  lipgloss.NewStyle().Foreground(lipgloss.Color("244")),
+		PromptError: lipgloss.NewStyle().Foreground(lipgloss.Color("203")),
 
 		// The selected row is marked by a band behind it rather than by an
 		// arrow in front of it: an arrow would need a column of its own and

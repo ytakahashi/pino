@@ -28,6 +28,15 @@ type Model struct {
 	// document.
 	pending Pending
 
+	// editor is the box an answer is being typed into, and nothing at all when
+	// no answer is being typed.
+	//
+	// The text is here rather than in the session because the widget holding it
+	// belongs to the terminal, and a second copy below could differ from what
+	// is on screen. What the session is told is what has been typed, each time
+	// it changes; what it keeps is why the answer cannot be taken yet.
+	editor editor
+
 	// reported is the last body height the session was told about.
 	//
 	// It is here rather than asked of the session because what matters is that
@@ -71,18 +80,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.editor = m.editor.SetWidth(inputWidth(m.app.Prompt(), m.width))
 
 		return m.syncHeight(nil)
 
 	case tea.KeyPressMsg:
-		act, pending := Resolve(msg, m.app.Mode(), m.pending)
-		m.pending = pending
+		return m.key(msg)
 
-		if act == nil {
+	case tea.PasteMsg:
+		// What the terminal pastes arrives whole rather than as the keys it
+		// stands for, so it has a branch of its own. It goes to the box or
+		// nowhere: there is nothing in a document to paste into until pino can
+		// copy a subtree, and a stray paste is better ignored than turned into
+		// however many movements its characters happen to name.
+		if m.app.Prompt().Kind != application.PromptText {
 			return m, nil
 		}
 
-		return m.syncHeight(m.dispatch(m.app.Do(act)))
+		m.editor = m.editor.Update(msg)
+
+		return m.act(application.ActionPromptChange{Text: m.editor.Value()})
 
 	case tea.MouseWheelMsg:
 		rows, ok := wheelDistance(msg)
@@ -90,10 +107,95 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		return m.syncHeight(m.dispatch(m.app.Do(application.ActionScrollBy{Rows: rows})))
+		return m.act(application.ActionScrollBy{Rows: rows})
 	}
 
 	return m, nil
+}
+
+// key routes a key press to whatever is waiting for one.
+//
+// There are three destinations, and what is on screen decides between them: a
+// box being typed into takes the key itself, a list of choices resolves it
+// against what is on offer, and everything else goes through the key table.
+//
+// Asking the prompt rather than the mode is what keeps the two from having to
+// agree. A prompt is drawn from the mode's own state, so "there is a box on
+// screen" and "the key belongs to the box" are one fact read once.
+func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// The terminal's way out is bound before anything else, so that no prompt
+	// can become a dead end. The key table binds it too, for the presses that
+	// reach it; this is the copy a text box cannot swallow.
+	if msg.String() == "ctrl+c" {
+		return m.act(application.ActionQuit{})
+	}
+
+	switch p := m.app.Prompt(); p.Kind {
+	case application.PromptText:
+		return m.typed(msg)
+
+	case application.PromptChoice:
+		return m.act(ResolveChoice(msg, p))
+
+	case application.PromptNone:
+		act, pending := Resolve(msg, m.app.Mode(), m.pending)
+		m.pending = pending
+
+		return m.act(act)
+	}
+
+	return m, nil
+}
+
+// typed hands a key press to the box, after taking the ones that are the
+// prompt's rather than the box's.
+//
+// Those three cannot be left to the widget: Enter and Esc would be typed into
+// the text, and a newline has to be asked for by a key the terminal can tell
+// from Enter. Everything else is the widget's, which is why the key table is
+// not consulted here at all — a table that knew about text would have to know
+// what had been typed so far.
+func (m Model) typed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		return m.act(application.ActionPromptSubmit{Text: m.editor.Value()})
+
+	case "esc":
+		return m.act(application.ActionCancel{})
+
+	case "ctrl+j":
+		// LF rather than CR, which is what lets a terminal tell this from
+		// Enter. A box that cannot hold a newline is left as it was.
+		m.editor = m.editor.InsertNewline()
+
+	default:
+		m.editor = m.editor.Update(msg)
+	}
+
+	// What has been typed is reported on every key, so that an answer which
+	// cannot be committed says so while it is being typed rather than when
+	// Enter is pressed.
+	return m.act(application.ActionPromptChange{Text: m.editor.Value()})
+}
+
+// act carries an Action out and brings the screen back into agreement with
+// what it did. An Action nothing was asked for leaves everything as it was.
+func (m Model) act(a application.Action) (tea.Model, tea.Cmd) {
+	if a == nil {
+		return m, nil
+	}
+
+	m, cmd := m.dispatch(m.app.Do(a))
+
+	// The box belongs to the prompt that asked for it: when the session is no
+	// longer waiting to be typed at, what was typed goes with the question.
+	// Dropping it here rather than at each of the ways an edit can end is what
+	// keeps a box from outliving one of them.
+	if m.app.Prompt().Kind != application.PromptText {
+		m.editor = editor{}
+	}
+
+	return m.syncHeight(cmd)
 }
 
 // syncHeight tells the session how much room the document has, whenever that
@@ -101,9 +203,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 //
 // The application follows the cursor with the window, so it has to be told how
 // big that window is. What it is told is the room left for the document rather
-// than the height of the terminal: taking off the status bar, and the
-// inspector standing under the tree, is a decision about laying out a screen
-// and stays on this side of the boundary.
+// than the height of the terminal: taking off the status bar, the inspector
+// standing under the tree and the band a question is being asked in is a
+// decision about laying out a screen and stays on this side of the boundary.
 //
 // Every branch of Update ends here, including the ones that cannot change the
 // height today. What may change it is what the session is allowed to do, and
@@ -122,7 +224,9 @@ func (m Model) syncHeight(cmd tea.Cmd) (tea.Model, tea.Cmd) {
 
 	m.reported = h
 
-	return m, tea.Batch(cmd, m.dispatch(m.app.Do(application.ActionResize{Height: h})))
+	m, resized := m.dispatch(m.app.Do(application.ActionResize{Height: h}))
+
+	return m, tea.Batch(cmd, resized)
 }
 
 // wheelRows is how far one turn of the wheel reaches. Three is what terminals
@@ -153,17 +257,37 @@ func wheelDistance(msg tea.MouseWheelMsg) (int, bool) {
 // arrive together with the code that produces them, so an unknown one is a
 // mistake within pino, and losing it is a better answer than tearing the
 // terminal down in front of the person using it.
-func (m Model) dispatch(effects []application.Effect) tea.Cmd {
+//
+// It returns a model as well as a command because an effect may be something
+// this layer has to hold rather than something to run: a box to type into is
+// built here and stays until the question is answered.
+func (m Model) dispatch(effects []application.Effect) (Model, tea.Cmd) {
 	cmds := make([]tea.Cmd, 0, len(effects))
 
 	for _, e := range effects {
-		switch e.(type) {
+		switch e := e.(type) {
 		case application.EffectQuit:
 			cmds = append(cmds, tea.Quit)
+
+		case application.EffectBeginInput:
+			// The prompt has already been asked for its shape, so the box is
+			// built to the room that shape leaves it.
+			//
+			// A box that did not take the value whole ends the edit instead of
+			// starting it: Enter reads the answer out of the box, so an edit
+			// begun on less than the value would commit a value nobody typed.
+			// Nothing is expected to reach this — the widget is given limits
+			// past anything a terminal can draw — and a session that did would
+			// rather refuse to edit than quietly rewrite.
+			if box, ok := newEditor(m.theme, e, inputWidth(m.app.Prompt(), m.width)); ok {
+				m.editor = box
+			} else {
+				m.app.Do(application.ActionCancel{})
+			}
 		}
 	}
 
-	return tea.Batch(cmds...)
+	return m, tea.Batch(cmds...)
 }
 
 // View draws the document with the status bar along the bottom.
@@ -214,9 +338,28 @@ func (m Model) View() tea.View {
 	}
 
 	rows = m.withInspector(rows, l)
+	rows = append(rows, m.prompt(l)...)
 	rows = append(rows, m.theme.RenderStatusBar(info, len(frame.Lines), m.pending, m.width))
 
 	return fullScreen(strings.Join(rows, "\n"), m.mouse)
+}
+
+// prompt is the band asking a question, in the rows the layout set aside for
+// it.
+//
+// It is fitted to that height rather than drawn to whatever it turned out to
+// need: a row too many would push the status bar off the screen, and a row too
+// few would leave the document's last row showing through under it. The height
+// and the band come from the same reading of the prompt, so the two agree
+// except on a screen too short to hold what was asked for.
+func (m Model) prompt(l layout) []string {
+	if l.PromptHeight <= 0 {
+		return nil
+	}
+
+	band := m.theme.RenderPrompt(m.app.Prompt(), m.editor.View(), m.width)
+
+	return fitRows(band, m.width, l.PromptHeight)
 }
 
 // withInspector puts the inspector where the layout says it goes.
@@ -283,8 +426,13 @@ func fullScreen(content string, mouse bool) tea.View {
 }
 
 // layout is how this model's screen is divided.
+//
+// How tall the band is depends on what is being asked and on how far the box
+// has grown, which is why the model works it out and hands over a number: the
+// division of the screen stays arithmetic on sizes.
 func (m Model) layout() layout {
-	return layoutFor(m.width, m.height, m.app.ViewMode())
+	return layoutFor(m.width, m.height, m.app.ViewMode(),
+		promptRows(m.app.Prompt(), m.editor.Rows()))
 }
 
 // treeIndent is one level of the tree, which is also the width of a marker:

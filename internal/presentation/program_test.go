@@ -176,7 +176,7 @@ func TestTabShowsTheTreeView(t *testing.T) {
 	}
 
 	// Eighty columns puts the inspector under the tree, with a rule between.
-	l := layoutFor(80, 24, application.ViewTree)
+	l := layoutFor(80, 24, application.ViewTree, 0)
 
 	if got, want := screenRow(screen, l.BodyHeight), strings.Repeat("─", 80); got != want {
 		t.Errorf("the row below the document is %q, want a rule", got)

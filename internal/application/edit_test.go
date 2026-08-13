@@ -764,3 +764,126 @@ func TestASessionWithNothingOpenTakesEditingKeys(t *testing.T) {
 		t.Errorf("mode = %v with prompt %v, want %v and none", app.Mode(), app.Prompt().Kind, ModeNormal)
 	}
 }
+
+func TestTypingOverAValueAndCommittingItLeavesTheDocumentAlone(t *testing.T) {
+	t.Parallel()
+
+	// The value is handed to whoever draws, typed over by nobody, and handed
+	// back. A document changed by having been looked at is the worst thing an
+	// editor can do, and the tree says whether it happened: an edit that
+	// changes nothing comes back as the very root it was given.
+	for name, value := range awkwardValues() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := session(t, object(t, member("v", text(t, value))))
+			standOn(t, app, "/v")
+
+			before := app.doc.Root()
+			in := beginInput(t, app.Do(ActionEdit{}))
+
+			answer(app, in.Text)
+
+			if app.doc.Root() != before {
+				t.Errorf("the document changed: %q became %q",
+					value, nodeAt(t, app, "/v").(*domain.String).Value())
+			}
+
+			if versions(app) != 1 || app.doc.IsDirty() {
+				t.Errorf("%d versions, dirty=%v, want 1 and false", versions(app), app.doc.IsDirty())
+			}
+
+			if app.Mode() != ModeNormal {
+				t.Errorf("mode = %v, want %v", app.Mode(), ModeNormal)
+			}
+		})
+	}
+}
+
+func TestRenamingToTheKeyAlreadyThereLeavesTheDocumentAlone(t *testing.T) {
+	t.Parallel()
+
+	// The same property for keys, which are strings and are spelled the same
+	// way. A key holding a tab is unusual and legal.
+	for name, key := range awkwardValues() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := session(t, object(t, member(key, text(t, "v"))))
+			standOn(t, app, domain.Path{}.Child(domain.KeySegment(key)).String())
+
+			before := app.doc.Root()
+			in := beginInput(t, app.Do(ActionRenameKey{}))
+
+			answer(app, in.Text)
+
+			if app.doc.Root() != before {
+				t.Errorf("the document changed although the key %q was left alone", key)
+			}
+
+			if versions(app) != 1 || app.doc.IsDirty() {
+				t.Errorf("%d versions, dirty=%v, want 1 and false", versions(app), app.doc.IsDirty())
+			}
+		})
+	}
+}
+
+func TestAValueIsOfferedAsTheDocumentSpellsIt(t *testing.T) {
+	t.Parallel()
+
+	// What is on screen is what would be saved, and the box is on screen: a
+	// row shows "a\tb", so that is what is typed over.
+	app := session(t, object(t, member("v", text(t, "a\tb"))))
+	standOn(t, app, "/v")
+
+	if got := beginInput(t, app.Do(ActionEdit{})).Text; got != `a\tb` {
+		t.Errorf("the box holds %q, want the value as the document spells it", got)
+	}
+}
+
+func TestAnEscapeThatWasTypedBecomesTheCharacterItNames(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, object(t, member("v", text(t, "ab"))))
+	standOn(t, app, "/v")
+	app.Do(ActionEdit{})
+	answer(app, `a\tb`)
+
+	if got := nodeAt(t, app, "/v").(*domain.String).Value(); got != "a\tb" {
+		t.Errorf("the value is %q, want a tab between the letters", got)
+	}
+}
+
+func TestASpellingThatCannotBeReadBackIsRefused(t *testing.T) {
+	t.Parallel()
+
+	for name, typed := range map[string]string{
+		"an escape nothing means": `a\qb`,
+		"a backslash at the end":  `ab\`,
+		"half a character":        `a\ud83cb`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := session(t, object(t, member("v", text(t, "ab"))))
+			standOn(t, app, "/v")
+			app.Do(ActionEdit{})
+
+			before := app.doc.Root()
+
+			answer(app, typed)
+
+			if app.doc.Root() != before {
+				t.Error("a spelling that cannot be read back was written to the document")
+			}
+
+			if app.Mode() != ModeEdit {
+				t.Errorf("mode = %v, want the prompt still open at %v", app.Mode(), ModeEdit)
+			}
+
+			if app.Prompt().Error == "" {
+				t.Error("the prompt does not say why the answer was refused")
+			}
+		})
+	}
+}

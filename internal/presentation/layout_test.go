@@ -12,7 +12,12 @@ func TestLayoutFor(t *testing.T) {
 	tests := map[string]struct {
 		width, height int
 		view          application.ViewMode
-		want          layout
+
+		// prompt is how many rows the band asking a question wants. Nothing is
+		// being asked in most of these, which is the zero.
+		prompt int
+
+		want layout
 	}{
 		// The JSON view has the screen to itself but for the status bar.
 		"the JSON view on a wide terminal": {
@@ -118,15 +123,40 @@ func TestLayoutFor(t *testing.T) {
 			width: 0, height: 0, view: application.ViewJSON,
 			want: layout{TooSmall: true, BodyWidth: 0, BodyHeight: 0, Inspector: placeNone},
 		},
+
+		// A question takes its rows from the document and from nothing else.
+		"the JSON view with a prompt": {
+			width: 120, height: 40, view: application.ViewJSON, prompt: 3,
+			want: layout{BodyWidth: 120, BodyHeight: 36, Inspector: placeNone, PromptHeight: 3},
+		},
+
+		// The band comes out of the screen before the inspector: the answer is
+		// being typed into it, while the pane describes a selection the answer
+		// is about to change.
+		"the tree view with a prompt and an inspector below": {
+			width: 60, height: 20, view: application.ViewTree, prompt: 4,
+			want: layout{
+				BodyWidth: 60, BodyHeight: 10,
+				Inspector: placeBelow, InspectorHeight: 5, PromptHeight: 4,
+			},
+		},
+
+		"a prompt taller than the screen leaves the document nothing": {
+			width: 60, height: 4, view: application.ViewJSON, prompt: 9,
+			want: layout{
+				TooSmall: true, BodyWidth: 60, BodyHeight: 0,
+				Inspector: placeNone, PromptHeight: 3,
+			},
+		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := layoutFor(tc.width, tc.height, tc.view); got != tc.want {
-				t.Errorf("layoutFor(%d, %d, %v) = %+v, want %+v",
-					tc.width, tc.height, tc.view, got, tc.want)
+			if got := layoutFor(tc.width, tc.height, tc.view, tc.prompt); got != tc.want {
+				t.Errorf("layoutFor(%d, %d, %v, %d) = %+v, want %+v",
+					tc.width, tc.height, tc.view, tc.prompt, got, tc.want)
 			}
 		})
 	}
@@ -139,19 +169,54 @@ func TestLayoutForFitsTheTerminal(t *testing.T) {
 
 	views := []application.ViewMode{application.ViewJSON, application.ViewTree}
 
-	for _, view := range views {
-		for width := range 130 {
-			for height := range 45 {
-				l := layoutFor(width, height, view)
+	// No prompt, the tallest band an edit can put up, and one taller than any
+	// of them: what is asked for is not what is granted on a short screen.
+	prompts := []int{0, 4, 12}
 
-				if used := l.BodyWidth + l.InspectorWidth; used > width {
-					t.Fatalf("layoutFor(%d, %d, %v) uses %d columns of %d",
-						width, height, view, used, width)
+	for _, view := range views {
+		for _, prompt := range prompts {
+			for width := range 130 {
+				for height := range 45 {
+					l := layoutFor(width, height, view, prompt)
+
+					if used := l.BodyWidth + l.InspectorWidth; used > width {
+						t.Fatalf("layoutFor(%d, %d, %v, %d) uses %d columns of %d",
+							width, height, view, prompt, used, width)
+					}
+
+					used := l.BodyHeight + l.InspectorHeight + l.PromptHeight + statusBarRows
+					if used > max(height, 1) {
+						t.Fatalf("layoutFor(%d, %d, %v, %d) uses %d rows of %d",
+							width, height, view, prompt, used, height)
+					}
+				}
+			}
+		}
+	}
+}
+
+// The boundaries are the whole of what the division says, and a question being
+// asked is not one of them: the same terminal falls on the same side of each
+// with a band up as without one.
+func TestLayoutForKeepsItsBoundariesWithAPrompt(t *testing.T) {
+	t.Parallel()
+
+	views := []application.ViewMode{application.ViewJSON, application.ViewTree}
+
+	for _, view := range views {
+		for _, width := range []int{59, 60, 99, 100} {
+			for _, height := range []int{9, 10, 40} {
+				bare := layoutFor(width, height, view, 0)
+				asked := layoutFor(width, height, view, 3)
+
+				if bare.TooSmall != asked.TooSmall {
+					t.Errorf("layoutFor(%d, %d, %v) reports too small = %v with a prompt and %v without",
+						width, height, view, asked.TooSmall, bare.TooSmall)
 				}
 
-				if used := l.BodyHeight + l.InspectorHeight + statusBarRows; used > max(height, 1) {
-					t.Fatalf("layoutFor(%d, %d, %v) uses %d rows of %d",
-						width, height, view, used, height)
+				if bare.Inspector != asked.Inspector || bare.BodyWidth != asked.BodyWidth {
+					t.Errorf("layoutFor(%d, %d, %v) divides the columns differently with a prompt: %+v, want %+v",
+						width, height, view, asked, bare)
 				}
 			}
 		}

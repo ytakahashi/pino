@@ -172,6 +172,7 @@ func (a *App) renameKey() []Effect {
 		return nil
 	}
 
+	// Spelled as the value of a string is, since a key is one.
 	return a.beginText(opEditKey, domain.KindString, p.At(p.Len()-1).Token())
 }
 
@@ -191,16 +192,31 @@ func (a *App) changeType() {
 // Esc is the same key at every step.
 func (a *App) cancel() { a.flow = nil }
 
-// beginText opens a prompt to type an answer into, seeded with text.
+// beginText opens a prompt to type an answer into, seeded with value.
+//
+// A string is seeded in the spelling the document uses rather than in the
+// characters it holds: a terminal cannot show a tab apart from four spaces or
+// hold a control character at all, so a value typed over in that form would
+// come back changed by having been looked at. A number has no spelling to
+// undo and is seeded as it stands.
 //
 // The widget is asked for the shape the prompt says it has rather than for one
 // worked out a second time here: whether newlines are allowed is one fact
 // about the answer, and the drawing side reads it from PromptInfo on every
 // redraw afterwards.
-func (a *App) beginText(op operation, kind domain.Kind, text string) []Effect {
+func (a *App) beginText(op operation, kind domain.Kind, value string) []Effect {
 	a.flow = &flow{op: op, step: stepText, target: a.view.Cursor, kind: kind}
 
-	return []Effect{EffectBeginInput{Text: text, Multiline: a.Prompt().Multiline}}
+	text, oneLine := value, value
+	if kind == domain.KindString {
+		text, oneLine = domain.EditableText(value), domain.EditableLine(value)
+	}
+
+	return []Effect{EffectBeginInput{
+		Text:      text,
+		OneLine:   oneLine,
+		Multiline: a.Prompt().Multiline,
+	}}
 }
 
 // beginType opens the list of types. It is the same prompt whether t asked for
@@ -279,7 +295,12 @@ func (a *App) choose(key rune) {
 // the check that separates them is which of the two this is.
 func (a *App) applyText(text string) (domain.EditResult, error) {
 	if a.flow.op == opEditKey {
-		return domain.Rename(a.doc.Root(), a.flow.target, text)
+		key, err := domain.ParseEditableText(text)
+		if err != nil {
+			return domain.EditResult{}, err
+		}
+
+		return domain.Rename(a.doc.Root(), a.flow.target, key)
 	}
 
 	v, err := scalarFrom(text, a.flow.kind)
@@ -292,9 +313,10 @@ func (a *App) applyText(text string) (domain.EditResult, error) {
 
 // scalarFrom is text read as a value of kind k.
 //
-// A string is taken as it stands; a number has to be one. What a JSON number
-// may look like is knowledge about the format, so it is asked of the domain
-// rather than checked in the layer that happened to read the keystrokes.
+// A string is read back out of the spelling it was typed in; a number has no
+// spelling to undo and has to be a number. Both rules are the format's, so
+// both are asked of the domain rather than checked in the layer that happened
+// to read the keystrokes.
 func scalarFrom(text string, k domain.Kind) (domain.Node, error) {
 	if k == domain.KindNumber {
 		n, err := domain.ParseNumber(text)
@@ -305,7 +327,12 @@ func scalarFrom(text string, k domain.Kind) (domain.Node, error) {
 		return n, nil
 	}
 
-	s, err := domain.NewString(text)
+	value, err := domain.ParseEditableText(text)
+	if err != nil {
+		return nil, err
+	}
+
+	s, err := domain.NewString(value)
 	if err != nil {
 		return nil, err
 	}
@@ -450,6 +477,11 @@ func promptError(err error) string {
 	var num *domain.InvalidNumberError
 	if errors.As(err, &num) {
 		return num.Reason
+	}
+
+	var escape *domain.InvalidEscapeError
+	if errors.As(err, &escape) {
+		return escape.Reason
 	}
 
 	var dup *domain.DuplicateKeyError
