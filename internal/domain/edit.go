@@ -3,6 +3,7 @@ package domain
 import (
 	"slices"
 	"strconv"
+	"strings"
 )
 
 // EditResult is what an edit produced: the new tree, where the cursor should
@@ -46,6 +47,65 @@ type EditResult struct {
 // that reads the old set and writes a new one cannot go wrong that way,
 // whatever order the maps are in.
 type PathMap struct{ From, To Path }
+
+// RewritePointer is the JSON Pointer text as an edit left it.
+//
+// The maps of one EditResult apply at once, and this is what that means in
+// practice: a pointer is looked at one time, against the whole set, so the
+// answer does not depend on the order they are in. Rewriting a set of pointers
+// therefore means calling this once for each of them, never applying one map
+// to the set and then the next.
+//
+// At most one map can cover a pointer. Within a single edit the paths that
+// move are siblings of one another, or there is only one of them, so there is
+// no case where the first match is a choice.
+//
+// It takes text rather than a Path because the sets that have to follow an
+// edit are keyed by pointer: a Path holds a slice and cannot be a map key. How
+// a pointer is spelled is knowledge about JSON Pointer, which lives here, so
+// the layers holding such a set ask rather than spell it out again.
+func RewritePointer(maps []PathMap, pointer string) string {
+	for _, m := range maps {
+		if rest, ok := under(m.From.String(), pointer); ok {
+			return m.To.String() + rest
+		}
+	}
+
+	return pointer
+}
+
+// PointerRemoved reports whether pointer named something an edit took out.
+//
+// It is asked before the renames are applied, since the paths an edit removes
+// are the ones from the document as it stood before it.
+func PointerRemoved(removed []Path, pointer string) bool {
+	for _, p := range removed {
+		if _, ok := under(p.String(), pointer); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// under reports whether pointer names prefix or something beneath it, and
+// returns the text that follows prefix.
+//
+// The separator in the second case is what keeps a rename of "/a" off "/ab":
+// to be beneath a path, the text has to go on with a new token rather than
+// with more of the last one. The root is the empty pointer and so is under
+// nothing and above everything, which is the answer both callers want.
+func under(prefix, pointer string) (string, bool) {
+	if pointer == prefix {
+		return "", true
+	}
+
+	if strings.HasPrefix(pointer, prefix+"/") {
+		return pointer[len(prefix):], true
+	}
+
+	return "", false
+}
 
 // EditError reports an edit the document cannot take.
 //

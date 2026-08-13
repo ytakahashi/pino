@@ -1,7 +1,6 @@
 package domain_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/ytakahashi/pino/internal/domain"
@@ -123,17 +122,7 @@ func dropRemoved(removed []domain.Path, pointers []string) []string {
 	out := make([]string, 0, len(pointers))
 
 	for _, ptr := range pointers {
-		gone := false
-
-		for _, p := range removed {
-			if _, ok := movePrefix(domain.PathMap{From: p, To: p}, ptr); ok {
-				gone = true
-
-				break
-			}
-		}
-
-		if !gone {
+		if !domain.PointerRemoved(removed, ptr) {
 			out = append(out, ptr)
 		}
 	}
@@ -155,17 +144,8 @@ func paths(ps []domain.Path) []string {
 // is looked at once, against the whole set of maps.
 func rewriteTogether(maps []domain.PathMap, pointers []string) []string {
 	out := make([]string, len(pointers))
-
 	for i, ptr := range pointers {
-		out[i] = ptr
-
-		for _, m := range maps {
-			if moved, ok := movePrefix(m, ptr); ok {
-				out[i] = moved
-
-				break
-			}
-		}
+		out[i] = domain.RewritePointer(maps, ptr)
 	}
 
 	return out
@@ -178,30 +158,11 @@ func rewriteInTurn(maps []domain.PathMap, pointers []string) []string {
 	out := append([]string(nil), pointers...)
 
 	for _, m := range maps {
+		one := []domain.PathMap{m}
 		for i, ptr := range out {
-			if moved, ok := movePrefix(m, ptr); ok {
-				out[i] = moved
-			}
+			out[i] = domain.RewritePointer(one, ptr)
 		}
 	}
 
 	return out
-}
-
-// movePrefix is ptr with m's From replaced by its To, when m covers it.
-//
-// The two conditions are what keeps a rename of "/a" off "/ab": a pointer is
-// covered when it is the one that moved, or when what follows it starts a new
-// token.
-func movePrefix(m domain.PathMap, ptr string) (string, bool) {
-	from := m.From.String()
-
-	switch {
-	case ptr == from:
-		return m.To.String(), true
-	case strings.HasPrefix(ptr, from+"/"):
-		return m.To.String() + ptr[len(from):], true
-	default:
-		return "", false
-	}
 }

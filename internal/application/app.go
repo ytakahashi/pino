@@ -33,6 +33,14 @@ type App struct {
 	mode   Mode
 	source Source
 
+	// history is every version of the open document. Like the view state it
+	// belongs to the document rather than to the session: undoing in one file
+	// must not reach into the one opened before it.
+	//
+	// Its zero value is a history with nothing in it, which is what a session
+	// with no document open holds, so undo and redo need no check for one.
+	history History
+
 	// format is the layout the document is written back with, taken from the
 	// file it was read from so that saving does not reformat lines the user
 	// never touched.
@@ -94,6 +102,11 @@ func (a *App) Open(path string) error {
 	// left open would be answered against the wrong document.
 	a.view = NewViewState()
 	a.mode = ModeNormal
+
+	// The history starts again for the same reason, at the document as it was
+	// read. The root is where a reader begins, and it resolves in any tree,
+	// which is the invariant every later version has to keep.
+	a.history = NewHistory(Revision{Root: root, Label: "open"})
 
 	return nil
 }
@@ -265,6 +278,12 @@ func (a *App) Do(act Action) []Effect {
 	case ActionToggleView:
 		a.toggleView()
 
+	case ActionUndo:
+		a.restore(a.history.Undo())
+
+	case ActionRedo:
+		a.restore(a.history.Redo())
+
 	case ActionResize:
 		// A window of no rows is not a window; asking for one is answered by
 		// scrolling nowhere rather than by arithmetic on a negative height.
@@ -273,6 +292,53 @@ func (a *App) Do(act Action) []Effect {
 	}
 
 	return nil
+}
+
+// restore makes a version current: the tree it holds, and a look at the place
+// the change being toggled happened.
+//
+// It takes what History returned rather than a Revision alone, so that undo
+// and redo differ by the one word that names their direction. Nothing happens
+// when there is nowhere to go, which is also how a session with no document
+// open answers: its history is empty, so both report false and this never
+// reaches a nil document.
+//
+// There is no inverse of anything here. Every edit pino can make comes back to
+// swapping one immutable root for another, which is why undo cannot corrupt a
+// document by undoing something wrongly.
+//
+// Folds are not restored, only dropped where the tree no longer has them: what
+// is folded is how the document is being looked at, and this restores what the
+// document contains.
+func (a *App) restore(rev Revision, at domain.Path, ok bool) {
+	if !ok {
+		return
+	}
+
+	a.doc.Replace(rev.Root)
+	a.view.Retain(rev.Root)
+
+	// Undoing an insertion takes away the node it selected, so the place the
+	// change happened is not always in the tree coming back. The nearest thing
+	// left to it is; being off by a container beats being sent to the top of
+	// the document. Whether the result is on screen is settled next.
+	a.view.Cursor = nearest(rev.Root, at)
+
+	a.settle(a.render())
+}
+
+// nearest is the deepest part of p that root still has, which is p itself
+// whenever it resolves.
+//
+// The walk always ends: the root is its own parent and resolves in any tree.
+func nearest(root domain.Node, p domain.Path) domain.Path {
+	for ; !p.IsRoot(); p = p.Parent() {
+		if _, ok := domain.Resolve(root, p); ok {
+			return p
+		}
+	}
+
+	return p
 }
 
 // settle puts the cursor and the window back into agreement with lines.

@@ -843,6 +843,94 @@ func TestEveryEditLeavesTheCursorOnANodeThatIsThere(t *testing.T) {
 	}
 }
 
+func TestRewritePointerMovesAPointerWithThePathAboveIt(t *testing.T) {
+	t.Parallel()
+
+	maps := []domain.PathMap{
+		{From: at(t, "/a"), To: at(t, "/z")},
+		{From: at(t, "/features/1"), To: at(t, "/features/2")},
+	}
+
+	tests := []struct {
+		name    string
+		pointer string
+		want    string
+	}{
+		{name: "the path that moved", pointer: "/a", want: "/z"},
+		{name: "a child of it", pointer: "/a/x", want: "/z/x"},
+		{name: "a grandchild of it", pointer: "/a/x/y", want: "/z/x/y"},
+		{
+			// "/a" is a prefix of "/ab" as text and of nothing as a path.
+			name:    "a sibling whose key begins the same way",
+			pointer: "/ab",
+			want:    "/ab",
+		},
+		{name: "a path no map covers", pointer: "/b", want: "/b"},
+		{name: "the root", pointer: "", want: ""},
+		{name: "an element that moved", pointer: "/features/1", want: "/features/2"},
+		{name: "beneath an element that moved", pointer: "/features/1/name", want: "/features/2/name"},
+		{
+			// The token is "10", not "1" followed by "0".
+			name:    "an element whose index begins the same way",
+			pointer: "/features/10",
+			want:    "/features/10",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := domain.RewritePointer(maps, tt.pointer); got != tt.want {
+				t.Errorf("RewritePointer(%q) = %q, want %q", tt.pointer, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPointerRemovedCoversTheWholeSubtree(t *testing.T) {
+	t.Parallel()
+
+	removed := []domain.Path{at(t, "/server")}
+
+	tests := []struct {
+		name    string
+		pointer string
+		want    bool
+	}{
+		{name: "the subtree that went", pointer: "/server", want: true},
+		{name: "something inside it", pointer: "/server/host", want: true},
+		{name: "deep inside it", pointer: "/server/tls/cert", want: true},
+		{name: "a sibling", pointer: "/servers", want: false},
+		{name: "somewhere else", pointer: "/features/0", want: false},
+		{name: "the root", pointer: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := domain.PointerRemoved(removed, tt.pointer); got != tt.want {
+				t.Errorf("PointerRemoved(%q) = %v, want %v", tt.pointer, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRemovingTheRootCoversEveryPointer(t *testing.T) {
+	t.Parallel()
+
+	// Replacing the root discards the whole document, and the root is above
+	// everything: nothing a set holds can survive it.
+	removed := []domain.Path{{}}
+
+	for _, pointer := range []string{"", "/a", "/a/b", "/features/0"} {
+		if !domain.PointerRemoved(removed, pointer) {
+			t.Errorf("PointerRemoved(%q) = false, want true", pointer)
+		}
+	}
+}
+
 func TestAnEditSaysWhichSubtreesItTookOut(t *testing.T) {
 	t.Parallel()
 
