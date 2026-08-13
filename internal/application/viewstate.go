@@ -2,6 +2,7 @@ package application
 
 import (
 	"iter"
+	"maps"
 
 	"github.com/ytakahashi/pino/internal/domain"
 )
@@ -129,6 +130,79 @@ func (v *ViewState) IsCollapsed(p domain.Path) bool {
 	_, folded := v.Collapsed[p.String()]
 
 	return folded
+}
+
+// Apply follows an edit: what it took out is dropped, what moved is moved, and
+// the cursor goes where the edit says.
+//
+// The three steps answer three different ways a folded set goes stale, and the
+// order between them is part of the answer.
+//
+//  1. What the edit removed is dropped. This cannot be worked out by asking
+//     which paths still resolve: taking an element out of an array moves the
+//     next one into its place, so the path of what was deleted goes on
+//     resolving, to a node nobody folded.
+//  2. What moved is moved, every path being looked at once against the whole
+//     set of renames. Steps 1 and 2 both read paths as the document spelled
+//     them before the edit, which is why removal comes first: afterwards, a
+//     path that has just shifted into the place of a deleted one would be
+//     dropped in its stead.
+//  3. Whatever the new tree does not have is dropped, which is Retain.
+//
+// Step 3 should find nothing once the first two have run. It is here so that
+// the invariant below holds by construction rather than by trusting every edit
+// to have declared what it removed, and it is the same code undo goes through.
+//
+// The invariant: every path in Collapsed resolves in the current root.
+func (v *ViewState) Apply(r domain.EditResult) {
+	moved := make(map[string]struct{}, len(v.Collapsed))
+
+	for pointer := range v.Collapsed {
+		if domain.PointerRemoved(r.Removed, pointer) {
+			continue
+		}
+
+		moved[domain.RewritePointer(r.Renames, pointer)] = struct{}{}
+	}
+
+	// The contents are replaced rather than the map, since the renderer is
+	// handed this very map on every redraw.
+	clear(v.Collapsed)
+	maps.Copy(v.Collapsed, moved)
+
+	v.Retain(r.Root)
+
+	// The edit is the only thing that knows where it happened, so where to
+	// stand is its answer and not something worked out from the rows. Whether
+	// that place is on screen is settled afterwards, by whoever draws.
+	v.Cursor = r.Cursor
+}
+
+// Retain drops whatever the document no longer has.
+//
+// Undo and redo need this without an edit to follow, since a version is a
+// whole tree rather than a change: nothing says which paths stopped being
+// there, only which tree is current now.
+//
+// Undo does not put folds back. What is folded is how the document is being
+// looked at rather than what it contains, and undo restores what it contains.
+// A fold left over an array whose elements have shifted therefore lands one
+// place along, which one keystroke corrects.
+func (v *ViewState) Retain(root domain.Node) {
+	for pointer := range v.Collapsed {
+		p, err := domain.ParsePointer(pointer)
+		if err != nil {
+			// Not reachable: the set is keyed by what Path.String produced.
+			// Dropping is the safe answer for a key nothing can resolve.
+			delete(v.Collapsed, pointer)
+
+			continue
+		}
+
+		if _, ok := domain.Resolve(root, p); !ok {
+			delete(v.Collapsed, pointer)
+		}
+	}
 }
 
 // CollapseAll folds every container of the document away, leaving the members

@@ -24,6 +24,14 @@ func NewDocument(root domain.Node) *Document {
 // Root is the tree as it currently stands.
 func (d *Document) Root() domain.Node { return d.root }
 
+// Replace swaps in a new tree.
+//
+// The saved tree is left alone, which is what makes IsDirty tell an edit from
+// the document as it was read. Undo comes through here as well as editing
+// does: making an earlier version current is the same operation as making a
+// new one current, since a version is a whole tree either way.
+func (d *Document) Replace(root domain.Node) { d.root = root }
+
 // IsDirty reports whether there is anything to save.
 //
 // The comparison is between two immutable roots, so editing and then undoing

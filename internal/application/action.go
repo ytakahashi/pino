@@ -93,6 +93,20 @@ type ActionToggleView struct{}
 
 func (ActionToggleView) isAction() {}
 
+// ActionUndo and ActionRedo ask for the version of the document before the
+// last change, and for the one after it.
+//
+// They are not the opposite of any particular edit. A version is a whole tree,
+// so both of these are the same request — make another version current — asked
+// in two directions.
+type (
+	ActionUndo struct{}
+	ActionRedo struct{}
+)
+
+func (ActionUndo) isAction() {}
+func (ActionRedo) isAction() {}
+
 // ActionResize reports how many rows the document can be drawn in.
 //
 // It is the one Action that does not come from a key. Resizing a window is
