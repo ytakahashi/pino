@@ -182,12 +182,30 @@ func ResolveChoice(k tea.KeyPressMsg, p application.PromptInfo) application.Acti
 // It is worked out here because the keys are here: what a node allows is a
 // fact the inspector already carries, while which key asks for it is knowledge
 // this file is the only holder of.
+//
+// What is listed is the keys something happens on, not the keys that mean
+// something. The two part company where an operation is carried out to no
+// effect, which the layer below cannot tell a reader apart from one it refused:
+// nothing happens either way. A row promising an operation that leaves the
+// screen as it was would be the same disappointment as one promising an
+// operation that is turned down, so both are left off.
 func available(info application.InspectorInfo) []string {
 	if info.Type == "" {
 		return nil
 	}
 
-	keys := []string{"Enter", "t"}
+	var keys []string
+
+	// Enter acts on whatever is selected, except on a container with no fold
+	// to toggle: the root is drawn open and has no folded form, and an empty
+	// container is drawn as neither open nor folded. A scalar at the root is
+	// not one of these — it is typed over like any other — so what is asked
+	// first is whether this is a container at all.
+	if !info.Container || (info.Naming != application.NamedNone && info.Children > 0) {
+		keys = append(keys, "Enter")
+	}
+
+	keys = append(keys, "t")
 
 	if info.Container {
 		keys = append(keys, "a")

@@ -39,9 +39,11 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 				Pointer: "/opts", Type: "object", Container: true, Children: 0,
 				Label: "opts", Naming: application.NamedKey,
 			},
+			// Enter is not among them: an empty container is drawn as neither
+			// open nor folded, so there is nothing for it to toggle.
 			want: []string{
 				"Path=/opts", "Type=object", "Children=0", "Key=opts",
-				"Keys=Enter t a A d r",
+				"Keys=t a A d r",
 			},
 		},
 
@@ -65,7 +67,22 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 				Pointer: "", Type: "object", Container: true, Children: 2,
 				Naming: application.NamedNone,
 			},
-			want: []string{"Path=/", "Type=object", "Children=2", "Keys=Enter t a"},
+			// The root is drawn open and has no folded form, so Enter is left
+			// off here too, populated though it is.
+			want: []string{"Path=/", "Type=object", "Children=2", "Keys=t a"},
+		},
+
+		// A document is a JSON value and need not be an object. This root is
+		// typed over as any number is, so Enter is offered here although it is
+		// withheld from the container above: what decides is whether there is
+		// a fold, not how the node is named.
+		"a scalar at the root": {
+			info: application.InspectorInfo{
+				Pointer: "", Type: "number",
+				Value:  application.Span{Text: "8080", Role: application.RoleNumberValue},
+				Naming: application.NamedNone,
+			},
+			want: []string{"Path=/", "Type=number", "Value=8080", "Keys=Enter t"},
 		},
 
 		// A member whose key is empty is still named, unlike the root.

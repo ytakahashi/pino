@@ -298,50 +298,60 @@ func TestResolveChoiceOffersNothingOfItsOwn(t *testing.T) {
 	}
 }
 
-// The inspector and the application derive structural editing availability
-// independently. Exercise every relationship that changes the answer so that
-// a key cannot be advertised where its action is refused, or hidden where the
-// action works.
+// The inspector and the application derive what a node can be asked to do
+// independently: one from the fields the pane already carries, the other from
+// the tree itself. Walk every node of every shape a document takes and press
+// all six keys, so that none can be advertised where nothing happens, or
+// hidden where something does.
+//
+// Every key is asked about rather than only the ones whose availability
+// varies. A key that is always offered is the one an exception can hide in,
+// since nothing is left to compare it against.
 func TestAvailableOperationsAgreeWithTheApplication(t *testing.T) {
 	t.Parallel()
 
-	root := editingDocument(t)
-	probe := openApp(t, root)
-
-	conditional := []struct {
+	operations := []struct {
 		key string
 		act application.Action
 	}{
+		{key: "Enter", act: application.ActionEdit{}},
+		{key: "t", act: application.ActionChangeType{}},
 		{key: "a", act: application.ActionAddChild{}},
 		{key: "A", act: application.ActionAddSibling{}},
 		{key: "d", act: application.ActionDelete{}},
 		{key: "r", act: application.ActionRenameKey{}},
 	}
 
-	for ordinal := 0; ; ordinal++ {
-		info := probe.Inspector()
-		keys := available(info)
+	for name, root := range editingDocuments(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-		for _, always := range []string{"Enter", "t"} {
-			if !slices.Contains(keys, always) {
-				t.Errorf("node %q does not advertise %s", info.Pointer, always)
+			probe := openApp(t, root)
+
+			// Walking with the cursor rather than over the tree keeps the
+			// nodes the ones a reader can reach: an ordinal is how many times
+			// j was pressed, which is what appAt repeats on a session of its
+			// own.
+			for ordinal := 0; ; ordinal++ {
+				info := probe.Inspector()
+				keys := available(info)
+
+				for _, op := range operations {
+					got := slices.Contains(keys, op.key)
+					want := changesTheSession(appAt(t, root, ordinal), op.act)
+
+					if got != want {
+						t.Errorf("node %q advertises %s = %t, pressing it changes the session = %t",
+							info.Pointer, op.key, got, want)
+					}
+				}
+
+				before := info.Pointer
+				probe.Do(application.ActionMoveNext{})
+				if probe.Inspector().Pointer == before {
+					break
+				}
 			}
-		}
-
-		for _, op := range conditional {
-			got := slices.Contains(keys, op.key)
-			want := acceptsConditionalOperation(appAt(t, root, ordinal), op.act)
-
-			if got != want {
-				t.Errorf("node %q advertises %s = %t, application accepts it = %t",
-					info.Pointer, op.key, got, want)
-			}
-		}
-
-		before := info.Pointer
-		probe.Do(application.ActionMoveNext{})
-		if probe.Inspector().Pointer == before {
-			break
-		}
+		})
 	}
 }
