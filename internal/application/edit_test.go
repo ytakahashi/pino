@@ -568,6 +568,365 @@ func TestChoosingTheTypeANodeAlreadyHasAddsNoVersion(t *testing.T) {
 	}
 }
 
+func TestAddingAnObjectMemberCollectsAKeyTypeAndValue(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+
+	in := beginInput(t, app.Do(ActionAddChild{}))
+	if in.Text != "" || !in.Multiline {
+		t.Errorf("the key box holds %q multiline=%v, want an empty JSON string box", in.Text, in.Multiline)
+	}
+
+	if p := app.Prompt(); p.Title != "New key" || app.Mode() != ModeInsert {
+		t.Errorf("prompt = %q mode=%v, want %q in %v", p.Title, app.Mode(), "New key", ModeInsert)
+	}
+
+	answer(app, "timeout")
+
+	if p := app.Prompt(); p.Kind != PromptChoice || p.Title != "type" {
+		t.Fatalf("prompt = %v %q, want the type choices", p.Kind, p.Title)
+	}
+
+	in = beginInput(t, app.Do(ActionPromptChoose{Key: 'n'}))
+	if in.Text != "0" || in.Multiline {
+		t.Errorf("the number box holds %q multiline=%v, want %q on one line", in.Text, in.Multiline, "0")
+	}
+
+	answer(app, "30")
+
+	if got := nodeAt(t, app, "/timeout").(*domain.Number).Raw(); got != "30" {
+		t.Errorf("the inserted value is %q, want %q", got, "30")
+	}
+
+	o := app.doc.Root().(*domain.Object)
+	if got := o.At(o.Len() - 1).Key; got != "timeout" {
+		t.Errorf("the last key is %q, want the appended member", got)
+	}
+
+	if got := cursorOf(app); got != "/timeout" {
+		t.Errorf("cursor at %q, want the inserted member", got)
+	}
+
+	if app.Mode() != ModeNormal || versions(app) != 2 {
+		t.Errorf("mode=%v versions=%d, want %v and 2", app.Mode(), versions(app), ModeNormal)
+	}
+}
+
+func TestAddingAnArrayElementStartsWithItsType(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, domain.NewArray(nil))
+
+	if effects := app.Do(ActionAddChild{}); len(effects) != 0 {
+		t.Errorf("adding to an array asked for %d effects before its type was chosen", len(effects))
+	}
+
+	if p := app.Prompt(); p.Kind != PromptChoice || p.Title != "type" {
+		t.Fatalf("prompt = %v %q, want the type choices", p.Kind, p.Title)
+	}
+
+	pick(app, 'b')
+
+	inserted := nodeAt(t, app, "/0")
+	b, ok := inserted.(*domain.Bool)
+	if !ok {
+		t.Fatalf("the inserted value is a %T, want a boolean", inserted)
+	}
+
+	if b.Value() {
+		t.Error("the inserted boolean is true, want false")
+	}
+
+	if got := cursorOf(app); got != "/0" {
+		t.Errorf("cursor at %q, want the inserted element", got)
+	}
+}
+
+func TestAnInsertedNumberThatIsNotJSONCannotBeCommitted(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, domain.NewArray(nil))
+	before := app.doc.Root()
+	app.Do(ActionAddChild{})
+	beginInput(t, app.Do(ActionPromptChoose{Key: 'n'}))
+	answer(app, "01")
+
+	if app.doc.Root() != before {
+		t.Error("the invalid number was inserted")
+	}
+
+	if app.Mode() != ModeInsert || app.Prompt().Kind != PromptText {
+		t.Errorf("mode=%v prompt=%v, want the number box to stay open", app.Mode(), app.Prompt().Kind)
+	}
+
+	if got := app.Prompt().Error; got == "" {
+		t.Error("the number box does not say why the value was refused")
+	}
+}
+
+func TestAddingATypeWithAZeroValueDoesNotAskForAValue(t *testing.T) {
+	t.Parallel()
+
+	for key, want := range map[rune]domain.Kind{
+		'b': domain.KindBool,
+		'z': domain.KindNull,
+		'o': domain.KindObject,
+		'a': domain.KindArray,
+	} {
+		t.Run(string(key), func(t *testing.T) {
+			t.Parallel()
+
+			app := session(t, domain.NewArray(nil))
+			app.Do(ActionAddChild{})
+
+			if effects := app.Do(ActionPromptChoose{Key: key}); len(effects) != 0 {
+				t.Errorf("choosing %v asked for a value box", want)
+			}
+
+			if got := nodeAt(t, app, "/0").Kind(); got != want {
+				t.Errorf("inserted %v, want %v", got, want)
+			}
+
+			if app.Mode() != ModeNormal {
+				t.Errorf("mode = %v, want %v", app.Mode(), ModeNormal)
+			}
+		})
+	}
+}
+
+func TestRevisionLabelsUseOneSpellingForEveryOperation(t *testing.T) {
+	t.Parallel()
+
+	p := path(domain.KeySegment("server"), domain.KeySegment("port"))
+	tests := map[operation]string{
+		opEditValue:  "edit /server/port",
+		opEditKey:    "rename /server/port",
+		opChangeType: "type /server/port",
+		opInsert:     "insert /server/port",
+		opDelete:     "delete /server/port",
+	}
+
+	for op, want := range tests {
+		if got := revisionLabel(op, p); got != want {
+			t.Errorf("revisionLabel(%v) = %q, want %q", op, got, want)
+		}
+	}
+}
+
+func TestAddingASiblingPutsItImmediatelyAfterTheSelection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("object", func(t *testing.T) {
+		t.Parallel()
+
+		app := session(t, sample(t))
+		standOn(t, app, "/name")
+		app.Do(ActionAddSibling{})
+		answer(app, "version")
+		pick(app, 'z')
+
+		o := app.doc.Root().(*domain.Object)
+		if got := o.At(1).Key; got != "version" {
+			t.Errorf("the second key is %q, want the inserted key", got)
+		}
+	})
+
+	t.Run("array", func(t *testing.T) {
+		t.Parallel()
+
+		app := session(t, sample(t))
+		standOn(t, app, "/server/ports/0")
+		app.Do(ActionAddSibling{})
+		beginInput(t, app.Do(ActionPromptChoose{Key: 'n'}))
+		answer(app, "9090")
+
+		ports := nodeAt(t, app, "/server/ports").(*domain.Array)
+		if got := ports.At(1).(*domain.Number).Raw(); got != "9090" {
+			t.Errorf("the second value is %q, want the inserted value", got)
+		}
+
+		if got := ports.At(2).(*domain.Number).Raw(); got != "8443" {
+			t.Errorf("the old second value moved to %q, want %q", got, "8443")
+		}
+	})
+}
+
+func TestAnEmptyObjectKeyCanBeInserted(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, object(t))
+	app.Do(ActionAddChild{})
+	answer(app, "")
+	pick(app, 'z')
+
+	if _, ok := domain.Resolve(app.doc.Root(), path(domain.KeySegment(""))); !ok {
+		t.Error("the member with an empty key was not inserted")
+	}
+}
+
+func TestAnExistingObjectKeyCannotBeInserted(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	before := app.doc.Root()
+	app.Do(ActionAddChild{})
+	answer(app, "name")
+
+	if app.doc.Root() != before {
+		t.Error("the duplicate member was written to the document")
+	}
+
+	if app.Mode() != ModeInsert || app.Prompt().Kind != PromptText {
+		t.Errorf("mode=%v prompt=%v, want the key box to stay open", app.Mode(), app.Prompt().Kind)
+	}
+
+	if got := app.Prompt().Error; got == "" {
+		t.Error("the key box does not say why the key was refused")
+	}
+}
+
+func TestAddingRefusesAChildOfAPrimitiveAndASiblingOfTheRoot(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	standOn(t, app, "/name")
+
+	if effects := app.Do(ActionAddChild{}); len(effects) != 0 {
+		t.Errorf("adding a child to a primitive asked for %d effects", len(effects))
+	}
+
+	standOn(t, app, "")
+	if effects := app.Do(ActionAddSibling{}); len(effects) != 0 {
+		t.Errorf("adding a sibling to the root asked for %d effects", len(effects))
+	}
+
+	if app.Mode() != ModeNormal || versions(app) != 1 {
+		t.Errorf("mode=%v versions=%d, want %v and 1", app.Mode(), versions(app), ModeNormal)
+	}
+}
+
+func TestAddingToAFoldedContainerOpensIt(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	standOn(t, app, "/server/ports")
+	app.Do(ActionMoveOut{})
+
+	if !app.view.IsCollapsed(app.view.Cursor) {
+		t.Fatal("the array is not folded, so this proves nothing")
+	}
+
+	app.Do(ActionAddChild{})
+	pick(app, 'b')
+
+	if app.view.IsCollapsed(pointer(t, "/server/ports")) {
+		t.Error("the insertion left its parent folded")
+	}
+
+	if got := cursorOf(app); got != "/server/ports/2" {
+		t.Errorf("cursor at %q, want the new element", got)
+	}
+
+	if app.Frame().Cursor < 0 {
+		t.Error("the inserted element is not on screen")
+	}
+}
+
+func TestDeletingAValueHappensImmediately(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	standOn(t, app, "/name")
+	app.Do(ActionDelete{})
+
+	if _, ok := domain.Resolve(app.doc.Root(), pointer(t, "/name")); ok {
+		t.Error("the value is still in the document")
+	}
+
+	if got := cursorOf(app); got != "/server" {
+		t.Errorf("cursor at %q, want the next sibling", got)
+	}
+
+	if app.Prompt().Kind != PromptNone || versions(app) != 2 {
+		t.Errorf("prompt=%v versions=%d, want none and 2", app.Prompt().Kind, versions(app))
+	}
+}
+
+func TestDeletingAnEmptyContainerHappensImmediately(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, object(t, member("empty", domain.NewArray(nil))))
+	standOn(t, app, "/empty")
+	app.Do(ActionDelete{})
+
+	if _, ok := domain.Resolve(app.doc.Root(), pointer(t, "/empty")); ok {
+		t.Error("the empty container is still in the document")
+	}
+
+	if app.Prompt().Kind != PromptNone || cursorOf(app) != "" {
+		t.Errorf("prompt=%v cursor=%q, want no question and the parent", app.Prompt().Kind, cursorOf(app))
+	}
+}
+
+func TestDeletingAFullContainerAsksFirst(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	standOn(t, app, "/server")
+	before := app.doc.Root()
+	app.Do(ActionDelete{})
+
+	if p := app.Prompt(); p.Kind != PromptChoice || p.Title != "Discard 5 child nodes under /server?" {
+		t.Fatalf("prompt = %v %q, want the whole subtree counted", p.Kind, p.Title)
+	}
+
+	pick(app, 'n')
+	if app.doc.Root() != before || app.Mode() != ModeNormal {
+		t.Error("saying no changed the document or left the question open")
+	}
+
+	app.Do(ActionDelete{})
+	pick(app, 'y')
+
+	if _, ok := domain.Resolve(app.doc.Root(), pointer(t, "/server")); ok {
+		t.Error("the confirmed subtree is still in the document")
+	}
+
+	if got := cursorOf(app); got != "/debug" {
+		t.Errorf("cursor at %q, want the next sibling", got)
+	}
+}
+
+func TestDeletingFallsBackToThePreviousSiblingAndThenTheParent(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, domain.NewArray([]domain.Node{domain.NewNull(), domain.NewNull()}))
+	standOn(t, app, "/1")
+	app.Do(ActionDelete{})
+
+	if got := cursorOf(app); got != "/0" {
+		t.Errorf("cursor at %q, want the previous sibling", got)
+	}
+
+	app.Do(ActionDelete{})
+	if got := cursorOf(app); got != "" {
+		t.Errorf("cursor at %q, want the parent", got)
+	}
+}
+
+func TestTheDocumentRootCannotBeDeleted(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	before := app.doc.Root()
+	app.Do(ActionDelete{})
+
+	if app.doc.Root() != before || app.Prompt().Kind != PromptNone || versions(app) != 1 {
+		t.Error("deleting the root changed the document or opened a prompt")
+	}
+}
+
 func TestAKeyThePromptDoesNotOfferDoesNothing(t *testing.T) {
 	t.Parallel()
 
@@ -598,6 +957,14 @@ func TestEscapeAbandonsAnEditAtAnyStep(t *testing.T) {
 		"typing a key":         {"/name", []Action{ActionRenameKey{}, ActionPromptChange{Text: "other"}}},
 		"choosing a type":      {"/name", []Action{ActionChangeType{}}},
 		"answering a question": {"/server", []Action{ActionChangeType{}, ActionPromptChoose{Key: 'a'}}},
+		"typing an inserted key": {"", []Action{
+			ActionAddChild{}, ActionPromptChange{Text: "other"},
+		}},
+		"choosing an inserted type": {"/server/ports", []Action{ActionAddChild{}}},
+		"typing an inserted value": {"/server/ports", []Action{
+			ActionAddChild{}, ActionPromptChoose{Key: 's'}, ActionPromptChange{Text: "other"},
+		}},
+		"confirming a deletion": {"/server", []Action{ActionDelete{}}},
 	}
 
 	for name, start := range starts {
@@ -646,6 +1013,8 @@ func TestEveryEditEndsWithTheCursorOnScreen(t *testing.T) {
 		"a typed value":     {[]string{"/server/ports/1", "/name"}, []Action{ActionEdit{}, ActionPromptSubmit{Text: "9090"}}},
 		"a renamed key":     {[]string{"/name", "/server/host"}, []Action{ActionRenameKey{}, ActionPromptSubmit{Text: "other"}}},
 		"a changed type":    {[]string{"/server/tls", "/name", "/server/ports/1"}, []Action{ActionChangeType{}, ActionPromptChoose{Key: 'b'}}},
+		"an inserted value": {[]string{"/server/ports"}, []Action{ActionAddChild{}, ActionPromptChoose{Key: 'b'}}},
+		"a deleted value":   {[]string{"/server/ports/1", "/name"}, []Action{ActionDelete{}}},
 	}
 
 	for name, edit := range edits {
@@ -720,6 +1089,8 @@ func TestTheSameEditsRunTheSameWayInBothViews(t *testing.T) {
 		{"flip a boolean", "/debug", []Action{ActionEdit{}}},
 		{"type a value", "/server/ports/0", []Action{ActionEdit{}, ActionPromptSubmit{Text: "9090"}}},
 		{"rename a key", "/name", []Action{ActionRenameKey{}, ActionPromptSubmit{Text: "title"}}},
+		{"add an array element", "/server/ports", []Action{ActionAddChild{}, ActionPromptChoose{Key: 'b'}}},
+		{"delete an array element", "/server/ports/0", []Action{ActionDelete{}}},
 		{"fold a container", "/server", []Action{ActionEdit{}}},
 		{"change a type", "/server", []Action{ActionChangeType{}, ActionPromptChoose{Key: 'a'}, ActionPromptChoose{Key: 'y'}}},
 	}
@@ -755,7 +1126,7 @@ func TestASessionWithNothingOpenTakesEditingKeys(t *testing.T) {
 	app := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()})
 
 	press(app,
-		ActionEdit{}, ActionRenameKey{}, ActionChangeType{},
+		ActionEdit{}, ActionRenameKey{}, ActionAddChild{}, ActionAddSibling{}, ActionDelete{}, ActionChangeType{},
 		ActionPromptChange{Text: "x"}, ActionPromptSubmit{Text: "x"},
 		ActionPromptChoose{Key: 's'}, ActionCancel{},
 	)

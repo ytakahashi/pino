@@ -299,6 +299,15 @@ func (a *App) Do(act Action) []Effect {
 	case ActionRenameKey:
 		return a.renameKey()
 
+	case ActionAddChild:
+		return a.addChild()
+
+	case ActionAddSibling:
+		return a.addSibling()
+
+	case ActionDelete:
+		a.deleteSelected()
+
 	case ActionChangeType:
 		a.changeType()
 
@@ -313,7 +322,7 @@ func (a *App) Do(act Action) []Effect {
 		a.submit(act.Text)
 
 	case ActionPromptChoose:
-		a.choose(act.Key)
+		return a.choose(act.Key)
 
 	case ActionCancel:
 		a.cancel()
@@ -356,6 +365,10 @@ func (a *App) restore(rev Revision, at domain.Path, ok bool) {
 	}
 
 	a.doc.Replace(rev.Root)
+	// Answers gathered against another root cannot safely be applied to this
+	// one. The terminal does not route undo or redo through a prompt, but the
+	// application keeps this invariant even when actions are driven directly.
+	a.flow = nil
 	a.view.Retain(rev.Root)
 
 	// Undoing an insertion takes away the node it selected, so the place the

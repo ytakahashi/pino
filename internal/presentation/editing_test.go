@@ -128,6 +128,46 @@ func TestChoosingATypeFromTheListChangesTheValue(t *testing.T) {
 	}
 }
 
+func TestKeyboardAddsAnObjectMember(t *testing.T) {
+	t.Parallel()
+
+	m := sized(t, openTestApp(t), 60, 12)
+	m = press(t, m,
+		key('a'),
+		key('r'), key('e'), key('a'), key('d'), key('y'), enterKey,
+		key('s'),
+		key('y'), key('e'), key('s'), enterKey,
+	)
+
+	drawn := rows(t, m)
+	if !strings.Contains(strings.Join(drawn, "\n"), `"ready": "yes"`) {
+		t.Errorf("the document reads %q, want the inserted member", drawn)
+	}
+
+	if got := band(t, m); got != nil {
+		t.Errorf("the band is still up after the insertion: %q", got)
+	}
+
+	if got := statusRowOf(t, m); strings.Contains(got, "INSERT") || !strings.Contains(got, "modified") {
+		t.Errorf("the bar reads %q, want normal mode and an unsaved change", got)
+	}
+}
+
+func TestKeyboardDeletesAValue(t *testing.T) {
+	t.Parallel()
+
+	m := press(t, sized(t, openTestApp(t), 60, 12), key('j'), key('d'))
+	drawn := strings.Join(rows(t, m), "\n")
+
+	if strings.Contains(drawn, `"host"`) {
+		t.Errorf("the document still contains the deleted member: %q", drawn)
+	}
+
+	if !strings.Contains(drawn, `"port": 8080`) {
+		t.Errorf("the surviving member is missing: %q", drawn)
+	}
+}
+
 func TestAKeyTheListDoesNotOfferLeavesItUp(t *testing.T) {
 	t.Parallel()
 

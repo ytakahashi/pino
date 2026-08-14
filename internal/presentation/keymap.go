@@ -119,6 +119,12 @@ func resolveNormal(k tea.KeyPressMsg) (application.Action, Pending) {
 		return application.ActionEdit{}, PendingNone
 	case "r":
 		return application.ActionRenameKey{}, PendingNone
+	case "a":
+		return application.ActionAddChild{}, PendingNone
+	case "A":
+		return application.ActionAddSibling{}, PendingNone
+	case "d":
+		return application.ActionDelete{}, PendingNone
 	case "t":
 		return application.ActionChangeType{}, PendingNone
 

@@ -211,6 +211,46 @@ func TestResolveFollowsAParsedPointer(t *testing.T) {
 	}
 }
 
+func TestChildIndexUsesTheSameSegmentRuleAsResolve(t *testing.T) {
+	t.Parallel()
+
+	d := newDocument(t)
+
+	tests := []struct {
+		name string
+		n    Node
+		seg  Segment
+		want int
+		ok   bool
+	}{
+		{name: "an object key", n: d.server, seg: KeySegment("features"), want: 2, ok: true},
+		{name: "an array index", n: d.features, seg: IndexSegment(1), want: 1, ok: true},
+		{name: "an array index parsed as a key", n: d.features, seg: KeySegment("0"), want: 0, ok: true},
+		{name: "an object key that looks like an index", n: d.root, seg: IndexSegment(0), want: 2, ok: true},
+		{name: "an index with a leading zero", n: d.features, seg: KeySegment("01"), ok: false},
+		{name: "an index with a sign", n: d.features, seg: KeySegment("+1"), ok: false},
+		{name: "a missing child", n: d.server, seg: KeySegment("missing"), ok: false},
+		{name: "a scalar", n: d.host, seg: KeySegment("anything"), ok: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := ChildIndex(tt.n, tt.seg)
+			if got != tt.want || ok != tt.ok {
+				t.Errorf("ChildIndex(%v, %q) = %d, %v; want %d, %v",
+					tt.n.Kind(), tt.seg.Token(), got, ok, tt.want, tt.ok)
+			}
+
+			_, resolved := Resolve(tt.n, Path{}.Child(tt.seg))
+			if resolved != ok {
+				t.Errorf("Resolve says resolved=%v but ChildIndex says ok=%v", resolved, ok)
+			}
+		})
+	}
+}
+
 // The status bar asks for the node under the cursor before anything is open.
 func TestResolveFindsNothingWithoutADocument(t *testing.T) {
 	t.Parallel()

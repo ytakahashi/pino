@@ -41,6 +41,9 @@ func TestResolveMapsNormalModeKeysToActions(t *testing.T) {
 		// means is decided where the document is.
 		{name: "enter edits", key: special(tea.KeyEnter), want: application.ActionEdit{}},
 		{name: "r renames a key", key: key('r'), want: application.ActionRenameKey{}},
+		{name: "a adds a child", key: key('a'), want: application.ActionAddChild{}},
+		{name: "A adds a sibling", key: shifted('a', 'A'), want: application.ActionAddSibling{}},
+		{name: "d deletes", key: key('d'), want: application.ActionDelete{}},
 		{name: "t changes a type", key: key('t'), want: application.ActionChangeType{}},
 		{name: "u undoes", key: key('u'), want: application.ActionUndo{}},
 		{name: "ctrl+r redoes", key: ctrl('r'), want: application.ActionRedo{}},
@@ -130,10 +133,12 @@ func TestResolveCompletesAPrefix(t *testing.T) {
 func TestResolveCancelsAPrefix(t *testing.T) {
 	tests := map[string][]tea.KeyPressMsg{
 		"g then a bound key":    {key('g'), key('j')},
+		"g then delete":         {key('g'), key('d')},
 		"g then an unbound one": {key('g'), key('x')},
 		"g then escape":         {key('g'), special(tea.KeyEscape)},
 		"g then tab":            {key('g'), special(tea.KeyTab)},
 		"z then a bound key":    {key('z'), key('l')},
+		"z then delete":         {key('z'), key('d')},
 		"z then the wrong case": {key('z'), key('r')},
 		"z then escape":         {key('z'), special(tea.KeyEscape)},
 		"z then tab":            {key('z'), special(tea.KeyTab)},

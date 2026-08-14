@@ -108,6 +108,23 @@ type ActionRenameKey struct{}
 
 func (ActionRenameKey) isAction() {}
 
+// ActionAddChild asks for a new value at the end of the selected container.
+// ActionAddSibling asks for one immediately after the selected node in its
+// parent. Both enter the same insertion flow once that destination is known.
+type (
+	ActionAddChild   struct{}
+	ActionAddSibling struct{}
+)
+
+func (ActionAddChild) isAction()   {}
+func (ActionAddSibling) isAction() {}
+
+// ActionDelete asks for the selected node and everything beneath it to be
+// removed. The document root is not a node this action can remove.
+type ActionDelete struct{}
+
+func (ActionDelete) isAction() {}
+
 // ActionChangeType asks for the selected node to become a value of another
 // type, carrying over what can be carried.
 type ActionChangeType struct{}

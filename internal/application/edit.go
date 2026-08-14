@@ -14,6 +14,8 @@ const (
 	opEditValue  operation = iota // Enter on a string or a number
 	opEditKey                     // r
 	opChangeType                  // t, and Enter on a null
+	opInsert                      // a and A
+	opDelete                      // d
 )
 
 // step is how far a flow has got, in terms of what is on screen: text to type,
@@ -43,8 +45,21 @@ type flow struct {
 	op   operation
 	step step
 
-	// target is the node being edited.
+	// target is the node being edited or deleted. Insertions use parent and at
+	// instead because the node they will create has no path yet.
 	target domain.Path
+
+	// parent and at say where an insertion will be made. They are fixed when
+	// the flow starts, before any answers are collected, so switching views or
+	// redrawing cannot change the requested position.
+	parent domain.Path
+	at     int
+
+	// key is the object key collected before an inserted value's type. Empty
+	// is a valid JSON object key, so keySet distinguishes it from no answer yet.
+	// Array insertions set keySet from the start and keep key empty.
+	key    string
+	keySet bool
 
 	// kind is the type the answer is read as: the kind of the value being
 	// typed over, or the kind chosen from the list of types and waiting to be
@@ -67,37 +82,46 @@ func (f *flow) mode() Mode {
 	if f.step == stepConfirm {
 		return ModeConfirm
 	}
+	if f.op == opInsert {
+		return ModeInsert
+	}
 
 	return ModeEdit
 }
 
 // title is what a text prompt asks for.
 func (f *flow) title() string {
-	if f.op == opEditKey {
+	if f.op == opEditKey || (f.op == opInsert && !f.keySet) {
 		return "New key"
 	}
 
 	return "Edit " + f.kind.String()
 }
 
-// label names the version this flow will produce, as "edit /server/port".
-func (f *flow) label() string { return f.verb() + " " + pointerText(f.target) }
+// revisionLabel names a version by the operation and the place it changed.
+// Keeping the spelling here prevents one edit from drifting away from the
+// labels every other edit writes to history.
+func revisionLabel(op operation, p domain.Path) string {
+	var verb string
 
-func (f *flow) verb() string {
-	switch f.op {
+	switch op {
 	case opEditValue:
-		return "edit"
+		verb = "edit"
 
 	case opEditKey:
-		return "rename"
+		verb = "rename"
 
 	case opChangeType:
-		return "type"
+		verb = "type"
+
+	case opInsert:
+		verb = "insert"
+
+	case opDelete:
+		verb = "delete"
 	}
 
-	// Not reached: the switch covers every operation, and the linter keeps it
-	// so.
-	return "edit"
+	return verb + " " + pointerText(p)
 }
 
 // selected is the node the cursor is on.
@@ -185,6 +209,82 @@ func (a *App) changeType() {
 	a.beginType()
 }
 
+// addChild is a: append to the selected container.
+func (a *App) addChild() []Effect {
+	n, ok := a.selected()
+	if !ok {
+		return nil
+	}
+
+	switch n.Kind() {
+	case domain.KindObject:
+		return a.beginInsert(a.view.Cursor, n.(*domain.Object).Len(), domain.KindObject)
+
+	case domain.KindArray:
+		return a.beginInsert(a.view.Cursor, n.(*domain.Array).Len(), domain.KindArray)
+
+	case domain.KindString, domain.KindNumber, domain.KindBool, domain.KindNull:
+		return nil
+	}
+
+	return nil
+}
+
+// addSibling is A: insert immediately after the selected node.
+func (a *App) addSibling() []Effect {
+	if _, ok := a.selected(); !ok || a.view.Cursor.IsRoot() {
+		return nil
+	}
+
+	parentPath := a.view.Cursor.Parent()
+	parent, ok := domain.Resolve(a.doc.Root(), parentPath)
+	if !ok {
+		return nil
+	}
+
+	target := a.view.Cursor
+	at, ok := domain.ChildIndex(parent, target.At(target.Len()-1))
+	if !ok {
+		return nil
+	}
+
+	return a.beginInsert(parentPath, at+1, parent.Kind())
+}
+
+// beginInsert fixes an insertion point and asks the first question needed by
+// its container. Objects need a key before a type; arrays start with the type.
+func (a *App) beginInsert(parent domain.Path, at int, parentKind domain.Kind) []Effect {
+	a.flow = &flow{op: opInsert, parent: parent, at: at}
+
+	if parentKind == domain.KindObject {
+		a.flow.step, a.flow.kind = stepText, domain.KindString
+
+		return a.inputEffect("")
+	}
+
+	a.flow.step, a.flow.keySet = stepType, true
+
+	return nil
+}
+
+// deleteSelected is d: delete at once when there are no descendants, and ask
+// before throwing away a populated subtree.
+func (a *App) deleteSelected() {
+	n, ok := a.selected()
+	if !ok || a.view.Cursor.IsRoot() {
+		return
+	}
+
+	target := a.view.Cursor
+	if domain.CountDescendants(n) > 0 {
+		a.flow = &flow{op: opDelete, step: stepConfirm, target: target}
+
+		return
+	}
+
+	a.deleteAt(target)
+}
+
 // cancel drops the edit in progress, however far it had got.
 //
 // The document needs nothing done to it: a flow gathers answers and commits
@@ -206,6 +306,13 @@ func (a *App) cancel() { a.flow = nil }
 // redraw afterwards.
 func (a *App) beginText(op operation, kind domain.Kind, value string) []Effect {
 	a.flow = &flow{op: op, step: stepText, target: a.view.Cursor, kind: kind}
+
+	return a.inputEffect(value)
+}
+
+// inputEffect asks the terminal for a box matching the current text step.
+func (a *App) inputEffect(value string) []Effect {
+	kind := a.flow.kind
 
 	text, oneLine := value, value
 	if kind == domain.KindString {
@@ -238,7 +345,14 @@ func (a *App) validate(text string) {
 		return
 	}
 
-	if _, err := a.applyText(text); err != nil {
+	var err error
+	if a.flow.op == opInsert && !a.flow.keySet {
+		_, err = a.validateInsertKey(text)
+	} else {
+		_, err = a.applyText(text)
+	}
+
+	if err != nil {
 		a.flow.err = promptError(err)
 
 		return
@@ -258,6 +372,20 @@ func (a *App) submit(text string) {
 		return
 	}
 
+	if a.flow.op == opInsert && !a.flow.keySet {
+		key, err := a.validateInsertKey(text)
+		if err != nil {
+			a.flow.err = promptError(err)
+
+			return
+		}
+
+		a.flow.key, a.flow.keySet = key, true
+		a.flow.step, a.flow.err = stepType, ""
+
+		return
+	}
+
 	res, err := a.applyText(text)
 	if err != nil {
 		a.flow.err = promptError(err)
@@ -265,19 +393,25 @@ func (a *App) submit(text string) {
 		return
 	}
 
-	a.commit(res, a.flow.label())
+	if a.flow.op == opInsert {
+		a.finishInsert(res)
+
+		return
+	}
+
+	a.commit(res, revisionLabel(a.flow.op, a.flow.target))
 	a.flow = nil
 }
 
 // choose is a key pressed on a prompt that offers keys.
-func (a *App) choose(key rune) {
+func (a *App) choose(key rune) []Effect {
 	if a.flow == nil {
-		return
+		return nil
 	}
 
 	switch a.flow.step {
 	case stepType:
-		a.chooseType(key)
+		return a.chooseType(key)
 
 	case stepConfirm:
 		a.answerConfirm(key)
@@ -286,6 +420,8 @@ func (a *App) choose(key rune) {
 		// A text prompt is not answered a key at a time: what has been typed
 		// arrives whole, as text.
 	}
+
+	return nil
 }
 
 // applyText is the edit the answer to a text prompt asks for, tried against
@@ -308,7 +444,34 @@ func (a *App) applyText(text string) (domain.EditResult, error) {
 		return domain.EditResult{}, err
 	}
 
+	if a.flow.op == opInsert {
+		return a.insertValue(a.flow.key, v)
+	}
+
 	return domain.SetValue(a.doc.Root(), a.flow.target, v)
+}
+
+// validateInsertKey checks a proposed key by attempting the real insertion
+// with a disposable null value. The resulting tree is discarded; using the
+// domain operation keeps duplicate-key and UTF-8 validation identical to the
+// final insertion rather than copying either rule into this layer.
+func (a *App) validateInsertKey(text string) (string, error) {
+	key, err := domain.ParseEditableText(text)
+	if err != nil {
+		return "", err
+	}
+
+	_, err = a.insertValue(key, domain.NewNull())
+
+	return key, err
+}
+
+// insertValue is the current flow's insertion carrying key and value.
+func (a *App) insertValue(key string, value domain.Node) (domain.EditResult, error) {
+	return domain.Insert(a.doc.Root(), a.flow.parent, a.flow.at, domain.Member{
+		Key:   key,
+		Value: value,
+	})
 }
 
 // scalarFrom is text read as a value of kind k.
@@ -341,19 +504,24 @@ func scalarFrom(text string, k domain.Kind) (domain.Node, error) {
 }
 
 // chooseType takes the type asked for, and either changes to it or asks first.
-func (a *App) chooseType(key rune) {
+func (a *App) chooseType(key rune) []Effect {
 	kind, ok := kindFor(key)
 	if !ok {
-		return
+		return nil
+	}
+
+	if a.flow.op == opInsert {
+		return a.chooseInsertType(kind)
 	}
 
 	n, ok := domain.Resolve(a.doc.Root(), a.flow.target)
 	if !ok {
-		// The node went away while the prompt was open, which undo can bring
-		// about. There is nothing left to change, so the question goes.
+		// A version change abandons its flow, so no current action can reach
+		// here. Check anyway rather than relying only on the invariant that a
+		// flow and its root are replaced together.
 		a.flow = nil
 
-		return
+		return nil
 	}
 
 	// Nodes are lost when a container becomes something else, and only then:
@@ -362,24 +530,96 @@ func (a *App) chooseType(key rune) {
 	if n.Kind() != kind && domain.CountDescendants(n) > 0 {
 		a.flow.kind, a.flow.step = kind, stepConfirm
 
-		return
+		return nil
 	}
 
 	a.changeTypeTo(kind)
+
+	return nil
+}
+
+// chooseInsertType either opens the value box for a scalar with a spelling,
+// or inserts the chosen type's zero value immediately.
+func (a *App) chooseInsertType(kind domain.Kind) []Effect {
+	a.flow.kind = kind
+
+	switch kind {
+	case domain.KindString:
+		a.flow.step = stepText
+
+		return a.inputEffect("")
+
+	case domain.KindNumber:
+		a.flow.step = stepText
+
+		return a.inputEffect("0")
+
+	case domain.KindBool, domain.KindNull, domain.KindObject, domain.KindArray:
+		value, err := domain.Convert(domain.NewNull(), kind)
+		if err != nil {
+			a.flow.err = promptError(err)
+
+			return nil
+		}
+
+		res, err := a.insertValue(a.flow.key, value)
+		if err != nil {
+			a.flow.err = promptError(err)
+
+			return nil
+		}
+
+		a.finishInsert(res)
+	}
+
+	return nil
+}
+
+// finishInsert opens the destination before commit settles the new cursor.
+// Settling first would move a cursor inside a folded parent back onto that
+// parent, losing the one place the insertion result says to stand.
+func (a *App) finishInsert(res domain.EditResult) {
+	a.view.Expand(a.flow.parent)
+	a.commit(res, revisionLabel(opInsert, res.Cursor))
+	a.flow = nil
 }
 
 // answerConfirm takes yes or no; any other key is neither and is ignored.
 //
-// Changing a type is the only thing that asks for confirmation today. Deleting
-// will be the other, and will be told apart by the operation.
+// Changing a type and deleting are told apart by the operation gathered when
+// the question was opened.
 func (a *App) answerConfirm(key rune) {
 	switch key {
 	case confirmYes:
-		a.changeTypeTo(a.flow.kind)
+		switch a.flow.op {
+		case opChangeType:
+			a.changeTypeTo(a.flow.kind)
+
+		case opDelete:
+			a.deleteAt(a.flow.target)
+
+		case opEditValue, opEditKey, opInsert:
+			// These operations never ask a confirmation question.
+		}
 
 	case confirmNo:
 		a.flow = nil
 	}
+}
+
+// deleteAt removes target and closes any confirmation flow around it.
+func (a *App) deleteAt(target domain.Path) {
+	res, err := domain.Delete(a.doc.Root(), target)
+	if err != nil {
+		// A flow is tied to the root it gathered its answers from. If its target
+		// no longer exists, there is no useful question to leave open.
+		a.flow = nil
+
+		return
+	}
+
+	a.commit(res, revisionLabel(opDelete, target))
+	a.flow = nil
 }
 
 // changeTypeTo carries the change out and closes the flow.
@@ -391,7 +631,7 @@ func (a *App) changeTypeTo(k domain.Kind) {
 		return
 	}
 
-	a.commit(res, a.flow.label())
+	a.commit(res, revisionLabel(a.flow.op, a.flow.target))
 	a.flow = nil
 }
 
@@ -409,7 +649,7 @@ func (a *App) toggleBool(b *domain.Bool) {
 		return
 	}
 
-	a.commit(res, "edit "+pointerText(a.view.Cursor))
+	a.commit(res, revisionLabel(opEditValue, a.view.Cursor))
 }
 
 // toggleFold folds the selected container away, or unfolds it.

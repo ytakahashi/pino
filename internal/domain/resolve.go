@@ -37,6 +37,19 @@ func Resolve(root Node, p Path) (Node, bool) {
 	return n, true
 }
 
+// ChildIndex is the position of the child seg addresses among n's children.
+//
+// It uses the same lookup as Resolve and path copying. Keeping this rule in
+// one place matters for segments parsed from JSON Pointer text: such a segment
+// cannot say whether "0" is an object key or an array index, and only the
+// container can decide. Callers that need a sibling position ask here rather
+// than interpreting the segment themselves.
+func ChildIndex(n Node, seg Segment) (int, bool) {
+	_, i, ok := childAt(n, seg)
+
+	return i, ok
+}
+
 // childAt is the child of n that seg addresses, together with its position
 // among its siblings.
 //

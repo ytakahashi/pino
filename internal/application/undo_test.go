@@ -127,6 +127,54 @@ func TestUndoingAnInsertionStandsOnWhatHeldIt(t *testing.T) {
 	}
 }
 
+func TestUndoAndRedoRestoreAnInsertionMadeThroughTheSession(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, domain.NewArray(nil))
+	before := app.doc.Root()
+	app.Do(ActionAddChild{})
+	pick(app, 'b')
+	after := app.doc.Root()
+
+	app.Do(ActionUndo{})
+	if app.doc.Root() != before || app.doc.IsDirty() {
+		t.Error("undo did not restore the array as it was opened")
+	}
+
+	if got := cursorOf(app); got != "" {
+		t.Errorf("cursor at %q after undo, want the array that held the insertion", got)
+	}
+
+	app.Do(ActionRedo{})
+	if app.doc.Root() != after || !app.doc.IsDirty() {
+		t.Error("redo did not restore the inserted element")
+	}
+
+	if got := cursorOf(app); got != "/0" {
+		t.Errorf("cursor at %q after redo, want the inserted element", got)
+	}
+}
+
+func TestChangingVersionAbandonsAnEditInProgress(t *testing.T) {
+	t.Parallel()
+
+	app := session(t, sample(t))
+	standOn(t, app, "/debug")
+	app.Do(ActionEdit{})
+
+	standOn(t, app, "/server")
+	app.Do(ActionDelete{})
+	if app.Mode() != ModeConfirm {
+		t.Fatalf("mode = %v, want a deletion confirmation", app.Mode())
+	}
+
+	app.Do(ActionUndo{})
+
+	if app.Mode() != ModeNormal || app.Prompt().Kind != PromptNone {
+		t.Errorf("mode=%v prompt=%v, want no flow after changing versions", app.Mode(), app.Prompt().Kind)
+	}
+}
+
 func TestUndoStopsAtTheDocumentAsItWasRead(t *testing.T) {
 	t.Parallel()
 
