@@ -14,7 +14,7 @@ import (
 func TestTheProgramEditsUndoesAndRedoesAValue(t *testing.T) {
 	t.Parallel()
 
-	tm, observer := startObserved(t, "localhost")
+	tm, waiter := start(t, "localhost")
 
 	// The port is the last node in traversal order.
 	tm.Type("jjjjj")
@@ -22,7 +22,7 @@ func TestTheProgramEditsUndoesAndRedoesAValue(t *testing.T) {
 	tm.Type("1")
 	tm.Send(tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	edited := waitForScreen(t, observer, func(screen []string) bool {
+	edited := waiter.wait(t, func(screen []string) bool {
 		return strings.Contains(strings.Join(screen, "\n"), `"port": 80801`) &&
 			strings.Contains(statusRow(screen), "modified")
 	})
@@ -32,7 +32,7 @@ func TestTheProgramEditsUndoesAndRedoesAValue(t *testing.T) {
 
 	tm.Type("u")
 
-	undone := waitForScreen(t, observer, func(screen []string) bool {
+	undone := waiter.wait(t, func(screen []string) bool {
 		return strings.Contains(strings.Join(screen, "\n"), `"port": 8080`) &&
 			!strings.Contains(strings.Join(screen, "\n"), `"port": 80801`) &&
 			!strings.Contains(statusRow(screen), "modified")
@@ -43,7 +43,7 @@ func TestTheProgramEditsUndoesAndRedoesAValue(t *testing.T) {
 
 	tm.Send(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
 
-	redone := waitForScreen(t, observer, func(screen []string) bool {
+	redone := waiter.wait(t, func(screen []string) bool {
 		return strings.Contains(strings.Join(screen, "\n"), `"port": 80801`) &&
 			strings.Contains(statusRow(screen), "modified")
 	})

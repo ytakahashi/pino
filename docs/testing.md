@@ -38,3 +38,7 @@
   platform-dependent. Search it only as a barrier that confirms the initial
   screen was written.
 - Use `teatest` only in tests that need to inspect intermediate screens.
+- Take intermediate screens from a model that records what it drew, not from
+  terminal output. Read them once each and in the order they were drawn: a state
+  a scenario waits for is rarely distinguishable from one the program was in
+  earlier, so a screen an earlier wait has gone past must not answer later ones.

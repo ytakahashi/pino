@@ -12,7 +12,7 @@ import (
 func TestTheProgramReadsAFileFromDisk(t *testing.T) {
 	t.Parallel()
 
-	tm := start(t, "localhost")
+	tm, _ := start(t, "localhost")
 
 	// Down to the nested container, then into it.
 	tm.Type("j")
