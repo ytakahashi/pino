@@ -89,7 +89,7 @@ func inspectorFields(info application.InspectorInfo) []inspectorField {
 
 	fields = append(fields, inspectorField{
 		Name:  "Keys",
-		Value: plainSpan(strings.Join(available(info), " ")),
+		Value: plainSpan(strings.Join(keyLabels(available(info)), " ")),
 	})
 
 	return fields

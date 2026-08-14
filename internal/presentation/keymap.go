@@ -1,6 +1,8 @@
 package presentation
 
 import (
+	"unicode"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/ytakahashi/pino/internal/application"
@@ -183,6 +185,11 @@ func ResolveChoice(k tea.KeyPressMsg, p application.PromptInfo) application.Acti
 // fact the inspector already carries, while which key asks for it is knowledge
 // this file is the only holder of.
 //
+// The keys are spelled as the table above matches them rather than as a pane
+// would print them, so that the two lists in this file share one vocabulary: a
+// key rebound there and left alone here is then a difference a reader can see,
+// and not only one a test can find. What a reader sees on screen is keyLabels.
+//
 // What is listed is the keys something happens on, not the keys that mean
 // something. The two part company where an operation is carried out to no
 // effect, which the layer below cannot tell a reader apart from one it refused:
@@ -202,7 +209,7 @@ func available(info application.InspectorInfo) []string {
 	// not one of these — it is typed over like any other — so what is asked
 	// first is whether this is a container at all.
 	if !info.Container || (info.Naming != application.NamedNone && info.Children > 0) {
-		keys = append(keys, "Enter")
+		keys = append(keys, "enter")
 	}
 
 	keys = append(keys, "t")
@@ -218,6 +225,31 @@ func available(info application.InspectorInfo) []string {
 	}
 
 	return keys
+}
+
+// keyLabels is keys as a reader sees them written.
+//
+// A terminal names a key that has no character of its own in lowercase: enter,
+// tab, esc. That is a name rather than a keystroke, and a name printed beside
+// an operation is capitalised. A key that is a character is left exactly as it
+// stands, since a and A ask for different things and letter case is the whole
+// of the difference between them.
+func keyLabels(keys []string) []string {
+	labels := make([]string, len(keys))
+
+	for i, k := range keys {
+		runes := []rune(k)
+
+		if len(runes) == 1 {
+			labels[i] = k
+
+			continue
+		}
+
+		labels[i] = string(unicode.ToUpper(runes[0])) + string(runes[1:])
+	}
+
+	return labels
 }
 
 // resolvePending is the key that completes a prefix.

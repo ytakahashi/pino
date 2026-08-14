@@ -310,17 +310,7 @@ func TestResolveChoiceOffersNothingOfItsOwn(t *testing.T) {
 func TestAvailableOperationsAgreeWithTheApplication(t *testing.T) {
 	t.Parallel()
 
-	operations := []struct {
-		key string
-		act application.Action
-	}{
-		{key: "Enter", act: application.ActionEdit{}},
-		{key: "t", act: application.ActionChangeType{}},
-		{key: "a", act: application.ActionAddChild{}},
-		{key: "A", act: application.ActionAddSibling{}},
-		{key: "d", act: application.ActionDelete{}},
-		{key: "r", act: application.ActionRenameKey{}},
-	}
+	operations := editingOperations()
 
 	for name, root := range editingDocuments(t) {
 		t.Run(name, func(t *testing.T) {
@@ -337,12 +327,12 @@ func TestAvailableOperationsAgreeWithTheApplication(t *testing.T) {
 				keys := available(info)
 
 				for _, op := range operations {
-					got := slices.Contains(keys, op.key)
+					got := slices.Contains(keys, op.spelling)
 					want := changesTheSession(appAt(t, root, ordinal), op.act)
 
 					if got != want {
 						t.Errorf("node %q advertises %s = %t, pressing it changes the session = %t",
-							info.Pointer, op.key, got, want)
+							info.Pointer, op.spelling, got, want)
 					}
 				}
 
@@ -353,5 +343,46 @@ func TestAvailableOperationsAgreeWithTheApplication(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The pane and the key table hold the spelling of a key separately. Press what
+// the pane says it is offering and see the operation it was offering, so that
+// a key rebound in one place and left alone in the other cannot go on reading
+// as an offer.
+func TestAdvertisedKeysResolveToTheOperationsTheyName(t *testing.T) {
+	t.Parallel()
+
+	for _, op := range editingOperations() {
+		// The spelling is the one a terminal gives the press, which is what
+		// lets the table above be searched for it by reading.
+		if got := op.press.String(); got != op.spelling {
+			t.Errorf("the key advertised as %q is sent as %q", op.spelling, got)
+		}
+
+		got, pending := Resolve(op.press, application.ModeNormal, PendingNone)
+		if got != op.act {
+			t.Errorf("Resolve(%q) = %v, want %v", op.spelling, got, op.act)
+		}
+
+		// An editing key is complete in itself. One that left a prefix waiting
+		// would be offered on a row it takes two presses to accept.
+		if pending != PendingNone {
+			t.Errorf("Resolve(%q) leaves %v waiting, want nothing", op.spelling, pending)
+		}
+	}
+}
+
+// A key is written on screen the way it is named rather than the way a
+// terminal spells it, and a key that is a character is written as it stands:
+// a and A ask for different things, and the case is the whole difference.
+func TestKeyLabelsNameTheKeysWithoutRespellingThem(t *testing.T) {
+	t.Parallel()
+
+	got := keyLabels([]string{"enter", "t", "a", "A", "ctrl+r"})
+	want := []string{"Enter", "t", "a", "A", "Ctrl+r"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("keyLabels() = %v, want %v", got, want)
 	}
 }

@@ -62,6 +62,38 @@ func assertOneAction(t *testing.T, got []application.Action, want application.Ac
 	}
 }
 
+// editingOperation is one thing the inspector can offer to do, written the
+// three ways the three places that hold it write it.
+type editingOperation struct {
+	// spelling is how available names the key, which is how the key table
+	// matches a press of it.
+	spelling string
+
+	// press is what a terminal sends when that key is struck.
+	press tea.KeyPressMsg
+
+	// act is what the application is asked to do about it.
+	act application.Action
+}
+
+// editingOperations is every operation the inspector can offer.
+//
+// Three places hold this knowledge separately — available says which keys a
+// node is offered, the key table says what a press means, and Do says what
+// happens then — so the tests check each of them against this one list rather
+// than against one another. A row that agreed with itself in two places and
+// not the third would otherwise read as agreement.
+func editingOperations() []editingOperation {
+	return []editingOperation{
+		{spelling: "enter", press: special(tea.KeyEnter), act: application.ActionEdit{}},
+		{spelling: "t", press: key('t'), act: application.ActionChangeType{}},
+		{spelling: "a", press: key('a'), act: application.ActionAddChild{}},
+		{spelling: "A", press: shifted('a', 'A'), act: application.ActionAddSibling{}},
+		{spelling: "d", press: key('d'), act: application.ActionDelete{}},
+		{spelling: "r", press: key('r'), act: application.ActionRenameKey{}},
+	}
+}
+
 // editingDocuments is what to walk to see every answer the editing keys have.
 //
 // The first holds every relationship that changes which operations apply: the
