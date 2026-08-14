@@ -178,7 +178,7 @@ func TestViewStacksTheInspectorUnderTheTree(t *testing.T) {
 	}
 
 	// One field to a row, the values lined up under one another.
-	want := []string{" Path      /", " Type      object", " Children  2", ""}
+	want := []string{" Path      /", " Type      object", " Children  2", " Keys      Enter t a", ""}
 
 	for i, w := range want {
 		if got := strings.TrimRight(drawn[l.BodyHeight+1+i], " "); got != w {

@@ -87,6 +87,11 @@ func inspectorFields(info application.InspectorInfo) []inspectorField {
 		// The root is a member of nothing, so it has no name to give.
 	}
 
+	fields = append(fields, inspectorField{
+		Name:  "Keys",
+		Value: plainSpan(strings.Join(available(info), " ")),
+	})
+
 	return fields
 }
 

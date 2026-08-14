@@ -18,14 +18,20 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 	}{
 		"a value": {
 			info: scalarInfo(),
-			want: []string{"Path=/server/port", "Type=number", "Value=8080", "Key=port"},
+			want: []string{
+				"Path=/server/port", "Type=number", "Value=8080", "Key=port",
+				"Keys=Enter t A d r",
+			},
 		},
 
 		// A container says how many children it holds where a value says what
 		// it is: one of the two is always empty, so they share a place.
 		"a container": {
 			info: containerInfo(),
-			want: []string{"Path=/server", "Type=object", "Children=3", "Key=server"},
+			want: []string{
+				"Path=/server", "Type=object", "Children=3", "Key=server",
+				"Keys=Enter t a A d r",
+			},
 		},
 
 		"an empty container": {
@@ -33,7 +39,10 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 				Pointer: "/opts", Type: "object", Container: true, Children: 0,
 				Label: "opts", Naming: application.NamedKey,
 			},
-			want: []string{"Path=/opts", "Type=object", "Children=0", "Key=opts"},
+			want: []string{
+				"Path=/opts", "Type=object", "Children=0", "Key=opts",
+				"Keys=Enter t a A d r",
+			},
 		},
 
 		// The name of the last field is the answer to a question a pointer
@@ -44,7 +53,10 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 				Value: application.Span{Text: `"search"`, Role: application.RoleStringValue},
 				Label: "0", Naming: application.NamedIndex,
 			},
-			want: []string{"Path=/features/0", "Type=string", `Value="search"`, "Index=0"},
+			want: []string{
+				"Path=/features/0", "Type=string", `Value="search"`, "Index=0",
+				"Keys=Enter t A d",
+			},
 		},
 
 		// The root is a member of nothing, so it is not named at all.
@@ -53,7 +65,7 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 				Pointer: "", Type: "object", Container: true, Children: 2,
 				Naming: application.NamedNone,
 			},
-			want: []string{"Path=/", "Type=object", "Children=2"},
+			want: []string{"Path=/", "Type=object", "Children=2", "Keys=Enter t a"},
 		},
 
 		// A member whose key is empty is still named, unlike the root.
@@ -63,7 +75,7 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 				Value:  application.Span{Text: "null", Role: application.RoleNullValue},
 				Naming: application.NamedKey,
 			},
-			want: []string{"Path=/", "Type=null", "Value=null", "Key="},
+			want: []string{"Path=/", "Type=null", "Value=null", "Key=", "Keys=Enter t A d r"},
 		},
 
 		// Nothing selected is nothing to say. The type is what reports that,
@@ -125,7 +137,7 @@ func TestInspectorFieldsStyleOnlyTheValue(t *testing.T) {
 // The pane beside the tree puts a field's name above its value, with a blank
 // row between one field and the next.
 func TestRenderInspectorPaneDrawsLabelledRows(t *testing.T) {
-	got := plain(DefaultTheme().RenderInspectorPane(scalarInfo(), 32, 14))
+	got := plain(DefaultTheme().RenderInspectorPane(scalarInfo(), 32, 17))
 
 	want := []string{
 		" Path",
@@ -139,6 +151,9 @@ func TestRenderInspectorPaneDrawsLabelledRows(t *testing.T) {
 		"",
 		" Key",
 		" port",
+		"",
+		" Keys",
+		" Enter t A d r",
 		"", "", "",
 	}
 
@@ -184,13 +199,14 @@ func TestRenderInspectorPaneCutsAtTheHeight(t *testing.T) {
 // The stacked pane puts a field on a row of its own, the values lined up in
 // one column.
 func TestRenderInspectorStripDrawsCompactFields(t *testing.T) {
-	got := plain(DefaultTheme().RenderInspectorStrip(scalarInfo(), 60, 4))
+	got := plain(DefaultTheme().RenderInspectorStrip(scalarInfo(), 60, 5))
 
 	want := []string{
 		" Path      /server/port",
 		" Type      number",
 		" Value     8080",
 		" Key       port",
+		" Keys      Enter t A d r",
 	}
 
 	for i, w := range want {
@@ -203,15 +219,23 @@ func TestRenderInspectorStripDrawsCompactFields(t *testing.T) {
 // The column the values begin in does not move with the name in front of them,
 // so that they stay put as the selection passes from a value to a container.
 func TestRenderInspectorStripLinesTheValuesUp(t *testing.T) {
-	value := plain(DefaultTheme().RenderInspectorStrip(scalarInfo(), 60, 4))
-	container := plain(DefaultTheme().RenderInspectorStrip(containerInfo(), 60, 4))
+	value := plain(DefaultTheme().RenderInspectorStrip(scalarInfo(), 60, 5))
+	container := plain(DefaultTheme().RenderInspectorStrip(containerInfo(), 60, 5))
 
 	at := func(row string) int { return strings.Index(row, strings.TrimSpace(row[10:])) }
 
-	for i := range 4 {
+	for i := range 5 {
 		if got, want := at(container[i]), at(value[i]); got != want {
 			t.Errorf("row %d of a container begins at column %d, want %d", i, got, want)
 		}
+	}
+}
+
+func TestRenderInspectorStripCutsAvailableKeysAtThePaneWidth(t *testing.T) {
+	got := plain(DefaultTheme().RenderInspectorStrip(containerInfo(), 18, 5))
+
+	if got, want := got[4], " Keys      Enter t"; got != want {
+		t.Errorf("the Keys row is %q, want %q", got, want)
 	}
 }
 

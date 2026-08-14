@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/ytakahashi/pino/internal/application"
+	"github.com/ytakahashi/pino/internal/domain"
 )
 
 // allModes is every mode the application defines. Only normal is reachable
@@ -59,4 +60,58 @@ func assertOneAction(t *testing.T, got []application.Action, want application.Ac
 	if got[0] != want {
 		t.Errorf("produced %v, want %v", got[0], want)
 	}
+}
+
+// editingDocument contains every relationship that changes which structural
+// editing operations apply: the root, object members, array elements, scalars,
+// and containers.
+func editingDocument(t *testing.T) domain.Node {
+	t.Helper()
+
+	inner, err := domain.NewObject([]domain.Member{{Key: "value", Value: domain.NewNumber("1")}})
+	if err != nil {
+		t.Fatalf("NewObject(inner) = %v", err)
+	}
+
+	empty, err := domain.NewObject(nil)
+	if err != nil {
+		t.Fatalf("NewObject(empty) = %v", err)
+	}
+
+	text, err := domain.NewString("item")
+	if err != nil {
+		t.Fatalf("NewString() = %v", err)
+	}
+
+	root, err := domain.NewObject([]domain.Member{
+		{Key: "object", Value: inner},
+		{Key: "array", Value: domain.NewArray([]domain.Node{text, empty})},
+		{Key: "number", Value: domain.NewNumber("2")},
+	})
+	if err != nil {
+		t.Fatalf("NewObject(root) = %v", err)
+	}
+
+	return root
+}
+
+func appAt(t *testing.T, root domain.Node, ordinal int) *application.App {
+	t.Helper()
+
+	a := openApp(t, root)
+	for range ordinal {
+		a.Do(application.ActionMoveNext{})
+	}
+
+	return a
+}
+
+// acceptsConditionalOperation reports whether the application starts or
+// commits one of the operations whose availability depends on the selected
+// node. Each call receives a fresh session, so an immediate deletion and a
+// prompt are equally observable without one operation affecting the next.
+func acceptsConditionalOperation(a *application.App, act application.Action) bool {
+	a.Do(act)
+
+	return a.Mode() != application.ModeNormal || a.Status().Dirty
 }

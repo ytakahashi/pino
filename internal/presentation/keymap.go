@@ -176,6 +176,32 @@ func ResolveChoice(k tea.KeyPressMsg, p application.PromptInfo) application.Acti
 	return nil
 }
 
+// available is the operations that apply to the selected node, spelled as the
+// keys that ask for them.
+//
+// It is worked out here because the keys are here: what a node allows is a
+// fact the inspector already carries, while which key asks for it is knowledge
+// this file is the only holder of.
+func available(info application.InspectorInfo) []string {
+	if info.Type == "" {
+		return nil
+	}
+
+	keys := []string{"Enter", "t"}
+
+	if info.Container {
+		keys = append(keys, "a")
+	}
+	if info.Naming != application.NamedNone {
+		keys = append(keys, "A", "d")
+	}
+	if info.Naming == application.NamedKey {
+		keys = append(keys, "r")
+	}
+
+	return keys
+}
+
 // resolvePending is the key that completes a prefix.
 //
 // A key the prefix has no meaning for cancels it and does nothing else. It is

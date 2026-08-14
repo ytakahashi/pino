@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,10 +62,7 @@ func writeConfig(t *testing.T) string {
 func start(t *testing.T, onFirstScreen string) *teatest.TestModel {
 	t.Helper()
 
-	model, err := cli.NewProgramModel(writeConfig(t))
-	if err != nil {
-		t.Fatalf("NewProgramModel() = %v", err)
-	}
+	model := programModel(t)
 
 	tm := teatest.NewTestModel(t, model, teatest.WithInitialTermSize(80, 24))
 
@@ -76,6 +74,111 @@ func start(t *testing.T, onFirstScreen string) *teatest.TestModel {
 	)
 
 	return tm
+}
+
+func programModel(t *testing.T) tea.Model {
+	t.Helper()
+
+	model, err := cli.NewProgramModel(writeConfig(t))
+	if err != nil {
+		t.Fatalf("NewProgramModel() = %v", err)
+	}
+
+	return model
+}
+
+// screenObserver records complete screens rendered by the model while a
+// program is running. Terminal output cannot serve this purpose because it is
+// a stream of cell differences rather than a sequence of complete screens.
+type screenObserver struct {
+	mu      sync.RWMutex
+	content string
+	changed chan struct{}
+}
+
+func newScreenObserver() *screenObserver {
+	return &screenObserver{changed: make(chan struct{}, 1)}
+}
+
+func (o *screenObserver) record(content string) {
+	o.mu.Lock()
+	o.content = content
+	o.mu.Unlock()
+
+	select {
+	case o.changed <- struct{}{}:
+	default:
+	}
+}
+
+func (o *screenObserver) screen() []string {
+	o.mu.RLock()
+	content := o.content
+	o.mu.RUnlock()
+
+	return strings.Split(ansi.Strip(content), "\n")
+}
+
+// observedModel delegates every operation to the real program model and
+// records the complete view after each state transition.
+type observedModel struct {
+	inner    tea.Model
+	observer *screenObserver
+}
+
+func (m observedModel) Init() tea.Cmd {
+	m.observer.record(m.inner.View().Content)
+
+	return m.inner.Init()
+}
+
+func (m observedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.inner.Update(msg)
+	m.observer.record(next.View().Content)
+
+	return observedModel{inner: next, observer: m.observer}, cmd
+}
+
+func (m observedModel) View() tea.View { return m.inner.View() }
+
+func startObserved(t *testing.T, onFirstScreen string) (*teatest.TestModel, *screenObserver) {
+	t.Helper()
+
+	observer := newScreenObserver()
+	tm := teatest.NewTestModel(
+		t,
+		observedModel{inner: programModel(t), observer: observer},
+		teatest.WithInitialTermSize(80, 24),
+	)
+
+	teatest.WaitFor(
+		t,
+		tm.Output(),
+		func(out []byte) bool { return bytes.Contains(out, []byte(onFirstScreen)) },
+		teatest.WithDuration(waitTime),
+	)
+
+	return tm, observer
+}
+
+func waitForScreen(t *testing.T, observer *screenObserver, ready func([]string) bool) []string {
+	t.Helper()
+
+	timer := time.NewTimer(waitTime)
+	defer timer.Stop()
+
+	for {
+		screen := observer.screen()
+		if ready(screen) {
+			return screen
+		}
+
+		select {
+		case <-observer.changed:
+		case <-timer.C:
+			t.Fatalf("screen did not reach the expected state:\n%s", strings.Join(screen, "\n"))
+		}
+	}
 }
 
 // finalScreen quits and answers the screen the program stopped on, one entry

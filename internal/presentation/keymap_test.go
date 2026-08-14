@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"slices"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -294,5 +295,53 @@ func TestResolveChoiceOffersNothingOfItsOwn(t *testing.T) {
 
 	if got := ResolveChoice(special(tea.KeyEscape), empty); got != (application.ActionCancel{}) {
 		t.Errorf("ResolveChoice(esc) = %v, want a cancellation", got)
+	}
+}
+
+// The inspector and the application derive structural editing availability
+// independently. Exercise every relationship that changes the answer so that
+// a key cannot be advertised where its action is refused, or hidden where the
+// action works.
+func TestAvailableOperationsAgreeWithTheApplication(t *testing.T) {
+	t.Parallel()
+
+	root := editingDocument(t)
+	probe := openApp(t, root)
+
+	conditional := []struct {
+		key string
+		act application.Action
+	}{
+		{key: "a", act: application.ActionAddChild{}},
+		{key: "A", act: application.ActionAddSibling{}},
+		{key: "d", act: application.ActionDelete{}},
+		{key: "r", act: application.ActionRenameKey{}},
+	}
+
+	for ordinal := 0; ; ordinal++ {
+		info := probe.Inspector()
+		keys := available(info)
+
+		for _, always := range []string{"Enter", "t"} {
+			if !slices.Contains(keys, always) {
+				t.Errorf("node %q does not advertise %s", info.Pointer, always)
+			}
+		}
+
+		for _, op := range conditional {
+			got := slices.Contains(keys, op.key)
+			want := acceptsConditionalOperation(appAt(t, root, ordinal), op.act)
+
+			if got != want {
+				t.Errorf("node %q advertises %s = %t, application accepts it = %t",
+					info.Pointer, op.key, got, want)
+			}
+		}
+
+		before := info.Pointer
+		probe.Do(application.ActionMoveNext{})
+		if probe.Inspector().Pointer == before {
+			break
+		}
 	}
 }
