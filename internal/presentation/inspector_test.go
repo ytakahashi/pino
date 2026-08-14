@@ -20,7 +20,7 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 			info: scalarInfo(),
 			want: []string{
 				"Path=/server/port", "Type=number", "Value=8080", "Key=port",
-				"Keys=Enter t A d r",
+				"Press=Enter t A d r",
 			},
 		},
 
@@ -30,7 +30,7 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 			info: containerInfo(),
 			want: []string{
 				"Path=/server", "Type=object", "Children=3", "Key=server",
-				"Keys=Enter t a A d r",
+				"Press=Enter t a A d r",
 			},
 		},
 
@@ -43,7 +43,7 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 			// open nor folded, so there is nothing for it to toggle.
 			want: []string{
 				"Path=/opts", "Type=object", "Children=0", "Key=opts",
-				"Keys=t a A d r",
+				"Press=t a A d r",
 			},
 		},
 
@@ -57,7 +57,7 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 			},
 			want: []string{
 				"Path=/features/0", "Type=string", `Value="search"`, "Index=0",
-				"Keys=Enter t A d",
+				"Press=Enter t A d",
 			},
 		},
 
@@ -69,7 +69,7 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 			},
 			// The root is drawn open and has no folded form, so Enter is left
 			// off here too, populated though it is.
-			want: []string{"Path=/", "Type=object", "Children=2", "Keys=t a"},
+			want: []string{"Path=/", "Type=object", "Children=2", "Press=t a"},
 		},
 
 		// A document is a JSON value and need not be an object. This root is
@@ -82,7 +82,7 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 				Value:  application.Span{Text: "8080", Role: application.RoleNumberValue},
 				Naming: application.NamedNone,
 			},
-			want: []string{"Path=/", "Type=number", "Value=8080", "Keys=Enter t"},
+			want: []string{"Path=/", "Type=number", "Value=8080", "Press=Enter t"},
 		},
 
 		// A member whose key is empty is still named, unlike the root.
@@ -92,7 +92,7 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 				Value:  application.Span{Text: "null", Role: application.RoleNullValue},
 				Naming: application.NamedKey,
 			},
-			want: []string{"Path=/", "Type=null", "Value=null", "Key=", "Keys=Enter t A d r"},
+			want: []string{"Path=/", "Type=null", "Value=null", "Key=", "Press=Enter t A d r"},
 		},
 
 		// Nothing selected is nothing to say. The type is what reports that,
@@ -169,7 +169,7 @@ func TestRenderInspectorPaneDrawsLabelledRows(t *testing.T) {
 		" Key",
 		" port",
 		"",
-		" Keys",
+		" Press",
 		" Enter t A d r",
 		"", "", "",
 	}
@@ -223,7 +223,7 @@ func TestRenderInspectorStripDrawsCompactFields(t *testing.T) {
 		" Type      number",
 		" Value     8080",
 		" Key       port",
-		" Keys      Enter t A d r",
+		" Press     Enter t A d r",
 	}
 
 	for i, w := range want {
@@ -251,8 +251,8 @@ func TestRenderInspectorStripLinesTheValuesUp(t *testing.T) {
 func TestRenderInspectorStripCutsAvailableKeysAtThePaneWidth(t *testing.T) {
 	got := plain(DefaultTheme().RenderInspectorStrip(containerInfo(), 18, 5))
 
-	if got, want := got[4], " Keys      Enter t"; got != want {
-		t.Errorf("the Keys row is %q, want %q", got, want)
+	if got, want := got[4], " Press     Enter t"; got != want {
+		t.Errorf("the Press row is %q, want %q", got, want)
 	}
 }
 
