@@ -36,6 +36,378 @@ func reloadTo(t *testing.T, a *App, root domain.Node) {
 	parserOf(t, a).parse = func([]byte, domain.Dialect) (domain.Node, error) { return root, nil }
 }
 
+// quits reports whether an action asked the program to stop.
+func quits(effects []Effect) bool {
+	for _, e := range effects {
+		if _, ok := e.(EffectQuit); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Leaving with nothing to lose is leaving. A document nobody typed into is
+// one of those, including one whose file has still to be created: there is
+// nothing to write, and writing it would create a file nobody asked for.
+func TestQuittingLeavesAtOnceWhenThereIsNothingToSave(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]func(t *testing.T) (*App, *fakeFileStore){
+		"no document at all": func(t *testing.T) (*App, *fakeFileStore) {
+			t.Helper()
+
+			files := &fakeFileStore{data: map[string][]byte{}}
+
+			return New(Deps{
+				Parser:   &fakeParser{},
+				Files:    files,
+				JSONView: &fakeRenderer{},
+				TreeView: &fakeRenderer{},
+			}, Config{}), files
+		},
+		"a document as it was read": func(t *testing.T) (*App, *fakeFileStore) {
+			t.Helper()
+
+			return saving(t, sample(t))
+		},
+		"a new document nobody typed into": func(t *testing.T) (*App, *fakeFileStore) {
+			t.Helper()
+
+			return creating(t)
+		},
+		"a document edited back to what it was": func(t *testing.T) (*App, *fakeFileStore) {
+			t.Helper()
+
+			app, files := saving(t, sample(t))
+			editValue(t, app, "/server/ports/0", "8081")
+			press(app, ActionUndo{})
+
+			return app, files
+		},
+	}
+
+	for name, open := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app, files := open(t)
+
+			if !quits(app.Do(ActionQuit{})) {
+				t.Error("pino stayed open with nothing to save")
+			}
+
+			if app.Mode() != ModeNormal {
+				t.Errorf("mode = %v, want no question asked", app.Mode())
+			}
+
+			if len(files.writes) != 0 {
+				t.Error("leaving wrote a file")
+			}
+		})
+	}
+}
+
+// Leaving with unsaved work in the document is a question. The three answers
+// are on the prompt, and nothing else there does anything.
+func TestQuittingADirtyDocumentAsks(t *testing.T) {
+	t.Parallel()
+
+	app, files := saving(t, sample(t))
+	editValue(t, app, "/server/ports/0", "8081")
+
+	if quits(app.Do(ActionQuit{})) {
+		t.Fatal("pino left with unsaved changes in the document")
+	}
+
+	info := app.Prompt()
+	if info.Kind != PromptChoice || info.Title != "You have unsaved changes." {
+		t.Errorf("the prompt reads %q, want the unsaved changes to be named", info.Title)
+	}
+
+	if got, want := promptKeys(info), []rune{'s', 'd', 'c'}; string(got) != string(want) {
+		t.Errorf("the prompt offers %q, want %q", string(got), string(want))
+	}
+
+	for _, key := range []rune{'q', 'y', 'n', 'x'} {
+		if quits(app.Do(ActionPromptChoose{Key: key})) {
+			t.Fatalf("%q was taken as an answer and left", key)
+		}
+	}
+
+	if len(files.writes) != 0 {
+		t.Error("a key the prompt does not offer wrote the document")
+	}
+}
+
+// Asking again is asking again. Pressing the key that leaves twice is not a
+// way of saying "discard", which is a key of its own that has to be read.
+func TestAskingToQuitAgainKeepsTheQuestion(t *testing.T) {
+	t.Parallel()
+
+	app, files := saving(t, sample(t))
+	editValue(t, app, "/server/ports/0", "8081")
+
+	for range 3 {
+		if quits(app.Do(ActionQuit{})) {
+			t.Fatal("pino left after being asked repeatedly, with the changes unsaved")
+		}
+	}
+
+	if app.Prompt().Title != "You have unsaved changes." {
+		t.Errorf("the prompt reads %q, want the question still standing", app.Prompt().Title)
+	}
+
+	if !app.doc.IsDirty() {
+		t.Error("the document was marked saved by being asked to quit")
+	}
+
+	if len(files.writes) != 0 {
+		t.Error("asking to quit wrote the document")
+	}
+}
+
+// Discarding is the one answer that leaves work behind, and it writes
+// nothing: the file is as it was.
+func TestDiscardingLeavesWithoutWriting(t *testing.T) {
+	t.Parallel()
+
+	app, files := saving(t, sample(t))
+	editValue(t, app, "/server/ports/0", "8081")
+
+	press(app, ActionQuit{})
+
+	if !quits(app.Do(ActionPromptChoose{Key: 'd'})) {
+		t.Error("discarding did not leave")
+	}
+
+	if len(files.writes) != 0 {
+		t.Error("discarding wrote the document")
+	}
+}
+
+// Cancelling puts the reader back where they were, with everything in it.
+func TestCancellingTheQuestionLeavesTheSessionAsItWas(t *testing.T) {
+	t.Parallel()
+
+	for _, cancel := range []Action{ActionPromptChoose{Key: 'c'}, ActionCancel{}} {
+		t.Run(describeAction(cancel), func(t *testing.T) {
+			t.Parallel()
+
+			app, files := saving(t, sample(t))
+			editValue(t, app, "/server/ports/0", "8081")
+
+			root, versions, cursor := app.doc.Root(), len(app.history.entries), cursorOf(app)
+
+			press(app, ActionQuit{})
+
+			if quits(app.Do(cancel)) {
+				t.Fatal("cancelling left")
+			}
+
+			if app.Mode() != ModeNormal {
+				t.Errorf("mode = %v, want the question gone", app.Mode())
+			}
+
+			if app.doc.Root() != root || len(app.history.entries) != versions || cursorOf(app) != cursor {
+				t.Error("cancelling changed the document or where the reader was standing")
+			}
+
+			if len(files.writes) != 0 {
+				t.Error("cancelling wrote the document")
+			}
+		})
+	}
+}
+
+// Saving on the way out leaves only once the document has reached the file.
+func TestSaveAndQuitLeavesOnlyOnceTheDocumentIsWritten(t *testing.T) {
+	t.Parallel()
+
+	app, files := saving(t, sample(t))
+	editValue(t, app, "/server/ports/0", "8081")
+
+	press(app, ActionQuit{})
+
+	if !quits(app.Do(ActionPromptChoose{Key: 's'})) {
+		t.Error("saving on the way out did not leave although the write committed")
+	}
+
+	if len(files.writes) != 1 {
+		t.Errorf("the store was asked to write %d times, want once", len(files.writes))
+	}
+
+	if app.doc.IsDirty() {
+		t.Error("the document is dirty after being written")
+	}
+}
+
+// Every way a save can fail to reach the file keeps pino open, with the
+// document still in it and the reason on screen.
+func TestSaveAndQuitStaysWhenTheDocumentDidNotReachTheFile(t *testing.T) {
+	t.Parallel()
+
+	writeErr := errors.New("permission denied")
+
+	tests := map[string]func(t *testing.T, a *App, f *fakeFileStore){
+		"the file changed underneath": func(_ *testing.T, _ *App, f *fakeFileStore) {
+			f.status = ChangeModified
+		},
+		"the write failed": func(_ *testing.T, _ *App, f *fakeFileStore) {
+			f.outcome, f.writeErr = WriteOutcome{}, writeErr
+		},
+		"the document would not survive encoding": func(t *testing.T, a *App, _ *fakeFileStore) {
+			t.Helper()
+
+			parserOf(t, a).parse = func([]byte, domain.Dialect) (domain.Node, error) {
+				return nil, writeErr
+			}
+		},
+	}
+
+	for name, arrange := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app, files := saving(t, sample(t))
+			editValue(t, app, "/server/ports/0", "8081")
+
+			arrange(t, app, files)
+
+			press(app, ActionQuit{})
+
+			if quits(app.Do(ActionPromptChoose{Key: 's'})) {
+				t.Error("pino left although the document had not reached the file")
+			}
+
+			if !app.doc.IsDirty() {
+				t.Error("the document was marked saved although it was not written")
+			}
+
+			if app.Mode() != ModeConfirm {
+				t.Errorf("mode = %v, want what happened to be on screen", app.Mode())
+			}
+		})
+	}
+}
+
+// The rename committed and something after it did not. The document is saved,
+// so there is nothing left to lose by staying — and staying is what keeps the
+// report of it from leaving the screen with the program.
+func TestSaveAndQuitStaysToReportAnUnconfirmedWrite(t *testing.T) {
+	t.Parallel()
+
+	syncErr := errors.New("the directory could not be synced")
+
+	app, files := saving(t, sample(t))
+	files.writeErr = syncErr
+
+	editValue(t, app, "/server/ports/0", "8081")
+
+	press(app, ActionQuit{})
+
+	if quits(app.Do(ActionPromptChoose{Key: 's'})) {
+		t.Error("pino left with a failure nobody could have read")
+	}
+
+	if app.doc.IsDirty() {
+		t.Error("the document is dirty although the file was replaced")
+	}
+
+	if got := app.Status().Error; got != syncErr.Error() {
+		t.Errorf("the bar reads %q, want the reason the write was not confirmed", got)
+	}
+
+	// The document is saved, so asking again goes straight out.
+	press(app, ActionPromptChoose{Key: 'o'})
+
+	if !quits(app.Do(ActionQuit{})) {
+		t.Error("pino asked again although the document was saved")
+	}
+}
+
+// A save on the way out that met a changed file carries the leaving with it:
+// overwriting ends the session, and reloading is choosing to stay and look at
+// the other document.
+func TestAConflictOnTheWayOutLeavesOnlyWhenOverwritten(t *testing.T) {
+	t.Parallel()
+
+	t.Run("overwriting", func(t *testing.T) {
+		t.Parallel()
+
+		app, files := saving(t, sample(t))
+		files.status = ChangeModified
+
+		editValue(t, app, "/server/ports/0", "8081")
+
+		press(app, ActionQuit{}, ActionPromptChoose{Key: 's'})
+
+		if !quits(app.Do(ActionPromptChoose{Key: 'o'})) {
+			t.Error("overwriting on the way out did not leave")
+		}
+
+		if len(files.writes) != 1 {
+			t.Errorf("the store was asked to write %d times, want once", len(files.writes))
+		}
+	})
+
+	t.Run("reloading", func(t *testing.T) {
+		t.Parallel()
+
+		app, files := saving(t, sample(t))
+		files.status = ChangeModified
+
+		editValue(t, app, "/server/ports/0", "8081")
+
+		press(app, ActionQuit{}, ActionPromptChoose{Key: 's'})
+
+		reloadTo(t, app, testdocsOutside(t))
+
+		if quits(app.Do(ActionPromptChoose{Key: 'r'})) {
+			t.Error("reloading on the way out left, taking the document nobody had looked at with it")
+		}
+
+		if app.Mode() != ModeNormal {
+			t.Errorf("mode = %v after reloading, want the document on screen", app.Mode())
+		}
+
+		if len(files.writes) != 0 {
+			t.Error("reloading wrote the document")
+		}
+	})
+}
+
+// Text arrives from a widget only a text prompt asks for. It cannot reach the
+// question about leaving through the terminal, and must do nothing when it is
+// driven straight at this layer.
+func TestTextActionsDoNothingToTheQuestionAboutLeaving(t *testing.T) {
+	t.Parallel()
+
+	app, files := saving(t, sample(t))
+	editValue(t, app, "/server/ports/0", "8081")
+
+	press(app, ActionQuit{})
+
+	root := app.doc.Root()
+
+	press(app,
+		ActionPromptChange{Text: "typed"},
+		ActionPromptSubmit{Text: "typed"},
+	)
+
+	if app.Mode() != ModeConfirm {
+		t.Errorf("mode = %v, want the question still standing", app.Mode())
+	}
+
+	if app.doc.Root() != root {
+		t.Error("text answered a question the prompt was not asking")
+	}
+
+	if len(files.writes) != 0 {
+		t.Error("text answering the question wrote the document")
+	}
+}
+
 // Cancel is for a reader who wants to look at what happened before deciding.
 // Nothing at all may come of it.
 func TestCancellingAConflictLeavesEverythingAsItWas(t *testing.T) {

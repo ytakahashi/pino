@@ -231,6 +231,28 @@ func finalScreen(t *testing.T, tm *teatest.TestModel) []string {
 	return screenOf(final)
 }
 
+// finalScreenDiscarding is finalScreen for a session with unsaved changes in
+// it, which does not leave when asked but puts the question to the reader.
+//
+// The confirmation is waited for rather than answered blind: the key that
+// discards is not the key that quits, so typing both at once would pass just
+// as well if the question never appeared.
+func finalScreenDiscarding(t *testing.T, tm *teatest.TestModel, waiter *screenWaiter) []string {
+	t.Helper()
+
+	tm.Type("q")
+
+	waiter.wait(t, func(screen []string) bool {
+		return strings.Contains(strings.Join(screen, "\n"), "unsaved changes")
+	})
+
+	tm.Type("d")
+
+	final := tm.FinalModel(t, teatest.WithFinalTimeout(waitTime))
+
+	return screenOf(final)
+}
+
 // screenOf is what a model draws, without styling, one entry per row.
 func screenOf(m tea.Model) []string {
 	return strings.Split(ansi.Strip(m.View().Content), "\n")

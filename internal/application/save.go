@@ -36,17 +36,22 @@ var (
 // overwrite skips that check, once. It is what the reader chooses when told
 // the file changed underneath them, and it is not remembered: the next save
 // asks again.
-func (a *App) save(overwrite bool) {
+//
+// quitAfter says the save is on the way out. Leaving is then the last step of
+// a save that went through, and every way of not going through — a document
+// that could not be encoded, a file that changed, a write that failed —
+// leaves pino running with the document still in it.
+func (a *App) save(quitAfter, overwrite bool) []Effect {
 	src, ok := a.saveTarget()
 	if !ok {
-		return
+		return nil
 	}
 
 	encoded, err := a.validateEncoding()
 	if err != nil {
 		a.fail(err)
 
-		return
+		return nil
 	}
 
 	if !overwrite {
@@ -54,7 +59,7 @@ func (a *App) save(overwrite bool) {
 		if err != nil {
 			a.fail(err)
 
-			return
+			return nil
 		}
 
 		switch status {
@@ -63,9 +68,11 @@ func (a *App) save(overwrite bool) {
 			// replaces this session's own work and nobody else's.
 
 		case ChangeModified, ChangeDeleted:
-			a.flow = &conflictFlow{status: status}
+			// The question is carried on: answering it with Overwrite is
+			// still a save on the way out, and leaving is what it ends with.
+			a.flow = &conflictFlow{status: status, quitAfter: quitAfter}
 
-			return
+			return nil
 
 		default:
 			// A state the port does not define. Putting it to the reader as a
@@ -74,12 +81,13 @@ func (a *App) save(overwrite bool) {
 			// looked at gets written over.
 			a.fail(errStoreStatus)
 
-			return
+			return nil
 		}
 	}
 
 	out, err := a.deps.Files.Write(src.Path, encoded)
-	a.applyWrite(src, out, err)
+
+	return a.applyWrite(src, out, err, quitAfter)
 }
 
 // saveTarget is the file to write to, and false when there is nothing to
@@ -137,7 +145,7 @@ func (a *App) validateEncoding() ([]byte, error) {
 // only place that reads which side of it a write ended on. Saving and saving
 // on the way out both come through here, so that they cannot come to disagree
 // about what a half-finished write meant.
-func (a *App) applyWrite(src FileSource, out WriteOutcome, err error) {
+func (a *App) applyWrite(src FileSource, out WriteOutcome, err error, quitAfter bool) []Effect {
 	switch {
 	// Nothing was replaced. The document is exactly as dirty as it was, the
 	// file is exactly as it was, and the Meta still describes it.
@@ -155,8 +163,19 @@ func (a *App) applyWrite(src FileSource, out WriteOutcome, err error) {
 		// The document is not dirty for it: what is at the path is the new
 		// text, and offering to write it again would have pino find its own
 		// bytes there and report them as somebody else's change.
+		//
+		// pino stays open even when the save was on the way out. Leaving now
+		// would take the only report of it off the screen with it, and there
+		// is nothing left to lose by staying: the document is saved, so the
+		// next attempt to leave goes straight out.
 		if err != nil {
 			a.fail(err)
+
+			return nil
+		}
+
+		if quitAfter {
+			return []Effect{EffectQuit{}}
 		}
 
 	default:
@@ -165,6 +184,8 @@ func (a *App) applyWrite(src FileSource, out WriteOutcome, err error) {
 		// is how a document comes to be marked saved when it was not.
 		a.fail(errStoreContract)
 	}
+
+	return nil
 }
 
 // fail puts a message on screen and leaves the document alone.

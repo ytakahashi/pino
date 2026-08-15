@@ -309,7 +309,7 @@ func (a *App) ViewMode() ViewMode { return a.view.ViewMode }
 func (a *App) Do(act Action) []Effect {
 	switch act := act.(type) {
 	case ActionQuit:
-		return []Effect{EffectQuit{}}
+		return a.quit()
 
 	case ActionMoveNext:
 		a.moveBy(nextRow)
@@ -380,7 +380,7 @@ func (a *App) Do(act Action) []Effect {
 		return a.choose(act.Key)
 
 	case ActionSave:
-		a.save(false)
+		return a.save(false, false)
 
 	case ActionCancel:
 		a.cancel()

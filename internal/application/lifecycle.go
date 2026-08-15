@@ -12,7 +12,14 @@ package application
 // are not kept: they are made again from the current root if the reader
 // chooses to overwrite, so there is never a version of the document waiting
 // to be written that is not the one on screen.
-type conflictFlow struct{ status ChangeStatus }
+type conflictFlow struct {
+	status ChangeStatus
+
+	// quitAfter says the save that met this was on the way out, so answering
+	// it with Overwrite still ends in leaving. Reload does not: choosing to
+	// look at the other document is choosing to stay and look at it.
+	quitAfter bool
+}
 
 func (*conflictFlow) mode() Mode { return ModeConfirm }
 
@@ -42,11 +49,80 @@ func (f *conflictFlow) choose(a *App, key rune) []Effect {
 		a.reload()
 
 	case 'o':
-		a.save(true)
+		return a.save(f.quitAfter, true)
 
 	case 'c':
 		a.flow = nil
 	}
+
+	return nil
+}
+
+// quitFlow is the question asked when leaving would throw work away.
+//
+// It holds nothing. What is being asked about is the document, which the
+// session has, and the three answers are the same whatever is in it.
+type quitFlow struct{}
+
+func (*quitFlow) mode() Mode { return ModeConfirm }
+
+func (*quitFlow) prompt(*App) PromptInfo {
+	return PromptInfo{
+		Kind:  PromptChoice,
+		Title: "You have unsaved changes.",
+		Choices: []Choice{
+			{Key: 's', Label: "Save and quit"},
+			{Key: 'd', Label: "Discard changes"},
+			{Key: 'c', Label: "Cancel"},
+		},
+	}
+}
+
+// choose takes the answer.
+//
+// Saving does not lead to leaving on its own: what comes back from the save
+// is what says whether the document reached the file, and only that ends the
+// session. Discarding is the one answer that leaves with work unsaved, and it
+// is a key the reader had to read and press.
+func (f *quitFlow) choose(a *App, key rune) []Effect {
+	switch key {
+	case 's':
+		// The question has been answered, so it goes now rather than when the
+		// save gets somewhere: whatever the save has to say, it says in a
+		// prompt of its own.
+		a.flow = nil
+
+		return a.save(true, false)
+
+	case 'd':
+		return []Effect{EffectQuit{}}
+
+	case 'c':
+		a.flow = nil
+	}
+
+	return nil
+}
+
+// quit is what leaving means with this document open.
+//
+// A document with nothing unsaved in it leaves at once, which includes one
+// whose file has still to be created and which nobody has typed into: there
+// is nothing to write, and writing it would create a file the reader never
+// asked for.
+//
+// Anything else asks. Both keys that leave pino come through here — the key
+// table binds Ctrl+C in every mode, so making only q ask would leave the
+// other as a way out that takes the document with it.
+func (a *App) quit() []Effect {
+	if a.doc == nil || !a.doc.IsDirty() {
+		return []Effect{EffectQuit{}}
+	}
+
+	// Whatever else was in progress goes. The question on screen is now the
+	// one that was asked last, and an edit half answered underneath it would
+	// be answered against a document the reader may be about to discard.
+	a.flow = &quitFlow{}
 
 	return nil
 }

@@ -51,7 +51,10 @@ func TestTheProgramEditsUndoesAndRedoesAValue(t *testing.T) {
 		t.Errorf("the bar reads %q after redo, want the cursor left at the edit", got)
 	}
 
-	screen := finalScreen(t, tm)
+	// The document is left with an edit in it, so leaving is a question
+	// rather than a way out: the answer that throws the edit away is the one
+	// this test gives.
+	screen := finalScreenDiscarding(t, tm, waiter)
 	if got := strings.Join(screen, "\n"); !strings.Contains(got, `"port": 80801`) {
 		t.Errorf("the final screen does not hold the redone value:\n%s", got)
 	}
