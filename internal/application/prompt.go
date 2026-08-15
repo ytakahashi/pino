@@ -34,7 +34,7 @@ type Choice struct {
 
 // PromptInfo is what pino is waiting to be told.
 //
-// It is worked out from the edit in progress on every read, the way the status
+// It is worked out from the flow in progress on every read, the way the status
 // bar and the inspector are worked out from the document. Nothing here is
 // state, so there is no copy of the flow that could fall out of step with it.
 type PromptInfo struct {
@@ -59,22 +59,32 @@ type PromptInfo struct {
 
 // Prompt is what the session is waiting to be told, and nothing when it is
 // waiting for a command instead.
+//
+// Which question it is is left to the flow asking it. The alternative is a
+// switch here over every flow there is, which is the same list of cases the
+// flows already are, kept somewhere they could be left out of.
 func (a *App) Prompt() PromptInfo {
 	if a.flow == nil {
 		return PromptInfo{}
 	}
 
-	info := PromptInfo{Error: a.flow.err}
+	return a.flow.prompt(a)
+}
 
-	switch a.flow.step {
+// prompt is what an edit in progress is waiting to be told: text to type, a
+// type to pick, or a question about what would be lost.
+func (f *editFlow) prompt(a *App) PromptInfo {
+	info := PromptInfo{Error: f.err}
+
+	switch f.step {
 	case stepText:
 		info.Kind = PromptText
-		info.Title = a.flow.title()
+		info.Title = f.title()
 
 		// A newline can go into any JSON string and into nothing else, so the
 		// kind the answer is read as settles this on its own. A key is a
 		// string, which is what keeps a key holding a newline editable.
-		info.Multiline = a.flow.kind == domain.KindString
+		info.Multiline = f.kind == domain.KindString
 
 	case stepType:
 		info.Kind = PromptChoice
@@ -83,7 +93,7 @@ func (a *App) Prompt() PromptInfo {
 
 	case stepConfirm:
 		info.Kind = PromptChoice
-		info.Title = a.confirmTitle()
+		info.Title = f.confirmTitle(a)
 		info.Choices = confirmChoices()
 	}
 
@@ -97,8 +107,8 @@ func (a *App) Prompt() PromptInfo {
 // because that is the number a reader needs in order to judge what they are
 // agreeing to: an object holding two objects of ten members loses twelve
 // nodes, and a confirmation saying "2" would be worth less than none.
-func (a *App) confirmTitle() string {
-	n, ok := domain.Resolve(a.doc.Root(), a.flow.target)
+func (f *editFlow) confirmTitle(a *App) string {
+	n, ok := domain.Resolve(a.doc.Root(), f.target)
 	if !ok {
 		// Not reached: a flow is abandoned as soon as its target goes away.
 		return ""
@@ -111,7 +121,7 @@ func (a *App) confirmTitle() string {
 		nodes = " child node under "
 	}
 
-	return "Discard " + strconv.Itoa(count) + nodes + pointerText(a.flow.target) + "?"
+	return "Discard " + strconv.Itoa(count) + nodes + pointerText(f.target) + "?"
 }
 
 // pointerText is a pointer as it reads inside a sentence, where the root is

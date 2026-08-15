@@ -35,12 +35,16 @@ type App struct {
 	view   ViewState
 	source Source
 
-	// flow is the edit in progress, and nil when there is none.
+	// flow is what is in progress, and nil when nothing is.
 	//
 	// The mode is derived from it rather than held beside it. Two fields could
 	// disagree — a session in ModeConfirm with nothing to confirm would take
 	// keys that led nowhere — and one value cannot.
-	flow *flow
+	//
+	// A flow is dropped by assigning nil, never a nil pointer of a flow type:
+	// an interface holding one is not nil, and every "is anything in progress"
+	// question here is asked by comparing this field against nil.
+	flow flow
 
 	// history is every version of the open document. Like the view state it
 	// belongs to the document rather than to the session: undoing in one file
@@ -175,7 +179,7 @@ func (a *App) renderer() documentview.Renderer {
 
 // Mode is what the next key press means.
 //
-// It follows from whether an edit is in progress and how far it has got, so
+// It follows from whether anything is in progress and how far it has got, so
 // there is no state to reset: dropping the flow is returning to normal, and
 // the two cannot come apart.
 func (a *App) Mode() Mode {

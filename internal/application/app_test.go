@@ -89,7 +89,7 @@ func TestOpenReplacesTheCurrentDocument(t *testing.T) {
 	app.view.Collapsed["/server"] = struct{}{}
 	app.view.Cursor = domain.Path{}.Child(domain.KeySegment("server"))
 	app.view.Scroll = 12
-	app.flow = &flow{op: opChangeType, step: stepConfirm}
+	app.flow = &editFlow{op: opChangeType, step: stepConfirm}
 
 	if err := app.Open("second.json"); err != nil {
 		t.Fatalf("Open again: %v", err)

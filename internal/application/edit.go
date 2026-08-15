@@ -34,15 +34,15 @@ const (
 	stepConfirm
 )
 
-// flow is an edit in progress: what was asked for, how far it has got, and
-// what has been gathered on the way. It is nil in normal mode.
+// editFlow is an edit in progress: what was asked for, how far it has got,
+// and what has been gathered on the way.
 //
-// One struct covers every operation rather than one type each behind an
-// interface. What differs between them is what to do once the answers are in;
-// the steps themselves are of three kinds and no more, so a single struct
-// keeps the whole of "where has this got to" readable in one place, at the
-// cost of fields that only some operations fill in.
-type flow struct {
+// One struct covers every editing operation rather than one type each. What
+// differs between them is what to do once the answers are in; the steps
+// themselves are of three kinds and no more, so a single struct keeps the
+// whole of "where has this got to" readable in one place, at the cost of
+// fields that only some operations fill in.
+type editFlow struct {
 	op   operation
 	step step
 
@@ -79,7 +79,7 @@ type flow struct {
 // Deriving it is what makes "a confirmation with nothing to confirm" a state
 // nobody can write. Held as a field beside the flow, the two could disagree,
 // and the screen would take keys that led nowhere.
-func (f *flow) mode() Mode {
+func (f *editFlow) mode() Mode {
 	if f.step == stepConfirm {
 		return ModeConfirm
 	}
@@ -91,7 +91,7 @@ func (f *flow) mode() Mode {
 }
 
 // title is what a text prompt asks for.
-func (f *flow) title() string {
+func (f *editFlow) title() string {
 	if f.op == opEditKey || (f.op == opInsert && !f.keySet) {
 		return "New key"
 	}
@@ -123,6 +123,20 @@ func revisionLabel(op operation, p domain.Path) string {
 	}
 
 	return verb + " " + pointerText(p)
+}
+
+// editing is the edit in progress, and false when the session is in another
+// flow or in none.
+//
+// The answers to a prompt are taken through here rather than from the field
+// directly, so that a text answer arriving while a quit is being confirmed is
+// answered by doing nothing. The terminal cannot send one — the prompt on
+// screen is the one the flow described — but an Action driven straight at this
+// layer must not reach into a flow that is not there.
+func (a *App) editing() (*editFlow, bool) {
+	f, ok := a.flow.(*editFlow)
+
+	return f, ok
 }
 
 // selected is the node the cursor is on.
@@ -255,15 +269,16 @@ func (a *App) addSibling() []Effect {
 // beginInsert fixes an insertion point and asks the first question needed by
 // its container. Objects need a key before a type; arrays start with the type.
 func (a *App) beginInsert(parent domain.Path, at int, parentKind domain.Kind) []Effect {
-	a.flow = &flow{op: opInsert, parent: parent, at: at}
+	f := &editFlow{op: opInsert, parent: parent, at: at}
+	a.flow = f
 
 	if parentKind == domain.KindObject {
-		a.flow.step, a.flow.kind = stepText, domain.KindString
+		f.step, f.kind = stepText, domain.KindString
 
-		return a.inputEffect("")
+		return a.inputEffect(f, "")
 	}
 
-	a.flow.step, a.flow.keySet = stepType, true
+	f.step, f.keySet = stepType, true
 
 	return nil
 }
@@ -278,7 +293,7 @@ func (a *App) deleteSelected() {
 
 	target := a.view.Cursor
 	if domain.CountDescendants(n) > 0 {
-		a.flow = &flow{op: opDelete, step: stepConfirm, target: target}
+		a.flow = &editFlow{op: opDelete, step: stepConfirm, target: target}
 
 		return
 	}
@@ -286,11 +301,11 @@ func (a *App) deleteSelected() {
 	a.deleteAt(target)
 }
 
-// cancel drops the edit in progress, however far it had got.
+// cancel drops whatever is in progress, however far it had got.
 //
 // The document needs nothing done to it: a flow gathers answers and commits
 // once, at the end, so abandoning one is forgetting the answers. That is why
-// Esc is the same key at every step.
+// Esc is the same key at every step of every flow.
 func (a *App) cancel() { a.flow = nil }
 
 // beginText opens a prompt to type an answer into, seeded with value.
@@ -306,14 +321,15 @@ func (a *App) cancel() { a.flow = nil }
 // about the answer, and the drawing side reads it from PromptInfo on every
 // redraw afterwards.
 func (a *App) beginText(op operation, kind domain.Kind, value string) []Effect {
-	a.flow = &flow{op: op, step: stepText, target: a.view.Cursor, kind: kind}
+	f := &editFlow{op: op, step: stepText, target: a.view.Cursor, kind: kind}
+	a.flow = f
 
-	return a.inputEffect(value)
+	return a.inputEffect(f, value)
 }
 
-// inputEffect asks the terminal for a box matching the current text step.
-func (a *App) inputEffect(value string) []Effect {
-	kind := a.flow.kind
+// inputEffect asks the terminal for a box matching f's current text step.
+func (a *App) inputEffect(f *editFlow, value string) []Effect {
+	kind := f.kind
 
 	text, oneLine := value, value
 	if kind == domain.KindString {
@@ -330,7 +346,7 @@ func (a *App) inputEffect(value string) []Effect {
 // beginType opens the list of types. It is the same prompt whether t asked for
 // it or Enter on a null did.
 func (a *App) beginType() {
-	a.flow = &flow{op: opChangeType, step: stepType, target: a.view.Cursor}
+	a.flow = &editFlow{op: opChangeType, step: stepType, target: a.view.Cursor}
 }
 
 // validate says whether what has been typed so far could be committed, so that
@@ -342,24 +358,25 @@ func (a *App) beginType() {
 // document and needs no second implementation of the rules — and a second one
 // is exactly what could say "ok" to an edit the tree would refuse.
 func (a *App) validate(text string) {
-	if a.flow == nil || a.flow.step != stepText {
+	f, ok := a.editing()
+	if !ok || f.step != stepText {
 		return
 	}
 
 	var err error
-	if a.flow.op == opInsert && !a.flow.keySet {
-		_, err = a.validateInsertKey(text)
+	if f.op == opInsert && !f.keySet {
+		_, err = a.validateInsertKey(f, text)
 	} else {
-		_, err = a.applyText(text)
+		_, err = a.applyText(f, text)
 	}
 
 	if err != nil {
-		a.flow.err = promptError(err)
+		f.err = promptError(err)
 
 		return
 	}
 
-	a.flow.err = ""
+	f.err = ""
 }
 
 // submit is Enter on a text prompt: take the answer, or say why it cannot be
@@ -369,53 +386,55 @@ func (a *App) validate(text string) {
 // widget, and a key that could not be committed is corrected rather than typed
 // again from the start.
 func (a *App) submit(text string) {
-	if a.flow == nil || a.flow.step != stepText {
+	f, ok := a.editing()
+	if !ok || f.step != stepText {
 		return
 	}
 
-	if a.flow.op == opInsert && !a.flow.keySet {
-		key, err := a.validateInsertKey(text)
+	if f.op == opInsert && !f.keySet {
+		key, err := a.validateInsertKey(f, text)
 		if err != nil {
-			a.flow.err = promptError(err)
+			f.err = promptError(err)
 
 			return
 		}
 
-		a.flow.key, a.flow.keySet = key, true
-		a.flow.step, a.flow.err = stepType, ""
+		f.key, f.keySet = key, true
+		f.step, f.err = stepType, ""
 
 		return
 	}
 
-	res, err := a.applyText(text)
+	res, err := a.applyText(f, text)
 	if err != nil {
-		a.flow.err = promptError(err)
+		f.err = promptError(err)
 
 		return
 	}
 
-	if a.flow.op == opInsert {
-		a.finishInsert(res)
+	if f.op == opInsert {
+		a.finishInsert(f, res)
 
 		return
 	}
 
-	a.commit(res, revisionLabel(a.flow.op, a.flow.target))
+	a.commit(res, revisionLabel(f.op, f.target))
 	a.flow = nil
 }
 
 // choose is a key pressed on a prompt that offers keys.
 func (a *App) choose(key rune) []Effect {
-	if a.flow == nil {
+	f, ok := a.editing()
+	if !ok {
 		return nil
 	}
 
-	switch a.flow.step {
+	switch f.step {
 	case stepType:
-		return a.chooseType(key)
+		return a.chooseType(f, key)
 
 	case stepConfirm:
-		a.answerConfirm(key)
+		a.answerConfirm(f, key)
 
 	case stepText:
 		// A text prompt is not answered a key at a time: what has been typed
@@ -430,46 +449,46 @@ func (a *App) choose(key rune) []Effect {
 //
 // Two operations ask for text, and everything else about them is the same, so
 // the check that separates them is which of the two this is.
-func (a *App) applyText(text string) (domain.EditResult, error) {
-	if a.flow.op == opEditKey {
+func (a *App) applyText(f *editFlow, text string) (domain.EditResult, error) {
+	if f.op == opEditKey {
 		key, err := domain.ParseEditableText(text)
 		if err != nil {
 			return domain.EditResult{}, err
 		}
 
-		return domain.Rename(a.doc.Root(), a.flow.target, key)
+		return domain.Rename(a.doc.Root(), f.target, key)
 	}
 
-	v, err := scalarFrom(text, a.flow.kind)
+	v, err := scalarFrom(text, f.kind)
 	if err != nil {
 		return domain.EditResult{}, err
 	}
 
-	if a.flow.op == opInsert {
-		return a.insertValue(a.flow.key, v)
+	if f.op == opInsert {
+		return a.insertValue(f, f.key, v)
 	}
 
-	return domain.SetValue(a.doc.Root(), a.flow.target, v)
+	return domain.SetValue(a.doc.Root(), f.target, v)
 }
 
 // validateInsertKey checks a proposed key by attempting the real insertion
 // with a disposable null value. The resulting tree is discarded; using the
 // domain operation keeps duplicate-key and UTF-8 validation identical to the
 // final insertion rather than copying either rule into this layer.
-func (a *App) validateInsertKey(text string) (string, error) {
+func (a *App) validateInsertKey(f *editFlow, text string) (string, error) {
 	key, err := domain.ParseEditableText(text)
 	if err != nil {
 		return "", err
 	}
 
-	_, err = a.insertValue(key, domain.NewNull())
+	_, err = a.insertValue(f, key, domain.NewNull())
 
 	return key, err
 }
 
-// insertValue is the current flow's insertion carrying key and value.
-func (a *App) insertValue(key string, value domain.Node) (domain.EditResult, error) {
-	return domain.Insert(a.doc.Root(), a.flow.parent, a.flow.at, domain.Member{
+// insertValue is f's insertion carrying key and value.
+func (a *App) insertValue(f *editFlow, key string, value domain.Node) (domain.EditResult, error) {
+	return domain.Insert(a.doc.Root(), f.parent, f.at, domain.Member{
 		Key:   key,
 		Value: value,
 	})
@@ -505,17 +524,17 @@ func scalarFrom(text string, k domain.Kind) (domain.Node, error) {
 }
 
 // chooseType takes the type asked for, and either changes to it or asks first.
-func (a *App) chooseType(key rune) []Effect {
+func (a *App) chooseType(f *editFlow, key rune) []Effect {
 	kind, ok := kindFor(key)
 	if !ok {
 		return nil
 	}
 
-	if a.flow.op == opInsert {
-		return a.chooseInsertType(kind)
+	if f.op == opInsert {
+		return a.chooseInsertType(f, kind)
 	}
 
-	n, ok := domain.Resolve(a.doc.Root(), a.flow.target)
+	n, ok := domain.Resolve(a.doc.Root(), f.target)
 	if !ok {
 		// A version change abandons its flow, so no current action can reach
 		// here. Check anyway rather than relying only on the invariant that a
@@ -529,48 +548,48 @@ func (a *App) chooseType(key rune) []Effect {
 	// choosing the type a node already has changes nothing at all, and a
 	// container with nothing in it has nothing to lose.
 	if n.Kind() != kind && domain.CountDescendants(n) > 0 {
-		a.flow.kind, a.flow.step = kind, stepConfirm
+		f.kind, f.step = kind, stepConfirm
 
 		return nil
 	}
 
-	a.changeTypeTo(kind)
+	a.changeTypeTo(f, kind)
 
 	return nil
 }
 
 // chooseInsertType either opens the value box for a scalar with a spelling,
 // or inserts the chosen type's zero value immediately.
-func (a *App) chooseInsertType(kind domain.Kind) []Effect {
-	a.flow.kind = kind
+func (a *App) chooseInsertType(f *editFlow, kind domain.Kind) []Effect {
+	f.kind = kind
 
 	switch kind {
 	case domain.KindString:
-		a.flow.step = stepText
+		f.step = stepText
 
-		return a.inputEffect("")
+		return a.inputEffect(f, "")
 
 	case domain.KindNumber:
-		a.flow.step = stepText
+		f.step = stepText
 
-		return a.inputEffect("0")
+		return a.inputEffect(f, "0")
 
 	case domain.KindBool, domain.KindNull, domain.KindObject, domain.KindArray:
 		value, err := domain.Convert(domain.NewNull(), kind)
 		if err != nil {
-			a.flow.err = promptError(err)
+			f.err = promptError(err)
 
 			return nil
 		}
 
-		res, err := a.insertValue(a.flow.key, value)
+		res, err := a.insertValue(f, f.key, value)
 		if err != nil {
-			a.flow.err = promptError(err)
+			f.err = promptError(err)
 
 			return nil
 		}
 
-		a.finishInsert(res)
+		a.finishInsert(f, res)
 	}
 
 	return nil
@@ -579,8 +598,8 @@ func (a *App) chooseInsertType(kind domain.Kind) []Effect {
 // finishInsert opens the destination before commit settles the new cursor.
 // Settling first would move a cursor inside a folded parent back onto that
 // parent, losing the one place the insertion result says to stand.
-func (a *App) finishInsert(res domain.EditResult) {
-	a.view.Expand(a.flow.parent)
+func (a *App) finishInsert(f *editFlow, res domain.EditResult) {
+	a.view.Expand(f.parent)
 	a.commit(res, revisionLabel(opInsert, res.Cursor))
 	a.flow = nil
 }
@@ -589,15 +608,15 @@ func (a *App) finishInsert(res domain.EditResult) {
 //
 // Changing a type and deleting are told apart by the operation gathered when
 // the question was opened.
-func (a *App) answerConfirm(key rune) {
+func (a *App) answerConfirm(f *editFlow, key rune) {
 	switch key {
 	case confirmYes:
-		switch a.flow.op {
+		switch f.op {
 		case opChangeType:
-			a.changeTypeTo(a.flow.kind)
+			a.changeTypeTo(f, f.kind)
 
 		case opDelete:
-			a.deleteAt(a.flow.target)
+			a.deleteAt(f.target)
 
 		case opEditValue, opEditKey, opInsert:
 			// These operations never ask a confirmation question.
@@ -624,15 +643,15 @@ func (a *App) deleteAt(target domain.Path) {
 }
 
 // changeTypeTo carries the change out and closes the flow.
-func (a *App) changeTypeTo(k domain.Kind) {
-	res, err := domain.ChangeType(a.doc.Root(), a.flow.target, k)
+func (a *App) changeTypeTo(f *editFlow, k domain.Kind) {
+	res, err := domain.ChangeType(a.doc.Root(), f.target, k)
 	if err != nil {
-		a.flow.err = promptError(err)
+		f.err = promptError(err)
 
 		return
 	}
 
-	a.commit(res, revisionLabel(a.flow.op, a.flow.target))
+	a.commit(res, revisionLabel(f.op, f.target))
 	a.flow = nil
 }
 
