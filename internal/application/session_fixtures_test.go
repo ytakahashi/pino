@@ -28,10 +28,10 @@ func sessionIn(t *testing.T, root domain.Node, view ViewMode) *App {
 
 	app := New(Deps{
 		Parser:   &fakeParser{root: root},
-		Files:    fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
+		Files:    &fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
 		JSONView: documentview.NewJSONRenderer(),
 		TreeView: documentview.NewTreeRenderer(),
-	})
+	}, Config{})
 
 	if err := app.Open("a.json"); err != nil {
 		t.Fatalf("Open: %v", err)

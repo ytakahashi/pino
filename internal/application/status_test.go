@@ -60,7 +60,7 @@ func TestStatusDescribesANullValue(t *testing.T) {
 func TestStatusIsEmptyWithoutADocument(t *testing.T) {
 	t.Parallel()
 
-	info := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()}).Status()
+	info := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()}, Config{}).Status()
 
 	if info.Pointer != "" {
 		t.Errorf("Status().Pointer = %q with no document open, want empty", info.Pointer)
@@ -80,10 +80,10 @@ func TestStatusDoesNotRender(t *testing.T) {
 	renderer := &fakeRenderer{lines: []documentview.Line{{Kind: documentview.LineOpen}}}
 	app := New(Deps{
 		Parser:   &fakeParser{root: sample(t)},
-		Files:    fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
+		Files:    &fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
 		JSONView: renderer,
 		TreeView: renderer,
-	})
+	}, Config{})
 
 	if err := app.Open("a.json"); err != nil {
 		t.Fatalf("Open: %v", err)

@@ -120,12 +120,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 // The terminal is untouched here: the document is read, parsed and laid out,
 // and nothing is drawn until a program is given what comes back.
 func NewProgramModel(path string) (tea.Model, error) {
+	// The layout the document is written back with is still the file's own:
+	// the flag that overrides it is accepted and not yet read.
 	app := application.New(application.Deps{
 		Parser:   jsonparser.New(),
 		Files:    filestore.New(),
 		JSONView: documentview.NewJSONRenderer(),
 		TreeView: documentview.NewTreeRenderer(),
-	})
+	}, application.Config{})
 
 	if err := app.Open(path); err != nil {
 		return nil, err

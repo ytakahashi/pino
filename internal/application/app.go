@@ -1,6 +1,9 @@
 package application
 
 import (
+	"errors"
+	"io/fs"
+
 	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
@@ -23,6 +26,39 @@ type Deps struct {
 	TreeView documentview.Renderer
 }
 
+// Config is what the person running pino chose, as opposed to what pino
+// needs in order to run at all.
+//
+// It is separate from Deps because the two answer different questions. Deps
+// says which parser and which file system this session has; Config says how
+// the user wants the document written. Putting an indent width among the
+// ports would make a policy look like a capability, and every test that needs
+// a session would have to supply one.
+type Config struct {
+	// IndentOverride is one level of indentation, as the command line asked
+	// for it. It is a string because that is what a Format holds: four
+	// spaces, a tab, or nothing at all.
+	IndentOverride string
+
+	// OverrideIndent says the command line asked. Without it there would be
+	// no way to tell "--indent 0", which asks for no indentation, from the
+	// flag not being given, which asks for the file's own.
+	OverrideIndent bool
+}
+
+// applyTo is f with the indentation the command line asked for, if it asked.
+//
+// Everything else about the layout is the file's. The width is the one thing
+// a reader may want to impose, because it is the one thing they can see going
+// wrong; a file's line endings are not a matter of taste.
+func (c Config) applyTo(f domain.Format) domain.Format {
+	if c.OverrideIndent {
+		f.Indent = c.IndentOverride
+	}
+
+	return f
+}
+
 // App is the whole state of a pino session.
 //
 // Everything the user can change lives here rather than in the terminal
@@ -30,6 +66,7 @@ type Deps struct {
 // its lines and status.
 type App struct {
 	deps Deps
+	cfg  Config
 
 	doc    *Document
 	view   ViewState
@@ -74,53 +111,108 @@ type App struct {
 }
 
 // New starts a session with no document open.
-func New(d Deps) *App {
+func New(d Deps, c Config) *App {
 	return &App{
 		deps:   d,
+		cfg:    c,
 		view:   NewViewState(),
-		format: domain.DefaultFormat(),
+		format: c.applyTo(domain.DefaultFormat()),
 	}
 }
 
 // Open reads and parses the document at path.
+//
+// The session is left untouched when reading or parsing fails: a document
+// that could not be read is reported to the caller, not opened. A path that
+// holds nothing is not such a failure — it is where a new document starts.
+func (a *App) Open(path string) error {
+	read, err := a.read(path, true)
+	if err != nil {
+		return err
+	}
+
+	a.install(read, path)
+
+	// The view state describes the document being looked at, so it does not
+	// outlive it: a cursor, a scroll position and a folded set carried over
+	// from another file would point at nodes this one does not have.
+	a.view = NewViewState()
+
+	return nil
+}
+
+// document is a document read from a path, before any of it is installed.
+//
+// It is returned whole so that reading can fail without leaving the session
+// half changed. Every field here replaces one the session already holds, and
+// the two callers differ in what they do with them afterwards, not in how
+// they are obtained.
+type document struct {
+	root   domain.Node
+	format domain.Format
+	meta   Meta
+	isNew  bool
+}
+
+// read reads and parses the document at path.
 //
 // The two steps are sequenced here rather than behind a single port, because
 // the file store must not know that the bytes are JSON and the parser must
 // not know that they came from a file. The layout is detected from the same
 // bytes.
 //
-// The session is left untouched when either step fails: a document that
-// could not be parsed is reported to the caller, not opened.
-func (a *App) Open(path string) error {
+// allowNew says what a path holding nothing means. Opening one starts an
+// empty document, which is how pino is told to write a file that does not
+// exist yet; reloading one must not, because a file deleted underneath the
+// session would then quietly replace what the reader has been editing with
+// an empty object. A link pointing at nothing is neither: the store reports
+// it apart from a path that is free, so it stays an error in both.
+func (a *App) read(path string, allowNew bool) (document, error) {
 	raw, meta, err := a.deps.Files.Read(path)
-	if err != nil {
-		return err
+
+	switch {
+	case allowNew && errors.Is(err, fs.ErrNotExist):
+		root, err := domain.NewObject(nil)
+		if err != nil {
+			// Not reached: an object with no members has no key to be wrong.
+			return document{}, err
+		}
+
+		// No Meta: what the store recorded is that there was no file, which
+		// is what nil says. Saving compares against that rather than skipping
+		// the comparison, so a file created meanwhile is not overwritten.
+		return document{root: root, format: a.cfg.applyTo(domain.DefaultFormat()), isNew: true}, nil
+
+	case err != nil:
+		return document{}, err
 	}
 
 	root, err := a.deps.Parser.Parse(raw, domain.StrictJSON)
 	if err != nil {
-		return err
+		return document{}, err
 	}
 
-	a.doc = NewDocument(root)
-	a.format = domain.DetectFormat(raw)
-	a.meta = meta
-	a.source = FileSource{Path: path}
+	return document{root: root, format: a.cfg.applyTo(domain.DetectFormat(raw)), meta: meta}, nil
+}
 
-	// The view state describes the document being looked at, so it does not
-	// outlive it: a cursor, a scroll position and a folded set carried over
-	// from another file would point at nodes this one does not have. The edit
-	// in progress goes for the same reason, since a confirmation or a half
-	// typed value left open would be answered against the wrong document.
-	a.view = NewViewState()
+// install makes a document that has been read the one the session is showing.
+//
+// It replaces everything that describes the document and touches nothing that
+// describes the session: how tall the terminal is, and — for the caller that
+// keeps it — which view is drawing. The edit in progress goes, since a
+// confirmation or a half typed value left open would be answered against the
+// wrong document.
+func (a *App) install(read document, path string) {
+	a.doc = NewDocument(read.root)
+	a.format = read.format
+	a.meta = read.meta
+	a.source = FileSource{Path: path, New: read.isNew}
 	a.flow = nil
 
-	// The history starts again for the same reason, at the document as it was
-	// read. The root is where a reader begins, and it resolves in any tree,
-	// which is the invariant every later version has to keep.
-	a.history = NewHistory(Revision{Root: root, Label: "open"})
-
-	return nil
+	// The history starts again at the document as it was read. The root is
+	// where a reader begins, and it resolves in any tree, which is the
+	// invariant every later version has to keep.
+	a.history = NewHistory(Revision{Root: read.root, Label: "open"})
 }
 
 // Frame is the session as it should be drawn. It holds no rows when nothing is
@@ -177,6 +269,20 @@ func (a *App) renderer() documentview.Renderer {
 	return a.deps.JSONView
 }
 
+// choose hands a key to whatever is asking.
+//
+// Which key means what is the flow's own: it drew the choices, so it is the
+// one that reads them back. Nothing arrives here when nothing is in progress,
+// but an Action driven straight at this layer can, and is answered by doing
+// nothing.
+func (a *App) choose(key rune) []Effect {
+	if a.flow == nil {
+		return nil
+	}
+
+	return a.flow.choose(a, key)
+}
+
 // Mode is what the next key press means.
 //
 // It follows from whether anything is in progress and how far it has got, so
@@ -197,64 +303,6 @@ func (a *App) Mode() Mode {
 // screen out needs: how the screen is divided depends on the view and not at
 // all on what is selected.
 func (a *App) ViewMode() ViewMode { return a.view.ViewMode }
-
-// StatusInfo is what the status bar shows.
-//
-// It deliberately excludes the number of rendered lines: the presentation
-// layer already holds them to draw, and counting them here would render the
-// whole document a second time on every redraw.
-type StatusInfo struct {
-	Mode     Mode
-	ViewMode ViewMode
-
-	// Name is the label of the open document, empty when none is open.
-	Name string
-
-	// Indent is one level of indentation of the open document. The status
-	// bar reports it, and the JSON view draws with it, so that what is shown
-	// and what will be written stay the same thing.
-	Indent string
-
-	// Dirty reports unsaved changes.
-	Dirty bool
-
-	// Pointer locates the selected node, as RFC 6901 spells it: the root is
-	// the empty string. How to show that is left to whoever draws the bar,
-	// where "/" reads better than a blank.
-	Pointer string
-
-	// Type names the kind of the selected value: object, array, string,
-	// number, boolean or null. It is empty when nothing is selected, which is
-	// what tells the two apart from a root holding an object.
-	Type string
-}
-
-// Status describes the session for the status bar.
-func (a *App) Status() StatusInfo {
-	info := StatusInfo{
-		Mode:     a.Mode(),
-		ViewMode: a.view.ViewMode,
-		Indent:   a.format.Indent,
-	}
-
-	if a.source != nil {
-		info.Name = a.source.Name()
-	}
-
-	if a.doc != nil {
-		info.Dirty = a.doc.IsDirty()
-
-		// The selected node is looked up in the tree rather than read off the
-		// rows: producing the rows to learn the type of one node would draw
-		// the whole document again every time the bar is refreshed, which is
-		// the same cost this struct avoids by not carrying a row count.
-		if n, ok := domain.Resolve(a.doc.Root(), a.view.Cursor); ok {
-			info.Pointer, info.Type = a.view.Cursor.String(), n.Kind().String()
-		}
-	}
-
-	return info
-}
 
 // Do applies an Action and returns the work the presentation layer has to
 // carry out. An Action this session has nothing to do with yields no effect.
@@ -330,6 +378,9 @@ func (a *App) Do(act Action) []Effect {
 
 	case ActionPromptChoose:
 		return a.choose(act.Key)
+
+	case ActionSave:
+		a.save(false)
 
 	case ActionCancel:
 		a.cancel()

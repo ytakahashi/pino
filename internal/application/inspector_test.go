@@ -185,7 +185,7 @@ func TestInspectorShowsLongValuesInFull(t *testing.T) {
 func TestInspectorIsEmptyWithoutADocument(t *testing.T) {
 	t.Parallel()
 
-	app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
+	app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()}, Config{})
 
 	if got := app.Inspector(); got != (InspectorInfo{}) {
 		t.Errorf("Inspector() = %+v with no document open, want the zero value", got)
@@ -201,10 +201,10 @@ func TestInspectorDoesNotRender(t *testing.T) {
 
 	app := New(Deps{
 		Parser:   &fakeParser{root: testTree(t)},
-		Files:    fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
+		Files:    &fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
 		JSONView: renderer,
 		TreeView: renderer,
-	})
+	}, Config{})
 
 	if err := app.Open("a.json"); err != nil {
 		t.Fatalf("Open: %v", err)

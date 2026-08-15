@@ -2,7 +2,10 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -120,14 +123,25 @@ func TestRunNamesAnUnreadableFile(t *testing.T) {
 		want string
 	}{
 		{
-			name: "missing",
-			path: func(t *testing.T) string { return filepath.Join(t.TempDir(), "missing.json") },
-			want: "no such file",
-		},
-		{
 			name: "directory",
 			path: func(t *testing.T) string { return t.TempDir() },
 			want: "is a directory",
+		},
+		{
+			name: "a link to nothing",
+			path: func(t *testing.T) string {
+				t.Helper()
+
+				dir := t.TempDir()
+				link := filepath.Join(dir, "link.json")
+
+				if err := os.Symlink(filepath.Join(dir, "gone.json"), link); err != nil {
+					t.Fatalf("Symlink: %v", err)
+				}
+
+				return link
+			},
+			want: "broken symbolic link",
 		},
 	}
 
@@ -159,6 +173,28 @@ func TestRunNamesAnUnreadableFile(t *testing.T) {
 				t.Errorf("stderr = %q, want the path in it exactly once", stderr)
 			}
 		})
+	}
+}
+
+// A path holding nothing is not a failure to report: it is where a new
+// document starts. Nothing is written until the reader saves, so opening one
+// must leave the directory as it found it.
+func TestOpeningAPathThatHoldsNothingStartsADocument(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "new.json")
+
+	model, err := NewProgramModel(path)
+	if err != nil {
+		t.Fatalf("NewProgramModel: %v", err)
+	}
+
+	if model == nil {
+		t.Fatal("NewProgramModel returned no model and no error")
+	}
+
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Stat after opening a missing path returned %v, want it still missing", err)
 	}
 }
 

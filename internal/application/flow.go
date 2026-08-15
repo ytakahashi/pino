@@ -22,4 +22,10 @@ type flow interface {
 
 	// prompt is the question on screen while this flow is the one in progress.
 	prompt(a *App) PromptInfo
+
+	// choose takes a key pressed on that prompt. The flow that drew "[r]
+	// Reload" is the one that knows r means reloading, so the keys offered
+	// and the keys accepted are written in one place and cannot drift apart.
+	// A key the prompt does not offer does nothing.
+	choose(a *App, key rune) []Effect
 }

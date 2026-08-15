@@ -19,10 +19,10 @@ func TestOpenLoadsAndInitialisesADocument(t *testing.T) {
 	renderer := &fakeRenderer{lines: []documentview.Line{{Kind: documentview.LineSingle}}}
 	app := New(Deps{
 		Parser:   parser,
-		Files:    fakeFileStore{data: map[string][]byte{"conf/app.json": []byte(testSource)}, meta: meta},
+		Files:    &fakeFileStore{data: map[string][]byte{"conf/app.json": []byte(testSource)}, meta: meta},
 		JSONView: renderer,
 		TreeView: renderer,
-	})
+	}, Config{})
 
 	if err := app.Open("conf/app.json"); err != nil {
 		t.Fatalf("Open: %v", err)
@@ -72,13 +72,13 @@ func TestOpenReplacesTheCurrentDocument(t *testing.T) {
 
 	app := New(Deps{
 		Parser: &fakeParser{root: testTree(t)},
-		Files: fakeFileStore{data: map[string][]byte{
+		Files: &fakeFileStore{data: map[string][]byte{
 			"first.json":  []byte(testSource),
 			"second.json": []byte("{\n  \"a\": 1\n}\n"),
 		}},
 		JSONView: &fakeRenderer{},
 		TreeView: &fakeRenderer{},
-	})
+	}, Config{})
 
 	if err := app.Open("first.json"); err != nil {
 		t.Fatalf("Open: %v", err)
@@ -123,17 +123,17 @@ func TestOpenLeavesTheStateAloneOnFailure(t *testing.T) {
 	parseErr := errors.New("parse failed")
 
 	tests := map[string]struct {
-		files  fakeFileStore
+		files  *fakeFileStore
 		parser *fakeParser
 		want   error
 	}{
 		"the file cannot be read": {
-			files:  fakeFileStore{err: readErr},
+			files:  &fakeFileStore{err: readErr},
 			parser: &fakeParser{root: domain.NewNull()},
 			want:   readErr,
 		},
 		"the file is not JSON": {
-			files:  fakeFileStore{data: map[string][]byte{"broken.json": []byte("{")}},
+			files:  &fakeFileStore{data: map[string][]byte{"broken.json": []byte("{")}},
 			parser: &fakeParser{err: parseErr},
 			want:   parseErr,
 		},
@@ -144,7 +144,7 @@ func TestOpenLeavesTheStateAloneOnFailure(t *testing.T) {
 			t.Parallel()
 
 			renderer := &fakeRenderer{}
-			app := New(Deps{Parser: tc.parser, Files: tc.files, JSONView: renderer, TreeView: renderer})
+			app := New(Deps{Parser: tc.parser, Files: tc.files, JSONView: renderer, TreeView: renderer}, Config{})
 
 			// The error travels out as it was raised: the command line turns
 			// it into a message, and only it knows the path the user typed.
@@ -180,10 +180,10 @@ func TestFrameReturnsTheRenderedWindow(t *testing.T) {
 	renderer := &fakeRenderer{lines: want}
 	app := New(Deps{
 		Parser:   &fakeParser{root: root},
-		Files:    fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
+		Files:    &fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
 		JSONView: renderer,
 		TreeView: renderer,
-	})
+	}, Config{})
 
 	if err := app.Open("a.json"); err != nil {
 		t.Fatalf("Open: %v", err)
@@ -232,7 +232,7 @@ func TestFrameIsEmptyWithoutADocument(t *testing.T) {
 	t.Parallel()
 
 	renderer := &fakeRenderer{lines: []documentview.Line{{Kind: documentview.LineOpen}}}
-	app := New(Deps{JSONView: renderer, TreeView: renderer})
+	app := New(Deps{JSONView: renderer, TreeView: renderer}, Config{})
 
 	frame := app.Frame()
 
@@ -332,7 +332,7 @@ func TestDoAppliesEveryAction(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			app := New(Deps{Parser: &fakeParser{}, Files: fakeFileStore{}, JSONView: &fakeRenderer{}, TreeView: &fakeRenderer{}})
+			app := New(Deps{Parser: &fakeParser{}, Files: &fakeFileStore{}, JSONView: &fakeRenderer{}, TreeView: &fakeRenderer{}}, Config{})
 
 			got := app.Do(tc.act)
 			if len(got) != len(tc.want) {
@@ -366,7 +366,7 @@ func TestActionsDoNothingWithoutADocument(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
+			app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()}, Config{})
 
 			if effects := app.Do(act); effects != nil {
 				t.Errorf("Do() = %v with no document open, want none", effects)

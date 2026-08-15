@@ -1124,7 +1124,7 @@ func TestASessionWithNothingOpenTakesEditingKeys(t *testing.T) {
 
 	// There is no document to edit and no prompt to answer, and pressing the
 	// keys anyway is not a way to reach a nil one.
-	app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
+	app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()}, Config{})
 
 	press(app,
 		ActionEdit{}, ActionRenameKey{}, ActionAddChild{}, ActionAddSibling{}, ActionDelete{}, ActionChangeType{},

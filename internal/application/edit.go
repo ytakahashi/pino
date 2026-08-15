@@ -422,13 +422,8 @@ func (a *App) submit(text string) {
 	a.flow = nil
 }
 
-// choose is a key pressed on a prompt that offers keys.
-func (a *App) choose(key rune) []Effect {
-	f, ok := a.editing()
-	if !ok {
-		return nil
-	}
-
+// choose is a key pressed on the prompt an edit is asking through.
+func (f *editFlow) choose(a *App, key rune) []Effect {
 	switch f.step {
 	case stepType:
 		return a.chooseType(f, key)

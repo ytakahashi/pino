@@ -175,7 +175,7 @@ func openApp(t *testing.T, root domain.Node) *application.App {
 		Files:    fakeFileStore{},
 		JSONView: documentview.NewJSONRenderer(),
 		TreeView: documentview.NewTreeRenderer(),
-	})
+	}, application.Config{})
 
 	if err := app.Open("config.json"); err != nil {
 		t.Fatalf("Open() = %v", err)
@@ -289,7 +289,7 @@ func openIndented(t *testing.T, root domain.Node, indent string) *application.Ap
 		)},
 		JSONView: documentview.NewJSONRenderer(),
 		TreeView: documentview.NewTreeRenderer(),
-	})
+	}, application.Config{})
 
 	if err := app.Open("config.json"); err != nil {
 		t.Fatalf("Open() = %v", err)

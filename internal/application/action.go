@@ -162,6 +162,15 @@ type ActionCancel struct{}
 
 func (ActionCancel) isAction() {}
 
+// ActionSave asks for the document to be written to the file it came from.
+//
+// It carries no path. Where a document is saved is where it was opened, and a
+// request that named somewhere else would be a different operation with a
+// different question to ask about the file already there.
+type ActionSave struct{}
+
+func (ActionSave) isAction() {}
+
 // ActionUndo and ActionRedo ask for the version of the document before the
 // last change, and for the one after it.
 //

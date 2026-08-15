@@ -32,6 +32,18 @@ func (d *Document) Root() domain.Node { return d.root }
 // new one current, since a version is a whole tree either way.
 func (d *Document) Replace(root domain.Node) { d.root = root }
 
+// MarkSaved records the current tree as the one on disk.
+//
+// Saving does not change the document — the tree that was written is the tree
+// on screen — so there is nothing to install and no version to add. What
+// changes is which root counts as saved, and a save that got as far as
+// replacing the file is the only thing that may move it.
+//
+// Undo still reaches versions from before the save: going back past it makes
+// the document dirty again, and coming forward to the saved root clears it,
+// both by the same pointer comparison.
+func (d *Document) MarkSaved() { d.savedRoot = d.root }
+
 // IsDirty reports whether there is anything to save.
 //
 // The comparison is between two immutable roots, so editing and then undoing

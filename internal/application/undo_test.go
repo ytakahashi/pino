@@ -218,7 +218,7 @@ func TestUndoAndRedoDoNothingWithNoDocumentOpen(t *testing.T) {
 
 	// A session that has opened nothing has an empty history, which is what
 	// keeps these from reaching a document that is not there.
-	app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
+	app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()}, Config{})
 
 	press(app, ActionUndo{}, ActionRedo{})
 

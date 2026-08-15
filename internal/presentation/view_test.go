@@ -107,7 +107,7 @@ func TestViewDrawsAnEmptyScreenWithoutADocument(t *testing.T) {
 		Files:    fakeFileStore{},
 		JSONView: documentview.NewJSONRenderer(),
 		TreeView: documentview.NewTreeRenderer(),
-	})
+	}, application.Config{})
 
 	got := rows(t, sized(t, app, 60, 10))
 	if len(got) != 10 {

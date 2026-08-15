@@ -186,7 +186,7 @@ func TestFoldAllDoesNothingWithoutADocument(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
+			app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()}, Config{})
 
 			if effects := app.Do(act); effects != nil {
 				t.Errorf("Do() = %v with no document open, want none", effects)
