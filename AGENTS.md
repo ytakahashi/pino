@@ -7,9 +7,10 @@
 
 ## Development
 
-- Run `go tool task check` to lint, test, and build changes. See `Taskfile.yml`
-  for defined tasks.
-- Use `go tool task tools` for the pinned tools.
+- Run `go tool task check` to lint, test, and build changes.
+- The parts run on their own too: `go tool task lint`, `test`, `build`, `fmt`.
+  `Taskfile.yml` defines them and `go tool task --list` lists them.
+- Use `go tool task tools` for the pinned tools. Invoke them through the tasks.
 
 ## Testing
 

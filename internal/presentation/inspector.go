@@ -87,6 +87,13 @@ func inspectorFields(info application.InspectorInfo) []inspectorField {
 		// The root is a member of nothing, so it has no name to give.
 	}
 
+	// The one field that is not about the node. The others say what it is;
+	// this says what can be done to it, which is why its name is a verb.
+	fields = append(fields, inspectorField{
+		Name:  "Press",
+		Value: plainSpan(strings.Join(keyLabels(available(info)), " ")),
+	})
+
 	return fields
 }
 

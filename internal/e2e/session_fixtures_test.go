@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -51,14 +52,137 @@ func writeConfig(t *testing.T) string {
 	return path
 }
 
+// screenObserver keeps every screen the model drew, in the order it drew them,
+// and wakes whoever is waiting when another arrives.
+//
+// The terminal's own output cannot answer for this: it carries the cells that
+// changed rather than screens, so whether a piece of text arrives in one run
+// depends on what stood in its place before it. finalScreen says the same of
+// the screen a program stops on.
+type screenObserver struct {
+	mu      sync.Mutex
+	screens []string
+	changed chan struct{}
+}
+
+func newScreenObserver() *screenObserver {
+	return &screenObserver{changed: make(chan struct{}, 1)}
+}
+
+func (o *screenObserver) record(content string) {
+	o.mu.Lock()
+	o.screens = append(o.screens, content)
+	o.mu.Unlock()
+
+	// A waiter that has not gone back to sleep yet needs no second nudge: it
+	// reads every screen it has not seen before waiting again, so one wake-up
+	// left pending stands for however many screens arrived.
+	select {
+	case o.changed <- struct{}{}:
+	default:
+	}
+}
+
+// at is the screen drawn i-th, without styling and one entry per row, and
+// whether that many have been drawn.
+func (o *screenObserver) at(i int) ([]string, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	if i >= len(o.screens) {
+		return nil, false
+	}
+
+	return strings.Split(ansi.Strip(o.screens[i]), "\n"), true
+}
+
+// screenWaiter reads the screens a program drew, once each and in the order
+// they were drawn.
+//
+// Reading in order is what makes a wait repeatable: which screen answers it
+// follows from the sequence the program drew, rather than from which of them
+// the test happened to look at while the program ran on.
+//
+// What a wait sees is the screens drawn since the wait before it settled, and
+// none from earlier. That is a narrower window than "whatever is on hand" and
+// not a promise that the state described has been reached: most states a
+// scenario asks about cannot be told apart from ones the program was in
+// earlier — the screen before an edit reads as "8080 and nothing modified"
+// exactly as the screen after undoing that edit does. Each wait is still
+// written to describe a state that the keys since the last wait produce.
+type screenWaiter struct {
+	observer *screenObserver
+	next     int
+}
+
+// wait answers the first screen not yet read that ready accepts.
+func (w *screenWaiter) wait(t *testing.T, ready func(screen []string) bool) []string {
+	t.Helper()
+
+	timer := time.NewTimer(waitTime)
+	defer timer.Stop()
+
+	var last []string
+
+	for {
+		screen, drawn := w.observer.at(w.next)
+		if drawn {
+			w.next++
+			last = screen
+
+			if ready(screen) {
+				return screen
+			}
+
+			continue
+		}
+
+		select {
+		case <-w.observer.changed:
+		case <-timer.C:
+			t.Fatalf("no screen reached the state waited for; the last one drawn was:\n%s",
+				strings.Join(last, "\n"))
+		}
+	}
+}
+
+// observedModel delegates every operation to the real program model and
+// records the complete view after each state transition.
+type observedModel struct {
+	inner    tea.Model
+	observer *screenObserver
+}
+
+func (m observedModel) Init() tea.Cmd {
+	m.observer.record(m.inner.View().Content)
+
+	return m.inner.Init()
+}
+
+func (m observedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.inner.Update(msg)
+	m.observer.record(next.View().Content)
+
+	return observedModel{inner: next, observer: m.observer}, cmd
+}
+
+func (m observedModel) View() tea.View { return m.inner.View() }
+
 // start opens the document through the assembly the command line uses and
 // waits for the opening screen to be drawn.
 //
 // The wait is a barrier and not an assertion: keys sent before the program is
-// running would be answered by nothing at all. The opening screen is the one
-// written whole rather than as a difference, so looking for a piece of it says
-// only that the program has started.
-func start(t *testing.T, onFirstScreen string) *teatest.TestModel {
+// running would be answered by nothing at all. It is made twice over because
+// the two ways of making it say different things. The terminal is searched
+// here and nowhere else, since it is the only place that reports that the
+// bytes went out at all; finalScreen says why it is not searched for anything
+// more than that. The waiter is then walked to that same screen, so that a
+// scenario begins reading where the document first appeared rather than at
+// whatever the program drew while it was starting.
+//
+// Every scenario is observed, the wrapper being transparent, so that there is
+// one way to start a program rather than one for each kind of assertion.
+func start(t *testing.T, onFirstScreen string) (*teatest.TestModel, *screenWaiter) {
 	t.Helper()
 
 	model, err := cli.NewProgramModel(writeConfig(t))
@@ -66,7 +190,13 @@ func start(t *testing.T, onFirstScreen string) *teatest.TestModel {
 		t.Fatalf("NewProgramModel() = %v", err)
 	}
 
-	tm := teatest.NewTestModel(t, model, teatest.WithInitialTermSize(80, 24))
+	observer := newScreenObserver()
+
+	tm := teatest.NewTestModel(
+		t,
+		observedModel{inner: model, observer: observer},
+		teatest.WithInitialTermSize(80, 24),
+	)
 
 	teatest.WaitFor(
 		t,
@@ -75,7 +205,13 @@ func start(t *testing.T, onFirstScreen string) *teatest.TestModel {
 		teatest.WithDuration(waitTime),
 	)
 
-	return tm
+	waiter := &screenWaiter{observer: observer}
+
+	waiter.wait(t, func(screen []string) bool {
+		return strings.Contains(strings.Join(screen, "\n"), onFirstScreen)
+	})
+
+	return tm, waiter
 }
 
 // finalScreen quits and answers the screen the program stopped on, one entry

@@ -20,8 +20,8 @@ const (
 	inspectorWidth = 32
 
 	// One row per field of the stacked pane: pointer, type, value or children,
-	// and the name within the parent.
-	inspectorRows = 4
+	// the name within the parent, and the available editing keys.
+	inspectorRows = 5
 
 	statusBarRows = 1 // the strip along the bottom
 
@@ -117,8 +117,8 @@ func layoutFor(width, height int, view application.ViewMode, prompt int) layout 
 		}
 
 		// Never more rows than are left once the bar has taken its own. The
-		// pane wants five, and a terminal with fewer than that is one the
-		// screen is about to say it cannot draw in; claiming five rows of
+		// pane wants six, and a terminal with fewer than that is one the
+		// screen is about to say it cannot draw in; claiming six rows of
 		// three would still be describing a screen nobody can lay out.
 		l.Inspector = placeBelow
 		l.InspectorHeight = min(inspectorRows+ruleRows, l.BodyHeight)

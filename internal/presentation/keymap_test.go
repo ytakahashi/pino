@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"slices"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -294,5 +295,94 @@ func TestResolveChoiceOffersNothingOfItsOwn(t *testing.T) {
 
 	if got := ResolveChoice(special(tea.KeyEscape), empty); got != (application.ActionCancel{}) {
 		t.Errorf("ResolveChoice(esc) = %v, want a cancellation", got)
+	}
+}
+
+// The inspector and the application derive what a node can be asked to do
+// independently: one from the fields the pane already carries, the other from
+// the tree itself. Walk every node of every shape a document takes and press
+// all six keys, so that none can be advertised where nothing happens, or
+// hidden where something does.
+//
+// Every key is asked about rather than only the ones whose availability
+// varies. A key that is always offered is the one an exception can hide in,
+// since nothing is left to compare it against.
+func TestAvailableOperationsAgreeWithTheApplication(t *testing.T) {
+	t.Parallel()
+
+	operations := editingOperations()
+
+	for name, root := range editingDocuments(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			probe := openApp(t, root)
+
+			// Walking with the cursor rather than over the tree keeps the
+			// nodes the ones a reader can reach: an ordinal is how many times
+			// j was pressed, which is what appAt repeats on a session of its
+			// own.
+			for ordinal := 0; ; ordinal++ {
+				info := probe.Inspector()
+				keys := available(info)
+
+				for _, op := range operations {
+					got := slices.Contains(keys, op.spelling)
+					want := changesTheSession(appAt(t, root, ordinal), op.act)
+
+					if got != want {
+						t.Errorf("node %q advertises %s = %t, pressing it changes the session = %t",
+							info.Pointer, op.spelling, got, want)
+					}
+				}
+
+				before := info.Pointer
+				probe.Do(application.ActionMoveNext{})
+				if probe.Inspector().Pointer == before {
+					break
+				}
+			}
+		})
+	}
+}
+
+// The pane and the key table hold the spelling of a key separately. Press what
+// the pane says it is offering and see the operation it was offering, so that
+// a key rebound in one place and left alone in the other cannot go on reading
+// as an offer.
+func TestAdvertisedKeysResolveToTheOperationsTheyName(t *testing.T) {
+	t.Parallel()
+
+	for _, op := range editingOperations() {
+		// The spelling is the one a terminal gives the press, which is what
+		// lets the table above be searched for it by reading.
+		if got := op.press.String(); got != op.spelling {
+			t.Errorf("the key advertised as %q is sent as %q", op.spelling, got)
+		}
+
+		got, pending := Resolve(op.press, application.ModeNormal, PendingNone)
+		if got != op.act {
+			t.Errorf("Resolve(%q) = %v, want %v", op.spelling, got, op.act)
+		}
+
+		// An editing key is complete in itself. One that left a prefix waiting
+		// would be offered on a row it takes two presses to accept.
+		if pending != PendingNone {
+			t.Errorf("Resolve(%q) leaves %v waiting, want nothing", op.spelling, pending)
+		}
+	}
+}
+
+// A key is written on screen the way it is named rather than the way a
+// terminal spells it, and a key that is a character is written as it stands:
+// a and A ask for different things, and the case is the whole difference.
+func TestKeyLabelsNameTheKeysWithoutRespellingThem(t *testing.T) {
+	t.Parallel()
+
+	got := keyLabels([]string{"enter", "t", "a", "A", "ctrl+r"})
+	want := []string{"Enter", "t", "a", "A", "Ctrl+r"}
+
+	if !slices.Equal(got, want) {
+		t.Errorf("keyLabels() = %v, want %v", got, want)
 	}
 }

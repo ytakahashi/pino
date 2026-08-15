@@ -53,16 +53,16 @@ func TestLayoutForChoosesAPlacementFromTheAvailableSpace(t *testing.T) {
 		"the tree view one column below the wide boundary": {
 			width: 99, height: 40, view: application.ViewTree,
 			want: layout{
-				BodyWidth: 99, BodyHeight: 34,
-				Inspector: placeBelow, InspectorHeight: 5,
+				BodyWidth: 99, BodyHeight: 33,
+				Inspector: placeBelow, InspectorHeight: 6,
 			},
 		},
 
 		"the tree view with the inspector below": {
 			width: 60, height: 20, view: application.ViewTree,
 			want: layout{
-				BodyWidth: 60, BodyHeight: 14,
-				Inspector: placeBelow, InspectorHeight: 5,
+				BodyWidth: 60, BodyHeight: 13,
+				Inspector: placeBelow, InspectorHeight: 6,
 			},
 		},
 
@@ -71,8 +71,8 @@ func TestLayoutForChoosesAPlacementFromTheAvailableSpace(t *testing.T) {
 		"the tree view at the smallest size": {
 			width: 60, height: 10, view: application.ViewTree,
 			want: layout{
-				BodyWidth: 60, BodyHeight: 4,
-				Inspector: placeBelow, InspectorHeight: 5,
+				BodyWidth: 60, BodyHeight: 3,
+				Inspector: placeBelow, InspectorHeight: 6,
 			},
 		},
 
@@ -136,8 +136,8 @@ func TestLayoutForChoosesAPlacementFromTheAvailableSpace(t *testing.T) {
 		"the tree view with a prompt and an inspector below": {
 			width: 60, height: 20, view: application.ViewTree, prompt: 4,
 			want: layout{
-				BodyWidth: 60, BodyHeight: 10,
-				Inspector: placeBelow, InspectorHeight: 5, PromptHeight: 4,
+				BodyWidth: 60, BodyHeight: 9,
+				Inspector: placeBelow, InspectorHeight: 6, PromptHeight: 4,
 			},
 		},
 

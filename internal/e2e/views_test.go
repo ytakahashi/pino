@@ -13,7 +13,7 @@ import (
 func TestTheProgramSwitchesToTheTreeView(t *testing.T) {
 	t.Parallel()
 
-	tm := start(t, "localhost")
+	tm, _ := start(t, "localhost")
 
 	tm.Type("j")
 	tm.Type("j")
