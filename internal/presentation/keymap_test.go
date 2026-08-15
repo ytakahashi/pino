@@ -340,10 +340,10 @@ func TestAvailableOperationsAgreeWithTheApplication(t *testing.T) {
 			// own.
 			for ordinal := 0; ; ordinal++ {
 				info := probe.Inspector()
-				keys := available(info)
+				offered := available(info)
 
 				for _, op := range operations {
-					got := slices.Contains(keys, op.spelling)
+					got := slices.Contains(offered, op.act)
 					want := changesTheSession(appAt(t, root, ordinal), op.act)
 
 					if got != want {
@@ -362,16 +362,26 @@ func TestAvailableOperationsAgreeWithTheApplication(t *testing.T) {
 	}
 }
 
-// The pane and the key table hold the spelling of a key separately. Press what
-// the pane says it is offering and see the operation it was offering, so that
-// a key rebound in one place and left alone in the other cannot go on reading
-// as an offer.
+// The pane names an operation by the key the table gives it. Press what the
+// pane says it is offering and see the operation it was offering, so that a
+// key changed in the table cannot go on being advertised as the old one.
 func TestAdvertisedKeysResolveToTheOperationsTheyName(t *testing.T) {
 	t.Parallel()
 
 	for _, op := range editingOperations() {
+		spelling, ok := canonicalKey(op.act)
+		if !ok {
+			t.Errorf("%T is offered on screen and asked for by no key", op.act)
+
+			continue
+		}
+
+		if spelling != op.spelling {
+			t.Errorf("%T is advertised as %q, want %q", op.act, spelling, op.spelling)
+		}
+
 		// The spelling is the one a terminal gives the press, which is what
-		// lets the table above be searched for it by reading.
+		// lets the table be searched for it by reading.
 		if got := op.press.String(); got != op.spelling {
 			t.Errorf("the key advertised as %q is sent as %q", op.spelling, got)
 		}
@@ -386,6 +396,122 @@ func TestAdvertisedKeysResolveToTheOperationsTheyName(t *testing.T) {
 		if pending != PendingNone {
 			t.Errorf("Resolve(%q) leaves %v waiting, want nothing", op.spelling, pending)
 		}
+	}
+}
+
+// A key means one thing. The table is read from the top for a press and
+// searched by Action for a spelling, so a key on two rows would resolve to the
+// first of them while a second row went on claiming it.
+func TestTheKeyTableBindsEachKeyOnce(t *testing.T) {
+	t.Parallel()
+
+	seen := map[string]application.Action{}
+
+	for _, b := range normalBindings {
+		if b.Action == nil {
+			t.Errorf("the row holding %v asks for nothing", b.Keys)
+		}
+
+		if len(b.Keys) == 0 {
+			t.Errorf("%T is bound to no key", b.Action)
+		}
+
+		for _, k := range b.Keys {
+			if first, dup := seen[k]; dup {
+				t.Errorf("%q asks for both %T and %T", k, first, b.Action)
+			}
+
+			seen[k] = b.Action
+		}
+	}
+}
+
+// The same, under each prefix. A key is free to mean one thing after g and
+// another after z; what it may not do is mean two things after the same one.
+func TestASequenceBindsEachKeyOnceUnderItsPrefix(t *testing.T) {
+	t.Parallel()
+
+	seen := map[Pending]map[string]application.Action{}
+
+	for _, b := range pendingBindings {
+		if b.Prefix == PendingNone {
+			t.Errorf("%T completes no prefix, so nothing can reach it", b.Action)
+		}
+
+		if b.Action == nil {
+			t.Errorf("the row holding %v asks for nothing", b.Keys)
+		}
+
+		if len(b.Keys) == 0 {
+			t.Errorf("%T is bound to no key", b.Action)
+		}
+
+		if seen[b.Prefix] == nil {
+			seen[b.Prefix] = map[string]application.Action{}
+		}
+
+		for _, k := range b.Keys {
+			if first, dup := seen[b.Prefix][k]; dup {
+				t.Errorf("%s then %q asks for both %T and %T", b.Prefix, k, first, b.Action)
+			}
+
+			seen[b.Prefix][k] = b.Action
+		}
+	}
+}
+
+// A key that starts a sequence has to mean nothing on its own: a table
+// consulted first would answer for it, and the key completing the sequence
+// would never be waited for.
+func TestAPrefixIsNotAlsoAKeyOfItsOwn(t *testing.T) {
+	t.Parallel()
+
+	for _, b := range pendingBindings {
+		start := b.Prefix.String()
+
+		if start == "" {
+			t.Errorf("%v is completed by %v and started by no key", b.Prefix, b.Keys)
+
+			continue
+		}
+
+		for _, n := range normalBindings {
+			if slices.Contains(n.Keys, start) {
+				t.Errorf("%q both starts a sequence and asks for %T", start, n.Action)
+			}
+		}
+	}
+}
+
+// Every operation the pane can come to offer, over every shape a document
+// takes, has a key in the table to be asked for by. One that had none would be
+// dropped from the row silently, leaving a node looking less capable than it
+// is.
+func TestEveryOfferedOperationIsAskedForByAKey(t *testing.T) {
+	t.Parallel()
+
+	for name, root := range editingDocuments(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			probe := openApp(t, root)
+
+			for {
+				info := probe.Inspector()
+
+				for _, act := range available(info) {
+					if _, ok := canonicalKey(act); !ok {
+						t.Errorf("node %q offers %T, which no key asks for", info.Pointer, act)
+					}
+				}
+
+				before := info.Pointer
+				probe.Do(application.ActionMoveNext{})
+				if probe.Inspector().Pointer == before {
+					break
+				}
+			}
+		})
 	}
 }
 

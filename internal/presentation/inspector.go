@@ -92,7 +92,7 @@ func inspectorFields(info application.InspectorInfo) []inspectorField {
 	// this says what can be done to it, which is why its name is a verb.
 	fields = append(fields, inspectorField{
 		Name:  "Press",
-		Value: plainSpan(strings.Join(keyLabels(available(info)), " ")),
+		Value: plainSpan(strings.Join(keyLabels(canonicalKeys(available(info))), " ")),
 	})
 
 	return fields

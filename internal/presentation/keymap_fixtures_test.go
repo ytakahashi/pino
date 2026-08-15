@@ -62,11 +62,12 @@ func assertOneAction(t *testing.T, got []application.Action, want application.Ac
 	}
 }
 
-// editingOperation is one thing the inspector can offer to do, written the
-// three ways the three places that hold it write it.
+// editingOperation is one thing the inspector can offer to do, written out as
+// the key it is advertised as, the press that asks for it, and the request
+// that press becomes.
 type editingOperation struct {
-	// spelling is how available names the key, which is how the key table
-	// matches a press of it.
+	// spelling is the key the table gives the operation, which is what the
+	// pane advertises it as.
 	spelling string
 
 	// press is what a terminal sends when that key is struck.
@@ -78,11 +79,12 @@ type editingOperation struct {
 
 // editingOperations is every operation the inspector can offer.
 //
-// Three places hold this knowledge separately — available says which keys a
-// node is offered, the key table says what a press means, and Do says what
-// happens then — so the tests check each of them against this one list rather
-// than against one another. A row that agreed with itself in two places and
-// not the third would otherwise read as agreement.
+// The knowledge is held in three places — available says which operations a
+// node is offered, the key table says which key asks for one and what a press
+// of it means, and Do says what happens then — so the tests check each of them
+// against this one list rather than against one another. A row that agreed
+// with itself in two places and not the third would otherwise read as
+// agreement.
 func editingOperations() []editingOperation {
 	return []editingOperation{
 		{spelling: "enter", press: special(tea.KeyEnter), act: application.ActionEdit{}},
