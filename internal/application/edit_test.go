@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -1123,7 +1124,7 @@ func TestASessionWithNothingOpenTakesEditingKeys(t *testing.T) {
 
 	// There is no document to edit and no prompt to answer, and pressing the
 	// keys anyway is not a way to reach a nil one.
-	app := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()})
+	app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
 
 	press(app,
 		ActionEdit{}, ActionRenameKey{}, ActionAddChild{}, ActionAddSibling{}, ActionDelete{}, ActionChangeType{},

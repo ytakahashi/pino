@@ -4,6 +4,7 @@ import (
 	"iter"
 	"maps"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -92,8 +93,8 @@ func NewViewState() ViewState {
 //
 // The map is handed over rather than copied: a renderer only reads it, and
 // rendering happens on every redraw.
-func (v ViewState) RenderOptions() RenderOptions {
-	return RenderOptions{Collapsed: v.Collapsed, MaxStrLen: v.MaxStrLen}
+func (v ViewState) RenderOptions() documentview.Options {
+	return documentview.Options{Collapsed: v.Collapsed, MaxStrLen: v.MaxStrLen}
 }
 
 // Collapse folds the node at p away. It reports whether anything changed, so

@@ -15,7 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/ytakahashi/pino/internal/application"
+	"github.com/ytakahashi/pino/internal/application/documentview"
 )
 
 // Theme is how each Role is drawn.
@@ -164,21 +164,21 @@ func sizeLabel(width, height int) string {
 // An unknown role is drawn without styling rather than reported: a role this
 // theme does not know is a gap in the theme, and losing a colour is a better
 // outcome for the person reading the document than losing the text.
-func (t Theme) style(r application.Role) lipgloss.Style {
+func (t Theme) style(r documentview.Role) lipgloss.Style {
 	switch r {
-	case application.RoleKey:
+	case documentview.RoleKey:
 		return t.Key
-	case application.RoleStringValue:
+	case documentview.RoleStringValue:
 		return t.StringValue
-	case application.RoleNumberValue:
+	case documentview.RoleNumberValue:
 		return t.NumberValue
-	case application.RoleBoolValue:
+	case documentview.RoleBoolValue:
 		return t.BoolValue
-	case application.RoleNullValue:
+	case documentview.RoleNullValue:
 		return t.NullValue
-	case application.RolePunct:
+	case documentview.RolePunct:
 		return t.Punct
-	case application.RoleTreeGuide:
+	case documentview.RoleTreeGuide:
 		return t.TreeGuide
 	}
 
@@ -204,7 +204,7 @@ func (t Theme) style(r application.Role) lipgloss.Style {
 // each span in turn rather than around the row as a whole: a style wrapping
 // the finished row would end at the first span that reset its own colours,
 // leaving the band broken wherever the document is at its most colourful.
-func (t Theme) RenderLine(l application.Line, indent string, selected bool) string {
+func (t Theme) RenderLine(l documentview.Line, indent string, selected bool) string {
 	var b strings.Builder
 
 	if leading := strings.Repeat(indent, l.Depth); selected {

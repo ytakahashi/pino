@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/ytakahashi/pino/internal/application"
+	"github.com/ytakahashi/pino/internal/application/documentview"
 )
 
 // What View draws of a document: how much of it reaches the screen, and how
@@ -104,8 +105,8 @@ func TestViewDrawsAnEmptyScreenWithoutADocument(t *testing.T) {
 	app := application.New(application.Deps{
 		Parser:   fakeParser{},
 		Files:    fakeFileStore{},
-		JSONView: application.NewJSONRenderer(),
-		TreeView: application.NewTreeRenderer(),
+		JSONView: documentview.NewJSONRenderer(),
+		TreeView: documentview.NewTreeRenderer(),
 	})
 
 	got := rows(t, sized(t, app, 60, 10))

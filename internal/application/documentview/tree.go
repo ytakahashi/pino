@@ -1,4 +1,4 @@
-package application
+package documentview
 
 import (
 	"strconv"
@@ -15,7 +15,7 @@ func NewTreeRenderer() Renderer { return treeRenderer{} }
 // The options sit on the renderer for the reason they do on jsonRenderer: they
 // say how to draw rather than what, so what is left in the arguments of the
 // recursion is exactly the subtree and where it sits.
-type treeRenderer struct{ opt RenderOptions }
+type treeRenderer struct{ opt Options }
 
 // Markers say which rows can be opened, and which of those already are.
 //
@@ -40,7 +40,7 @@ const rootLabel = "/"
 //
 // The receiver is unused, as it is on jsonRenderer: the options arrive with
 // the call, so the renderer that draws is built here.
-func (treeRenderer) Render(root domain.Node, opt RenderOptions) []Line {
+func (treeRenderer) Render(root domain.Node, opt Options) []Line {
 	if root == nil {
 		return nil
 	}
@@ -109,11 +109,11 @@ func (r treeRenderer) node(n domain.Node, p domain.Path, depth int, label string
 			Path:  p,
 			Kind:  LineSingle,
 			Depth: depth,
-			Spans: []Span{treeName(label), punct(": "), scalarSpan(n, r.opt.MaxStrLen)},
+			Spans: []Span{treeName(label), punct(": "), ScalarSpan(n, r.opt.MaxStrLen)},
 		}}
 
 	default:
-		panic("application: cannot render node of kind " + n.Kind().String())
+		panic("documentview: cannot render node of kind " + n.Kind().String())
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strconv"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -671,7 +672,7 @@ func (a *App) toggleFold() {
 				return
 			}
 
-		case lines[row].Kind == LineOpen && !lines[row].Path.IsRoot():
+		case lines[row].Kind == documentview.LineOpen && !lines[row].Path.IsRoot():
 			if a.view.Collapse(lines[row].Path) {
 				a.settle(a.render())
 

@@ -1,4 +1,4 @@
-package application
+package documentview
 
 import (
 	"fmt"
@@ -113,7 +113,7 @@ func foldings(t *testing.T, doc document) []map[string]struct{} {
 func foldablePointers(root domain.Node) []string {
 	var pointers []string
 
-	for _, l := range NewJSONRenderer().Render(root, RenderOptions{}) {
+	for _, l := range NewJSONRenderer().Render(root, Options{}) {
 		if l.Kind == LineOpen {
 			pointers = append(pointers, l.Path.String())
 		}

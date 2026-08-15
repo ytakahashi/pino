@@ -3,6 +3,8 @@ package application
 import (
 	"strings"
 	"testing"
+
+	"github.com/ytakahashi/pino/internal/application/documentview"
 )
 
 func TestInspectorDescribesTheNodeAtTheCursor(t *testing.T) {
@@ -25,7 +27,7 @@ func TestInspectorDescribesTheNodeAtTheCursor(t *testing.T) {
 			pointer: "/str",
 			want: InspectorInfo{
 				Pointer: "/str", Type: "string",
-				Value:  Span{Text: `"text"`, Role: RoleStringValue},
+				Value:  documentview.Span{Text: `"text"`, Role: documentview.RoleStringValue},
 				Label:  "str",
 				Naming: NamedKey,
 			},
@@ -36,7 +38,7 @@ func TestInspectorDescribesTheNodeAtTheCursor(t *testing.T) {
 			pointer: "/num",
 			want: InspectorInfo{
 				Pointer: "/num", Type: "number",
-				Value:  Span{Text: "-12.5e3", Role: RoleNumberValue},
+				Value:  documentview.Span{Text: "-12.5e3", Role: documentview.RoleNumberValue},
 				Label:  "num",
 				Naming: NamedKey,
 			},
@@ -46,7 +48,7 @@ func TestInspectorDescribesTheNodeAtTheCursor(t *testing.T) {
 			pointer: "/yes",
 			want: InspectorInfo{
 				Pointer: "/yes", Type: "boolean",
-				Value:  Span{Text: "true", Role: RoleBoolValue},
+				Value:  documentview.Span{Text: "true", Role: documentview.RoleBoolValue},
 				Label:  "yes",
 				Naming: NamedKey,
 			},
@@ -56,7 +58,7 @@ func TestInspectorDescribesTheNodeAtTheCursor(t *testing.T) {
 			pointer: "/nothing",
 			want: InspectorInfo{
 				Pointer: "/nothing", Type: "null",
-				Value:  Span{Text: "null", Role: RoleNullValue},
+				Value:  documentview.Span{Text: "null", Role: documentview.RoleNullValue},
 				Label:  "nothing",
 				Naming: NamedKey,
 			},
@@ -105,7 +107,7 @@ func TestInspectorDescribesTheNodeAtTheCursor(t *testing.T) {
 			pointer: "/arr/1",
 			want: InspectorInfo{
 				Pointer: "/arr/1", Type: "string",
-				Value:  Span{Text: `"second"`, Role: RoleStringValue},
+				Value:  documentview.Span{Text: `"second"`, Role: documentview.RoleStringValue},
 				Label:  "1",
 				Naming: NamedIndex,
 			},
@@ -115,7 +117,7 @@ func TestInspectorDescribesTheNodeAtTheCursor(t *testing.T) {
 			pointer: "/digits/0",
 			want: InspectorInfo{
 				Pointer: "/digits/0", Type: "string",
-				Value:  Span{Text: `"keyed, not indexed"`, Role: RoleStringValue},
+				Value:  documentview.Span{Text: `"keyed, not indexed"`, Role: documentview.RoleStringValue},
 				Label:  "0",
 				Naming: NamedKey,
 			},
@@ -127,7 +129,7 @@ func TestInspectorDescribesTheNodeAtTheCursor(t *testing.T) {
 			pointer: "/",
 			want: InspectorInfo{
 				Pointer: "/", Type: "string",
-				Value:  Span{Text: `"no name at all"`, Role: RoleStringValue},
+				Value:  documentview.Span{Text: `"no name at all"`, Role: documentview.RoleStringValue},
 				Label:  "",
 				Naming: NamedKey,
 			},
@@ -166,7 +168,7 @@ func TestInspectorShowsLongValuesInFull(t *testing.T) {
 	root := object(t, member("long", text(t, long)))
 
 	// The row does shorten it, or this would be checking nothing.
-	rendered := NewJSONRenderer().Render(root, NewViewState().RenderOptions())
+	rendered := documentview.NewJSONRenderer().Render(root, NewViewState().RenderOptions())
 	if !strings.Contains(rendered[1].Text(), "…") {
 		t.Fatalf("the row shows the value in full: %q", rendered[1].Text())
 	}
@@ -183,7 +185,7 @@ func TestInspectorShowsLongValuesInFull(t *testing.T) {
 func TestInspectorIsEmptyWithoutADocument(t *testing.T) {
 	t.Parallel()
 
-	app := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()})
+	app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
 
 	if got := app.Inspector(); got != (InspectorInfo{}) {
 		t.Errorf("Inspector() = %+v with no document open, want the zero value", got)
@@ -195,7 +197,7 @@ func TestInspectorIsEmptyWithoutADocument(t *testing.T) {
 func TestInspectorDoesNotRender(t *testing.T) {
 	t.Parallel()
 
-	renderer := &fakeRenderer{lines: []Line{{Kind: LineOpen}}}
+	renderer := &fakeRenderer{lines: []documentview.Line{{Kind: documentview.LineOpen}}}
 
 	app := New(Deps{
 		Parser:   &fakeParser{root: testTree(t)},

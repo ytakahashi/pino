@@ -3,6 +3,7 @@ package application
 import (
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -185,7 +186,7 @@ func TestFoldAllDoesNothingWithoutADocument(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			app := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()})
+			app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
 
 			if effects := app.Do(act); effects != nil {
 				t.Errorf("Do() = %v with no document open, want none", effects)

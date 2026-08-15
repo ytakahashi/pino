@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -15,7 +16,7 @@ func TestOpenLoadsAndInitialisesADocument(t *testing.T) {
 	root := testTree(t)
 	meta := &fakeMeta{}
 	parser := &fakeParser{root: root}
-	renderer := &fakeRenderer{lines: []Line{{Kind: LineSingle}}}
+	renderer := &fakeRenderer{lines: []documentview.Line{{Kind: documentview.LineSingle}}}
 	app := New(Deps{
 		Parser:   parser,
 		Files:    fakeFileStore{data: map[string][]byte{"conf/app.json": []byte(testSource)}, meta: meta},
@@ -175,7 +176,7 @@ func TestFrameReturnsTheRenderedWindow(t *testing.T) {
 	t.Parallel()
 
 	root := testTree(t)
-	want := []Line{{Kind: LineOpen}, {Kind: LineClose}}
+	want := []documentview.Line{{Kind: documentview.LineOpen}, {Kind: documentview.LineClose}}
 	renderer := &fakeRenderer{lines: want}
 	app := New(Deps{
 		Parser:   &fakeParser{root: root},
@@ -230,7 +231,7 @@ func TestFrameReturnsTheRenderedWindow(t *testing.T) {
 func TestFrameIsEmptyWithoutADocument(t *testing.T) {
 	t.Parallel()
 
-	renderer := &fakeRenderer{lines: []Line{{Kind: LineOpen}}}
+	renderer := &fakeRenderer{lines: []documentview.Line{{Kind: documentview.LineOpen}}}
 	app := New(Deps{JSONView: renderer, TreeView: renderer})
 
 	frame := app.Frame()
@@ -365,7 +366,7 @@ func TestActionsDoNothingWithoutADocument(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			app := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()})
+			app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
 
 			if effects := app.Do(act); effects != nil {
 				t.Errorf("Do() = %v with no document open, want none", effects)

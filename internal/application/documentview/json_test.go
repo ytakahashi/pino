@@ -1,8 +1,9 @@
-package application
+package documentview
 
 import (
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application/testdocs"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -21,7 +22,7 @@ func TestJSONRenderDrawsTheWholeDocument(t *testing.T) {
 func TestJSONRenderReturnsNoLinesWithoutADocument(t *testing.T) {
 	t.Parallel()
 
-	if lines := NewJSONRenderer().Render(nil, RenderOptions{}); lines != nil {
+	if lines := NewJSONRenderer().Render(nil, Options{}); lines != nil {
 		t.Errorf("Render(nil) = %v, want nil", lines)
 	}
 }
@@ -32,12 +33,12 @@ func TestJSONRenderReturnsNoLinesWithoutADocument(t *testing.T) {
 func TestJSONRenderSharesNoSpans(t *testing.T) {
 	t.Parallel()
 
-	root := object(t,
-		member("a", domain.NewNumber("1")),
-		member("b", domain.NewNumber("2")),
+	root := testdocs.Object(
+		testdocs.Member("a", domain.NewNumber("1")),
+		testdocs.Member("b", domain.NewNumber("2")),
 	)
 
-	lines := NewJSONRenderer().Render(root, RenderOptions{})
+	lines := NewJSONRenderer().Render(root, Options{})
 
 	if got, want := lines[1].Text(), `"a": 1,`; got != want {
 		t.Errorf("first member = %q, want %q", got, want)

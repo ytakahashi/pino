@@ -3,6 +3,7 @@ package application
 import (
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -28,8 +29,8 @@ func sessionIn(t *testing.T, root domain.Node, view ViewMode) *App {
 	app := New(Deps{
 		Parser:   &fakeParser{root: root},
 		Files:    fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
-		JSONView: NewJSONRenderer(),
-		TreeView: NewTreeRenderer(),
+		JSONView: documentview.NewJSONRenderer(),
+		TreeView: documentview.NewTreeRenderer(),
 	})
 
 	if err := app.Open("a.json"); err != nil {
@@ -67,7 +68,7 @@ func pointersOf(a *App) []string {
 
 	got := make([]string, 0, len(frame.Lines))
 	for _, l := range frame.Lines {
-		if l.Kind != LineClose {
+		if l.Kind != documentview.LineClose {
 			got = append(got, l.Path.String())
 		}
 	}

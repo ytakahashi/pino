@@ -3,6 +3,7 @@ package application
 import (
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -362,7 +363,7 @@ func TestNearestRowFindsTheClosestNode(t *testing.T) {
 	lines := rows(t, sample(t), nil)
 	closing := indexOf(lines, path(domain.KeySegment("server"), domain.KeySegment("ports"))) + 3
 
-	if lines[closing].Kind != LineClose {
+	if lines[closing].Kind != documentview.LineClose {
 		t.Fatalf("the fixture changed: row %d is not a closing row", closing)
 	}
 
@@ -413,7 +414,7 @@ func TestNearestRowAlwaysLandsOnANode(t *testing.T) {
 				t.Fatalf("nearestRow(%d, %d) = %d, outside the document", from, dir, got)
 			}
 
-			if lines[got].Kind == LineClose {
+			if lines[got].Kind == documentview.LineClose {
 				t.Fatalf("nearestRow(%d, %d) landed on a closing row", from, dir)
 			}
 		}

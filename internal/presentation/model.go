@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ytakahashi/pino/internal/application"
+	"github.com/ytakahashi/pino/internal/application/documentview"
 )
 
 // Model is what Bubble Tea runs pino as.
@@ -473,7 +474,7 @@ func indentFor(info application.StatusInfo) string {
 // The offset is brought into range rather than trusted: it was worked out
 // against a height this layer reported, and a frame drawn between the two
 // would otherwise index outside the document.
-func visible(frame application.Frame, height int) ([]application.Line, int) {
+func visible(frame application.Frame, height int) ([]documentview.Line, int) {
 	start := min(max(frame.Scroll, 0), len(frame.Lines))
 	end := min(start+max(height, 0), len(frame.Lines))
 

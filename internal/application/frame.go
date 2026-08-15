@@ -1,5 +1,9 @@
 package application
 
+import (
+	"github.com/ytakahashi/pino/internal/application/documentview"
+)
+
 // Frame is one drawable picture of the session: the rows of the document,
 // which of them the cursor is on, and where the window onto them starts.
 //
@@ -13,7 +17,7 @@ package application
 // terminal is the business of whoever owns it. Scroll says where that cut
 // begins.
 type Frame struct {
-	Lines []Line
+	Lines []documentview.Line
 
 	// Cursor indexes Lines, and is -1 when no row is selected: nothing is
 	// open, or the document is empty.

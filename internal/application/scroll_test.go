@@ -3,6 +3,7 @@ package application
 import (
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -196,7 +197,7 @@ func TestScrollByDoesNothingWithoutAWindow(t *testing.T) {
 		t.Errorf("the selection moved to %q with no window, want the root", got)
 	}
 
-	empty := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()})
+	empty := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
 	empty.Do(ActionScrollBy{Rows: 3})
 
 	if frame := empty.Frame(); frame.Cursor != -1 || frame.Scroll != 0 {
@@ -367,7 +368,7 @@ func TestScrollHalfDoesNothingWithoutAWindow(t *testing.T) {
 		t.Errorf("scrolling with no window selected %q, want one node down", got)
 	}
 
-	empty := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()})
+	empty := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
 	empty.Do(ActionScrollHalfDown{})
 	empty.Do(ActionScrollHalfUp{})
 
