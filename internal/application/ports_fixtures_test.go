@@ -33,7 +33,9 @@ func (f fakeFileStore) Read(path string) ([]byte, Meta, error) {
 	return src, f.meta, nil
 }
 
-func (fakeFileStore) Write(string, []byte) error { return errors.ErrUnsupported }
+func (fakeFileStore) Write(string, []byte) (WriteOutcome, error) {
+	return WriteOutcome{}, errors.ErrUnsupported
+}
 
 func (fakeFileStore) HasChangedSince(string, Meta) (ChangeStatus, error) {
 	return ChangeNone, errors.ErrUnsupported

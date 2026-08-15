@@ -1,6 +1,7 @@
 package filestore
 
 import (
+	"crypto/sha256"
 	"errors"
 
 	"github.com/ytakahashi/pino/internal/application"
@@ -29,9 +30,18 @@ type meta struct {
 	hash [32]byte
 }
 
+// summarise is what the store remembers about the bytes of a file.
+//
+// Reading a file, comparing one and writing one all describe a file this way,
+// so they say it once here. A second spelling of the same rule is a way for
+// the file just written to look unlike the file just read.
+func summarise(data []byte) meta {
+	return meta{hash: sha256.Sum256(data)}
+}
+
 var (
-	// errNoMeta reports that there is nothing recorded to compare against.
-	errNoMeta = errors.New("filestore: nothing recorded about this file")
+	// errNoMeta reports that the caller expects no file to be there.
+	errNoMeta = errors.New("filestore: no file was recorded at this path")
 
 	// errForeignMeta reports a Meta this store did not issue.
 	errForeignMeta = errors.New("filestore: meta was not issued by this store")
@@ -39,15 +49,14 @@ var (
 
 // fromMeta recovers what Read recorded.
 //
-// A nil Meta is not a claim about the file but the absence of one. The port
-// allows it and gives it a meaning of its own, "nothing known about the file
-// yet", which is where a document that never came from disk starts. It is
-// reported separately so that what an unknown file means is decided by the
-// caller and not here, where the two would be indistinguishable.
+// A nil Meta is a claim about the file rather than the absence of one: there
+// was nothing at that path when it was read, which is where a document opened
+// at a path that does not exist starts. It is reported separately because it
+// is compared against the file system differently — there is no hash to check,
+// only the question of whether the path is still free.
 //
-// A Meta the store did not issue says nothing about the file either, but for
-// the opposite reason: the caller carried the wrong value, which is a mistake
-// rather than a change.
+// A Meta the store did not issue says nothing about the file at all: the
+// caller carried the wrong value, which is a mistake rather than a change.
 func fromMeta(m application.Meta) (meta, error) {
 	if m == nil {
 		return meta{}, errNoMeta

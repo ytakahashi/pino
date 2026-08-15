@@ -10,8 +10,6 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
-	"github.com/ytakahashi/pino/internal/application"
 )
 
 // TestReadReturnsContentsVerbatim covers the store not knowing what is in the
@@ -222,8 +220,14 @@ func TestReadFollowsSymlinks(t *testing.T) {
 	}
 }
 
-// TestReadReportsABrokenSymlink checks that a link to nothing is reported as a missing
-// file rather than as one of the store's own refusals.
+// TestReadReportsABrokenSymlink covers a link to nothing being told apart
+// from a path that holds nothing.
+//
+// Opening reports both as "no such file", and a missing file is what starts a
+// new document: an empty one, with nothing written until the user saves. A
+// link is not that. The path is taken, and a document started there would be
+// written through the link to wherever it leads, so it has to arrive as a
+// refusal instead.
 func TestReadReportsABrokenSymlink(t *testing.T) {
 	dir := t.TempDir()
 
@@ -232,44 +236,36 @@ func TestReadReportsABrokenSymlink(t *testing.T) {
 		t.Fatalf("Symlink: %v", err)
 	}
 
-	if _, _, err := New().Read(link); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Read returned %v, want a not-exist error", err)
+	_, _, err := New().Read(link)
+
+	if !errors.Is(err, errBrokenSymlink) {
+		t.Errorf("Read returned %v, want a broken-link error", err)
+	}
+
+	if errors.Is(err, fs.ErrNotExist) {
+		t.Error("a link to nothing is reported as a path that holds nothing")
+	}
+
+	// The path it names is the link, which is what the user typed, rather
+	// than the target they may never have seen.
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) && pathErr.Path != link {
+		t.Errorf("Path = %q, want %q", pathErr.Path, link)
 	}
 }
 
-// TestWritingIsNotSupportedYet fixes what the unimplemented half of the port
-// does, so that a caller reaching it is told rather than quietly succeeding.
-func TestWritingIsNotSupportedYet(t *testing.T) {
-	path := writeFile(t, t.TempDir(), "f", []byte(`{"a":1}`))
-	store := New()
+// A path with nothing at it stays a plain missing file, which is what a new
+// document is opened from.
+func TestReadReportsAMissingPathAsMissing(t *testing.T) {
+	dir := t.TempDir()
 
-	t.Run("Write", func(t *testing.T) {
-		if err := store.Write(path, []byte("x")); !errors.Is(err, errors.ErrUnsupported) {
-			t.Errorf("Write returned %v, want ErrUnsupported", err)
-		}
+	_, _, err := New().Read(filepath.Join(dir, "missing.json"))
 
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("ReadFile: %v", err)
-		}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Read returned %v, want a not-exist error", err)
+	}
 
-		if string(data) != `{"a":1}` {
-			t.Errorf("the file was changed to %q", data)
-		}
-	})
-
-	t.Run("HasChangedSince", func(t *testing.T) {
-		_, m := readFile(t, path)
-
-		status, err := store.HasChangedSince(path, m)
-		if !errors.Is(err, errors.ErrUnsupported) {
-			t.Errorf("HasChangedSince returned %v, want ErrUnsupported", err)
-		}
-
-		// Not ChangeNone: a caller that dropped the error would read that as
-		// permission to overwrite.
-		if status == application.ChangeNone {
-			t.Error("HasChangedSince reported ChangeNone alongside an error")
-		}
-	})
+	if errors.Is(err, errBrokenSymlink) {
+		t.Error("a missing path is reported as a broken link")
+	}
 }

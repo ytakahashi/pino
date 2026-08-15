@@ -27,7 +27,9 @@ type fakeFileStore struct{ src []byte }
 
 func (s fakeFileStore) Read(string) ([]byte, application.Meta, error) { return s.src, nil, nil }
 
-func (fakeFileStore) Write(string, []byte) error { return errors.ErrUnsupported }
+func (fakeFileStore) Write(string, []byte) (application.WriteOutcome, error) {
+	return application.WriteOutcome{}, errors.ErrUnsupported
+}
 
 func (fakeFileStore) HasChangedSince(string, application.Meta) (application.ChangeStatus, error) {
 	return application.ChangeModified, errors.ErrUnsupported

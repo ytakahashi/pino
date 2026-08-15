@@ -33,20 +33,50 @@ type Parser interface {
 // the two symmetric would only add an indirection that buys nothing.
 type FileStore interface {
 	// Read returns the contents of path together with the Meta to hand back
-	// to HasChangedSince later. The Meta may be nil, which HasChangedSince
-	// then has to treat as "nothing known about the file yet".
+	// to HasChangedSince later.
 	Read(path string) ([]byte, Meta, error)
 
-	// Write replaces the contents of path.
-	Write(path string, data []byte) error
+	// Write replaces the contents of path, and says whether the replacement
+	// took effect.
+	Write(path string, data []byte) (WriteOutcome, error)
 
-	// HasChangedSince reports whether path still holds what it held when m
-	// was taken. It is consulted immediately before writing, so that pino
+	// HasChangedSince reports whether path still holds what expected was
+	// taken from. It is consulted immediately before writing, so that pino
 	// does not silently overwrite an edit made elsewhere.
+	//
+	// A nil expected says the file was not there when it was read, which is
+	// a claim about the file like any other: a path that has since been
+	// created reports ChangeModified rather than ChangeNone. That is what
+	// lets a document which never came from disk be saved through the same
+	// check as one that did, instead of skipping it and overwriting whatever
+	// another program put there in the meantime.
 	//
 	// A Meta the store did not produce is an error rather than a change: it
 	// means the wrong value was carried, not that the file moved.
-	HasChangedSince(path string, m Meta) (ChangeStatus, error)
+	HasChangedSince(path string, expected Meta) (ChangeStatus, error)
+}
+
+// WriteOutcome says how far a write got.
+//
+// A write is not one step. The bytes go to a temporary file which is then
+// renamed over the destination, and that rename is the moment the file
+// becomes the new one: before it, nothing the caller had is gone; after it,
+// the old contents are. A single error cannot say which side of that moment
+// a failure happened on, and the two are answered differently — the first
+// leaves the document unsaved, the second leaves it saved but with something
+// still to report.
+//
+// The combinations a store may produce are exactly three:
+//
+//	Committed: false, err != nil  — nothing was replaced
+//	Committed: true,  err == nil  — replaced, and on disk to stay
+//	Committed: true,  err != nil  — replaced, but durability unconfirmed
+//
+// Meta is what Read would now hand back for the file, and is set whenever
+// Committed is true. Anything else is a defect in the store.
+type WriteOutcome struct {
+	Meta      Meta
+	Committed bool
 }
 
 // Meta is what a FileStore remembers about a file between reading it and
@@ -57,6 +87,11 @@ type FileStore interface {
 // flows start making decisions about them. The application only carries the
 // value from Read back to HasChangedSince; the store that produced it is the
 // one that reads it, by type assertion.
+//
+// A nil Meta is a value like any other and means "there was no file here".
+// It is what a document opened at a path that does not exist carries, and it
+// is compared against the file system in the same way, so nothing in this
+// layer has to ask whether it has a Meta before it can be safe.
 //
 // The opacity is not enforced by the type. A marker interface would seal it
 // tighter but cannot be satisfied from outside: an unexported method is

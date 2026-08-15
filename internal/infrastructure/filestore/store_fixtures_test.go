@@ -20,6 +20,25 @@ func writeFile(t *testing.T, dir, name string, content []byte) string {
 	return path
 }
 
+// overwrite replaces what is at path, standing in for another program having
+// written the file while pino held it open.
+func overwrite(t *testing.T, path string, content []byte) {
+	t.Helper()
+
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", path, err)
+	}
+}
+
+// symlink points name at target.
+func symlink(t *testing.T, target, name string) {
+	t.Helper()
+
+	if err := os.Symlink(target, name); err != nil {
+		t.Fatalf("Symlink(%s -> %s): %v", name, target, err)
+	}
+}
+
 // readFile reads path through a Store, failing the test if it will not.
 func readFile(t *testing.T, path string) ([]byte, application.Meta) {
 	t.Helper()
