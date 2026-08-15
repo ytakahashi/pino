@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -91,7 +92,7 @@ func versions(a *App) int { return len(a.history.entries) }
 // the document is what is being compared, and how each session is looking at
 // it is compared beside this.
 func contentOf(a *App) string {
-	return dumpLines(NewJSONRenderer().Render(a.doc.Root(), RenderOptions{}))
+	return dumpLines(documentview.NewJSONRenderer().Render(a.doc.Root(), documentview.Options{}))
 }
 
 // keysOf is the keys a choice prompt offers, in the order it offers them.

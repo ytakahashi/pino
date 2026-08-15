@@ -7,10 +7,10 @@
 // which is what keeps the parser and the file system out of the state
 // transitions and makes them testable with plain table tests.
 //
-// Rendering lives here rather than in presentation because cursor movement,
-// scrolling and keeping the selection across a view switch all operate on the
-// rendered lines. Spans carry a Role instead of a colour, so no UI library
-// reaches into this layer.
+// Rendering lives in documentview, a package of this layer rather than of
+// presentation, because cursor movement, scrolling and keeping the selection
+// across a view switch all operate on the rendered lines. Spans carry a Role
+// instead of a colour, so no UI library reaches into either package.
 package application
 
 import "github.com/ytakahashi/pino/internal/domain"

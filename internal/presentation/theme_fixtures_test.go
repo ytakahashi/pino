@@ -4,20 +4,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ytakahashi/pino/internal/application"
+	"github.com/ytakahashi/pino/internal/application/documentview"
 )
 
 // allRoles is every role a renderer can put on a span. A role added without a
 // case in Theme.style would draw unstyled, which the styling test below
 // catches even though the map is not a switch.
-var allRoles = []application.Role{
-	application.RoleKey,
-	application.RoleStringValue,
-	application.RoleNumberValue,
-	application.RoleBoolValue,
-	application.RoleNullValue,
-	application.RolePunct,
-	application.RoleTreeGuide,
+var allRoles = []documentview.Role{
+	documentview.RoleKey,
+	documentview.RoleStringValue,
+	documentview.RoleNumberValue,
+	documentview.RoleBoolValue,
+	documentview.RoleNullValue,
+	documentview.RolePunct,
+	documentview.RoleTreeGuide,
 }
 
 // cursorBackground is the escape sequence parameter the cursor's styling sets.

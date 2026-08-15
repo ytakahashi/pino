@@ -58,6 +58,25 @@ linters:
               desc: rendering yields Roles, not styles; presentation colours them
             - pkg: github.com/charmbracelet
               desc: rendering yields Roles, not styles; presentation colours them
+        # The renderers and the row model sit in a package of the application
+        # layer, and must not depend on the package that holds them: the
+        # session's own tests draw with the real renderers, which an import
+        # back into application would make a cycle. testdocs is the corpus both
+        # of them are checked against, and names domain alone for the same
+        # reason.
+        documentview:
+          files:
+            - '**/internal/application/documentview/**'
+          allow:
+            - $gostd
+            - github.com/ytakahashi/pino/internal/domain
+            - github.com/ytakahashi/pino/internal/application/testdocs
+        testdocs:
+          files:
+            - '**/internal/application/testdocs/**'
+          allow:
+            - $gostd
+            - github.com/ytakahashi/pino/internal/domain
         jsonparser:
           files:
             - '**/internal/infrastructure/jsonparser/**'

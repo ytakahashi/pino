@@ -1,6 +1,9 @@
 package application
 
-import "github.com/ytakahashi/pino/internal/domain"
+import (
+	"github.com/ytakahashi/pino/internal/application/documentview"
+	"github.com/ytakahashi/pino/internal/domain"
+)
 
 // Naming says how a node is named within the container holding it.
 //
@@ -44,7 +47,7 @@ type InspectorInfo struct {
 	// Value is the scalar as it would be written, in full. Containers leave it
 	// zero and report Children instead, and Container is what tells an empty
 	// container from a value: both have no children.
-	Value     Span
+	Value     documentview.Span
 	Children  int
 	Container bool
 
@@ -61,11 +64,12 @@ type InspectorInfo struct {
 // value and the number of children can only be had from the document, which
 // that layer does not see. Status is in this layer for the same reason.
 //
-// Nothing is added to Line to carry it. A row is a row: giving it the value and
-// the child count of the node it draws would turn it into a view of the node,
-// and the two things drawing wants from a row would be lost among the things
-// only the panes want. Resolve walks the tree as deep as the cursor and no
-// further, so this answers without laying the document out at all.
+// Nothing is added to documentview.Line to carry it. A row is a row: giving
+// it the value and the child count of the node it draws would turn it into a
+// view of the node, and the two things drawing wants from a row would be lost
+// among the things only the panes want. Resolve walks the tree as deep as the
+// cursor and no further, so this answers without laying the document out at
+// all.
 func (a *App) Inspector() InspectorInfo {
 	if a.doc == nil {
 		return InspectorInfo{}
@@ -104,7 +108,7 @@ func (a *App) Inspector() InspectorInfo {
 	case domain.KindString, domain.KindNumber, domain.KindBool, domain.KindNull:
 		// In full, with no limit passed: a value shortened in the document is
 		// read back here, which is what makes shortening one on a row safe.
-		info.Value = scalarSpan(n, 0)
+		info.Value = documentview.ScalarSpan(n, 0)
 	}
 
 	return info

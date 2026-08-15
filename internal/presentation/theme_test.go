@@ -7,7 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/ytakahashi/pino/internal/application"
+	"github.com/ytakahashi/pino/internal/application/documentview"
 )
 
 // The layout tests use the zero Theme, whose styles emit nothing, so that
@@ -34,9 +34,9 @@ func TestRenderLineIndentsByDepth(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			line := application.Line{
+			line := documentview.Line{
 				Depth: tc.depth,
-				Spans: []application.Span{{Text: "null", Role: application.RoleNullValue}},
+				Spans: []documentview.Span{{Text: "null", Role: documentview.RoleNullValue}},
 			}
 
 			if got := (Theme{}).RenderLine(line, tc.indent, false); got != tc.want {
@@ -47,13 +47,13 @@ func TestRenderLineIndentsByDepth(t *testing.T) {
 }
 
 func TestRenderLineWritesSpansInOrder(t *testing.T) {
-	line := application.Line{
+	line := documentview.Line{
 		Depth: 1,
-		Spans: []application.Span{
-			{Text: `"host"`, Role: application.RoleKey},
-			{Text: ": ", Role: application.RolePunct},
-			{Text: `"localhost"`, Role: application.RoleStringValue},
-			{Text: ",", Role: application.RolePunct},
+		Spans: []documentview.Span{
+			{Text: `"host"`, Role: documentview.RoleKey},
+			{Text: ": ", Role: documentview.RolePunct},
+			{Text: `"localhost"`, Role: documentview.RoleStringValue},
+			{Text: ",", Role: documentview.RolePunct},
 		},
 	}
 
@@ -65,7 +65,7 @@ func TestRenderLineWritesSpansInOrder(t *testing.T) {
 }
 
 func TestRenderLineHandlesEmptySpans(t *testing.T) {
-	if got := (Theme{}).RenderLine(application.Line{}, "  ", false); got != "" {
+	if got := (Theme{}).RenderLine(documentview.Line{}, "  ", false); got != "" {
 		t.Errorf("RenderLine() = %q, want %q", got, "")
 	}
 }
@@ -76,10 +76,10 @@ func TestRenderLineHandlesEmptySpans(t *testing.T) {
 // unstyled and when two of them are indistinguishable on screen.
 func TestDefaultThemeStylesEveryRoleDistinctly(t *testing.T) {
 	theme := DefaultTheme()
-	seen := make(map[string]application.Role, len(allRoles))
+	seen := make(map[string]documentview.Role, len(allRoles))
 
 	for _, role := range allRoles {
-		line := application.Line{Spans: []application.Span{{Text: "x", Role: role}}}
+		line := documentview.Line{Spans: []documentview.Span{{Text: "x", Role: role}}}
 		got := theme.RenderLine(line, "", false)
 
 		if got == "x" {
@@ -115,12 +115,12 @@ func TestDefaultThemeLeavesTheBackgroundToTheCursor(t *testing.T) {
 func TestRenderLineMarksTheSelectedRow(t *testing.T) {
 	theme := DefaultTheme()
 
-	line := application.Line{
+	line := documentview.Line{
 		Depth: 1,
-		Spans: []application.Span{
-			{Text: `"host"`, Role: application.RoleKey},
-			{Text: ": ", Role: application.RolePunct},
-			{Text: `"localhost"`, Role: application.RoleStringValue},
+		Spans: []documentview.Span{
+			{Text: `"host"`, Role: documentview.RoleKey},
+			{Text: ": ", Role: documentview.RolePunct},
+			{Text: `"localhost"`, Role: documentview.RoleStringValue},
 		},
 	}
 
@@ -181,9 +181,9 @@ func TestRenderCursorFillUsesTheCursorBackground(t *testing.T) {
 // A role beyond the ones the theme knows loses its colour, not its text: the
 // document stays readable while the gap in the theme is being noticed.
 func TestRenderLineDrawsUnknownRoleUnstyled(t *testing.T) {
-	unknown := application.Role(len(allRoles))
+	unknown := documentview.Role(len(allRoles))
 
-	line := application.Line{Spans: []application.Span{{Text: "x", Role: unknown}}}
+	line := documentview.Line{Spans: []documentview.Span{{Text: "x", Role: unknown}}}
 
 	if got := DefaultTheme().RenderLine(line, "", false); got != "x" {
 		t.Errorf("RenderLine() = %q, want %q", got, "x")

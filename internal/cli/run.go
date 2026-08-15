@@ -16,6 +16,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/ytakahashi/pino/internal/application"
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/infrastructure/filestore"
 	"github.com/ytakahashi/pino/internal/infrastructure/jsonparser"
 	"github.com/ytakahashi/pino/internal/presentation"
@@ -122,8 +123,8 @@ func NewProgramModel(path string) (tea.Model, error) {
 	app := application.New(application.Deps{
 		Parser:   jsonparser.New(),
 		Files:    filestore.New(),
-		JSONView: application.NewJSONRenderer(),
-		TreeView: application.NewTreeRenderer(),
+		JSONView: documentview.NewJSONRenderer(),
+		TreeView: documentview.NewTreeRenderer(),
 	})
 
 	if err := app.Open(path); err != nil {

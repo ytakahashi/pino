@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ytakahashi/pino/internal/application"
+	"github.com/ytakahashi/pino/internal/application/documentview"
 )
 
 // stripped is a pane read back without styling, one entry per row, every row
@@ -35,7 +36,7 @@ func scalarInfo() application.InspectorInfo {
 	return application.InspectorInfo{
 		Pointer: "/server/port",
 		Type:    "number",
-		Value:   application.Span{Text: "8080", Role: application.RoleNumberValue},
+		Value:   documentview.Span{Text: "8080", Role: documentview.RoleNumberValue},
 		Label:   "port",
 		Naming:  application.NamedKey,
 	}
@@ -54,9 +55,9 @@ func containerInfo() application.InspectorInfo {
 
 func longValueInfo() application.InspectorInfo {
 	info := scalarInfo()
-	info.Value = application.Span{
+	info.Value = documentview.Span{
 		Text: `"` + strings.Repeat("long ", 40) + `"`,
-		Role: application.RoleStringValue,
+		Role: documentview.RoleStringValue,
 	}
 
 	return info

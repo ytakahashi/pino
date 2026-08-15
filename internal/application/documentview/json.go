@@ -1,4 +1,4 @@
-package application
+package documentview
 
 import (
 	"github.com/ytakahashi/pino/internal/domain"
@@ -14,13 +14,13 @@ func NewJSONRenderer() Renderer { return jsonRenderer{} }
 // recursion below: they are the same for every row, and they say how to draw
 // rather than what. What is left in the arguments is exactly the subtree and
 // where it sits, which is what a cache keyed on the node pointer would need.
-type jsonRenderer struct{ opt RenderOptions }
+type jsonRenderer struct{ opt Options }
 
 // Render draws root. It returns nil when no document is open.
 //
 // The receiver is unused: the options arrive with the call, so the renderer
 // that draws is built here rather than being the one Render was called on.
-func (jsonRenderer) Render(root domain.Node, opt RenderOptions) []Line {
+func (jsonRenderer) Render(root domain.Node, opt Options) []Line {
 	if root == nil {
 		return nil
 	}
@@ -57,11 +57,11 @@ func (r jsonRenderer) node(n domain.Node, p domain.Path, depth int, label []Span
 			Path:  p,
 			Kind:  LineSingle,
 			Depth: depth,
-			Spans: separated(spansOf(label, scalarSpan(n, r.opt.MaxStrLen)), last),
+			Spans: separated(spansOf(label, ScalarSpan(n, r.opt.MaxStrLen)), last),
 		}}
 
 	default:
-		panic("application: cannot render node of kind " + n.Kind().String())
+		panic("documentview: cannot render node of kind " + n.Kind().String())
 	}
 }
 

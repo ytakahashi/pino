@@ -3,6 +3,7 @@ package application
 import (
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -17,11 +18,11 @@ func TestUndoBringsBackTheTreeThatWasThere(t *testing.T) {
 
 	// Every document of the corpus, so that the property is checked against a
 	// growing set rather than against one shape chosen to satisfy it.
-	for name, doc := range documents(t) {
+	for name, root := range documents(t) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			app := session(t, doc.root)
+			app := session(t, root)
 			before := app.doc.Root()
 
 			// Replacing the root is the one edit every document can take,
@@ -217,7 +218,7 @@ func TestUndoAndRedoDoNothingWithNoDocumentOpen(t *testing.T) {
 
 	// A session that has opened nothing has an empty history, which is what
 	// keeps these from reaching a document that is not there.
-	app := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()})
+	app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
 
 	press(app, ActionUndo{}, ActionRedo{})
 

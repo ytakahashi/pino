@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -64,14 +65,14 @@ func (p *fakeParser) Parse(src []byte, d domain.Dialect) (domain.Node, error) {
 // fakeRenderer records renderer delegation. Tests of rendered content use the
 // real renderers instead.
 type fakeRenderer struct {
-	lines []Line
+	lines []documentview.Line
 
 	gotRoot domain.Node
-	gotOpt  RenderOptions
+	gotOpt  documentview.Options
 	calls   int
 }
 
-func (r *fakeRenderer) Render(root domain.Node, opt RenderOptions) []Line {
+func (r *fakeRenderer) Render(root domain.Node, opt documentview.Options) []documentview.Line {
 	r.gotRoot, r.gotOpt = root, opt
 	r.calls++
 

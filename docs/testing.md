@@ -19,6 +19,10 @@
   solely to make them testable.
 - Put fixtures and helpers in `<subject>_fixtures_test.go`; these files declare
   no `Test` functions.
+- A corpus two packages are checked against is the exception: Go cannot share a
+  fixture file across packages, and a corpus written out twice lets a document
+  added for one package go unchecked by the other. Put it in a package of its
+  own, as `internal/application/testdocs` does.
 - Name tests as present-tense sentences about behaviour from the subject's point
   of view. A failure should read as a statement of what stopped being true.
 

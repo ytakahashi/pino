@@ -1,6 +1,9 @@
 package application
 
-import "github.com/ytakahashi/pino/internal/domain"
+import (
+	"github.com/ytakahashi/pino/internal/application/documentview"
+	"github.com/ytakahashi/pino/internal/domain"
+)
 
 // This file is the arithmetic of moving around a rendered document. Every
 // function here reads nothing but the rows it is given and returns a row
@@ -17,7 +20,7 @@ import "github.com/ytakahashi/pino/internal/domain"
 // indexOf is the row the cursor sits on, or -1 when the document does not show
 // it. Paths are compared by their tokens, so a cursor built from a pointer
 // finds the row a renderer built from a tree.
-func indexOf(lines []Line, cursor domain.Path) int {
+func indexOf(lines []documentview.Line, cursor domain.Path) int {
 	for i, l := range lines {
 		if l.Path.Equal(cursor) {
 			return i
@@ -37,7 +40,7 @@ func indexOf(lines []Line, cursor domain.Path) int {
 // the same later.
 //
 // The walk terminates because the root is its own parent and is always drawn.
-func visibleRow(lines []Line, cursor domain.Path) int {
+func visibleRow(lines []documentview.Line, cursor domain.Path) int {
 	for p := cursor; ; p = p.Parent() {
 		if i := indexOf(lines, p); i >= 0 {
 			return i
@@ -51,7 +54,7 @@ func visibleRow(lines []Line, cursor domain.Path) int {
 
 // firstRow is the row of the whole document, which is the root and always
 // takes the cursor.
-func firstRow(lines []Line) int {
+func firstRow(lines []documentview.Line) int {
 	if len(lines) == 0 {
 		return -1
 	}
@@ -65,9 +68,9 @@ func firstRow(lines []Line) int {
 // Closing rows are stepped over: a "}" is not a node, and stopping on one
 // would make moving down through a nested document pause on punctuation. This
 // is what turns a flat list of rows back into a walk over the tree.
-func nextRow(lines []Line, from int) int {
+func nextRow(lines []documentview.Line, from int) int {
 	for i := from + 1; i < len(lines); i++ {
-		if lines[i].Kind != LineClose {
+		if lines[i].Kind != documentview.LineClose {
 			return i
 		}
 	}
@@ -76,9 +79,9 @@ func nextRow(lines []Line, from int) int {
 }
 
 // prevRow is the row above from that the cursor can land on, or -1 at the top.
-func prevRow(lines []Line, from int) int {
+func prevRow(lines []documentview.Line, from int) int {
 	for i := from - 1; i >= 0; i-- {
-		if lines[i].Kind != LineClose {
+		if lines[i].Kind != documentview.LineClose {
 			return i
 		}
 	}
@@ -96,7 +99,7 @@ func prevRow(lines []Line, from int) int {
 // The parent of a drawn row is always drawn, which is why this can work from
 // rows alone. Climbing by path, as visibleRow does, is for a cursor that may
 // have no row at all.
-func parentRow(lines []Line, from int) int {
+func parentRow(lines []documentview.Line, from int) int {
 	if from < 0 || from >= len(lines) {
 		return -1
 	}
@@ -116,8 +119,8 @@ func parentRow(lines []Line, from int) int {
 // Only an open container has children drawn below it, and its first child
 // begins on the very next row. A folded container answers -1 here: it is
 // unfolded first, and moving into it is a second keystroke.
-func firstChildRow(lines []Line, from int) int {
-	if from < 0 || from >= len(lines) || lines[from].Kind != LineOpen {
+func firstChildRow(lines []documentview.Line, from int) int {
+	if from < 0 || from >= len(lines) || lines[from].Kind != documentview.LineOpen {
 		return -1
 	}
 
@@ -132,7 +135,7 @@ func firstChildRow(lines []Line, from int) int {
 //
 // It is not the final row: a document ends in the closing rows of everything
 // still open, and the end of a document means its last node.
-func lastRow(lines []Line) int {
+func lastRow(lines []documentview.Line) int {
 	return nearestRow(lines, len(lines)-1, -1)
 }
 
@@ -144,7 +147,7 @@ func lastRow(lines []Line) int {
 // that ends a document has nothing below it, which is why the search has to be
 // able to turn around. from outside the document is treated as its nearest
 // end.
-func nearestRow(lines []Line, from, dir int) int {
+func nearestRow(lines []documentview.Line, from, dir int) int {
 	if len(lines) == 0 {
 		return -1
 	}
@@ -165,9 +168,9 @@ func nearestRow(lines []Line, from, dir int) int {
 
 // scanRow walks from towards one end of the document, answering the first row
 // the cursor can land on.
-func scanRow(lines []Line, from, step int) int {
+func scanRow(lines []documentview.Line, from, step int) int {
 	for i := from; i >= 0 && i < len(lines); i += step {
-		if lines[i].Kind != LineClose {
+		if lines[i].Kind != documentview.LineClose {
 			return i
 		}
 	}
@@ -182,7 +185,7 @@ func scanRow(lines []Line, from, step int) int {
 // drawn. Bringing it to the edge it went out by is the smallest way back, and
 // keeps reading on with the wheel from carrying the selection along further
 // than the text moved.
-func intoWindow(lines []Line, from, scroll, height int) int {
+func intoWindow(lines []documentview.Line, from, scroll, height int) int {
 	switch {
 	case from < scroll:
 		return nearestRow(lines, scroll, 1)

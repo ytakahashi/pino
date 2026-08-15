@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ytakahashi/pino/internal/application"
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -170,8 +171,8 @@ func openApp(t *testing.T, root domain.Node) *application.App {
 	app := application.New(application.Deps{
 		Parser:   fakeParser{root: root},
 		Files:    fakeFileStore{},
-		JSONView: application.NewJSONRenderer(),
-		TreeView: application.NewTreeRenderer(),
+		JSONView: documentview.NewJSONRenderer(),
+		TreeView: documentview.NewTreeRenderer(),
 	})
 
 	if err := app.Open("config.json"); err != nil {
@@ -284,8 +285,8 @@ func openIndented(t *testing.T, root domain.Node, indent string) *application.Ap
 		Files: fakeFileStore{src: []byte(
 			"{\n" + indent + "\"server\": {\n" + indent + indent + "\"host\": \"localhost\"\n" + indent + "}\n}\n",
 		)},
-		JSONView: application.NewJSONRenderer(),
-		TreeView: application.NewTreeRenderer(),
+		JSONView: documentview.NewJSONRenderer(),
+		TreeView: documentview.NewTreeRenderer(),
 	})
 
 	if err := app.Open("config.json"); err != nil {

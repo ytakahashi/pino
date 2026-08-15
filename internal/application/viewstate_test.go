@@ -173,3 +173,13 @@ func TestFoldingEverythingAndThenEditingLeavesTheSetResolvable(t *testing.T) {
 		t.Error("the whole set was dropped, so this checks nothing")
 	}
 }
+
+// The view state is what carries the limit to the renderer, so a document
+// opened without anyone choosing one still has values shortened.
+func TestNewViewStateShortensLongValues(t *testing.T) {
+	t.Parallel()
+
+	if got := NewViewState().RenderOptions().MaxStrLen; got <= 0 {
+		t.Errorf("MaxStrLen = %d, want a limit; long values would be drawn in full", got)
+	}
+}

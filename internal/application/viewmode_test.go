@@ -3,6 +3,7 @@ package application
 import (
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -26,10 +27,10 @@ func TestViewModeCyclesThroughEveryView(t *testing.T) {
 func TestRendererFollowsTheView(t *testing.T) {
 	t.Parallel()
 
-	jsonView := &fakeRenderer{lines: []Line{{Kind: LineSingle}}}
-	treeView := &fakeRenderer{lines: []Line{
-		{Kind: LineOpen},
-		{Path: path(domain.KeySegment("a")), Kind: LineSingle, Depth: 1},
+	jsonView := &fakeRenderer{lines: []documentview.Line{{Kind: documentview.LineSingle}}}
+	treeView := &fakeRenderer{lines: []documentview.Line{
+		{Kind: documentview.LineOpen},
+		{Path: path(domain.KeySegment("a")), Kind: documentview.LineSingle, Depth: 1},
 	}}
 
 	app := New(Deps{
@@ -268,7 +269,7 @@ func TestToggleViewPreservesDeepFolding(t *testing.T) {
 func TestToggleViewDoesNothingWithoutADocument(t *testing.T) {
 	t.Parallel()
 
-	app := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()})
+	app := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()})
 
 	app.Do(ActionToggleView{})
 
@@ -354,12 +355,12 @@ func TestMovementAgreesAcrossViews(t *testing.T) {
 		{"gg", ActionMoveFirst{}},
 	}
 
-	for name, doc := range documents(t) {
+	for name, root := range documents(t) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			asJSON := sessionIn(t, doc.root, ViewJSON)
-			asTree := sessionIn(t, doc.root, ViewTree)
+			asJSON := sessionIn(t, root, ViewJSON)
+			asTree := sessionIn(t, root, ViewTree)
 
 			for i, s := range script {
 				asJSON.Do(s.act)

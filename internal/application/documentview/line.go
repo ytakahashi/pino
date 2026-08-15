@@ -1,4 +1,4 @@
-package application
+package documentview
 
 import (
 	"strings"
@@ -122,13 +122,13 @@ func (l Line) Text() string {
 	return b.String()
 }
 
-// RenderOptions is what the view state contributes to rendering.
+// Options is what the view state contributes to rendering.
 //
 // Collapsed is keyed by JSON Pointer rather than by Path because a Path holds
 // a slice and so cannot be a map key. The pointer is the canonical text form
 // of a path, and paths within a document are unique, so the two identify a
 // node equally well.
-type RenderOptions struct {
+type Options struct {
 	Collapsed map[string]struct{}
 	MaxStrLen int // 0 means strings are shown in full
 }
@@ -139,5 +139,5 @@ type RenderOptions struct {
 // It is an interface so that the naive full re-render can later be wrapped in
 // a memoising one without anything above noticing.
 type Renderer interface {
-	Render(root domain.Node, opt RenderOptions) []Line
+	Render(root domain.Node, opt Options) []Line
 }

@@ -3,6 +3,7 @@ package application
 import (
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
@@ -59,7 +60,7 @@ func TestStatusDescribesANullValue(t *testing.T) {
 func TestStatusIsEmptyWithoutADocument(t *testing.T) {
 	t.Parallel()
 
-	info := New(Deps{JSONView: NewJSONRenderer(), TreeView: NewTreeRenderer()}).Status()
+	info := New(Deps{JSONView: documentview.NewJSONRenderer(), TreeView: documentview.NewTreeRenderer()}).Status()
 
 	if info.Pointer != "" {
 		t.Errorf("Status().Pointer = %q with no document open, want empty", info.Pointer)
@@ -76,7 +77,7 @@ func TestStatusIsEmptyWithoutADocument(t *testing.T) {
 func TestStatusDoesNotRender(t *testing.T) {
 	t.Parallel()
 
-	renderer := &fakeRenderer{lines: []Line{{Kind: LineOpen}}}
+	renderer := &fakeRenderer{lines: []documentview.Line{{Kind: documentview.LineOpen}}}
 	app := New(Deps{
 		Parser:   &fakeParser{root: sample(t)},
 		Files:    fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},

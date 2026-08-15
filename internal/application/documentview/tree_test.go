@@ -1,4 +1,4 @@
-package application
+package documentview
 
 import (
 	"testing"
@@ -24,7 +24,7 @@ func TestTreeRenderDrawsTheWholeDocument(t *testing.T) {
 func TestTreeRenderReturnsNoLinesWithoutADocument(t *testing.T) {
 	t.Parallel()
 
-	if lines := NewTreeRenderer().Render(nil, RenderOptions{}); lines != nil {
+	if lines := NewTreeRenderer().Render(nil, Options{}); lines != nil {
 		t.Errorf("Render(nil) = %v, want nil", lines)
 	}
 }
@@ -53,7 +53,7 @@ func TestViewsAgreeOnRows(t *testing.T) {
 			t.Parallel()
 
 			for _, set := range foldings(t, doc) {
-				opt := RenderOptions{Collapsed: set, MaxStrLen: doc.opt.MaxStrLen}
+				opt := Options{Collapsed: set, MaxStrLen: doc.opt.MaxStrLen}
 
 				jsonRows := cursorRows(NewJSONRenderer().Render(doc.root, opt))
 				treeRows := cursorRows(NewTreeRenderer().Render(doc.root, opt))
@@ -80,7 +80,7 @@ func TestTreeRenderHasNoCloseRows(t *testing.T) {
 			t.Parallel()
 
 			for _, set := range foldings(t, doc) {
-				opt := RenderOptions{Collapsed: set, MaxStrLen: doc.opt.MaxStrLen}
+				opt := Options{Collapsed: set, MaxStrLen: doc.opt.MaxStrLen}
 
 				for i, l := range NewTreeRenderer().Render(doc.root, opt) {
 					if l.Kind == LineClose {
@@ -106,7 +106,7 @@ func TestJSONRenderClosesWhatItOpens(t *testing.T) {
 			t.Parallel()
 
 			for _, set := range foldings(t, doc) {
-				opt := RenderOptions{Collapsed: set, MaxStrLen: doc.opt.MaxStrLen}
+				opt := Options{Collapsed: set, MaxStrLen: doc.opt.MaxStrLen}
 				lines := NewJSONRenderer().Render(doc.root, opt)
 
 				var open []domain.Path

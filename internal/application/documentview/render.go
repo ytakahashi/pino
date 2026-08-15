@@ -1,4 +1,4 @@
-package application
+package documentview
 
 import (
 	"strconv"
@@ -25,7 +25,7 @@ import (
 // The set is keyed by JSON Pointer, so asking costs building one. Nothing is
 // folded in a document just opened, and that is also when every row would pay,
 // so an empty set is answered without touching a path at all.
-func isCollapsed(opt RenderOptions, p domain.Path) bool {
+func isCollapsed(opt Options, p domain.Path) bool {
 	if len(opt.Collapsed) == 0 {
 		return false
 	}
@@ -35,14 +35,18 @@ func isCollapsed(opt RenderOptions, p domain.Path) bool {
 	return ok
 }
 
-// scalarSpan is the drawn form of a value that occupies no rows of its own.
+// ScalarSpan is the drawn form of a value that occupies no rows of its own.
 //
 // It is shared so that what is on screen is what would be saved (the escaping
 // rules are the encoder's) in every view at once, and so that a value shortened
 // in one view is shortened at the same place in the other: a value that changed
 // its spelling when the view changed would make the ellipsis read as decoration
 // rather than as a cut.
-func scalarSpan(n domain.Node, maxLen int) Span {
+//
+// It is exported for the same reason: the inspector shows the selected value
+// in full, and a pane that spelled a value its own way would disagree with the
+// row it is describing.
+func ScalarSpan(n domain.Node, maxLen int) Span {
 	switch v := n.(type) {
 	case *domain.String:
 		return stringSpan(v.Value(), maxLen)
@@ -59,7 +63,7 @@ func scalarSpan(n domain.Node, maxLen int) Span {
 		return Span{Text: "null", Role: RoleNullValue}
 
 	default:
-		panic("application: cannot render node of kind " + n.Kind().String())
+		panic("documentview: cannot render node of kind " + n.Kind().String())
 	}
 }
 

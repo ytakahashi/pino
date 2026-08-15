@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ytakahashi/pino/internal/application"
+	"github.com/ytakahashi/pino/internal/application/documentview"
 )
 
 func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
@@ -52,7 +53,7 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 		"an element of an array": {
 			info: application.InspectorInfo{
 				Pointer: "/features/0", Type: "string",
-				Value: application.Span{Text: `"search"`, Role: application.RoleStringValue},
+				Value: documentview.Span{Text: `"search"`, Role: documentview.RoleStringValue},
 				Label: "0", Naming: application.NamedIndex,
 			},
 			want: []string{
@@ -79,7 +80,7 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 		"a scalar at the root": {
 			info: application.InspectorInfo{
 				Pointer: "", Type: "number",
-				Value:  application.Span{Text: "8080", Role: application.RoleNumberValue},
+				Value:  documentview.Span{Text: "8080", Role: documentview.RoleNumberValue},
 				Naming: application.NamedNone,
 			},
 			want: []string{"Path=/", "Type=number", "Value=8080", "Press=Enter t"},
@@ -89,7 +90,7 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 		"a member with an empty key": {
 			info: application.InspectorInfo{
 				Pointer: "/", Type: "null",
-				Value:  application.Span{Text: "null", Role: application.RoleNullValue},
+				Value:  documentview.Span{Text: "null", Role: documentview.RoleNullValue},
 				Naming: application.NamedKey,
 			},
 			want: []string{"Path=/", "Type=null", "Value=null", "Key=", "Press=Enter t A d r"},
@@ -122,7 +123,7 @@ func TestInspectorFieldsMakeOutsideTextPrintable(t *testing.T) {
 	info := application.InspectorInfo{
 		Pointer: "/nl\nhere",
 		Type:    "number",
-		Value:   application.Span{Text: "1", Role: application.RoleNumberValue},
+		Value:   documentview.Span{Text: "1", Role: documentview.RoleNumberValue},
 		Label:   "nl\nhere",
 		Naming:  application.NamedKey,
 	}
@@ -189,7 +190,7 @@ func TestRenderInspectorPaneWrapsLongValues(t *testing.T) {
 	value := strings.Repeat("x", 40)
 
 	info := scalarInfo()
-	info.Value = application.Span{Text: `"` + value + `"`, Role: application.RoleStringValue}
+	info.Value = documentview.Span{Text: `"` + value + `"`, Role: documentview.RoleStringValue}
 
 	got := plain(DefaultTheme().RenderInspectorPane(info, width, 20))
 
@@ -334,7 +335,7 @@ func TestRenderInspectorPaneKeepsSpacesAcrossTheWrap(t *testing.T) {
 		"a value": {
 			info: application.InspectorInfo{
 				Pointer: "/a", Type: "string",
-				Value: application.Span{Text: `"abcdef gh"`, Role: application.RoleStringValue},
+				Value: documentview.Span{Text: `"abcdef gh"`, Role: documentview.RoleStringValue},
 				Label: "a", Naming: application.NamedKey,
 			},
 			field: "Value", want: `"abcdef gh"`,
@@ -344,7 +345,7 @@ func TestRenderInspectorPaneKeepsSpacesAcrossTheWrap(t *testing.T) {
 		"a value holding two spaces": {
 			info: application.InspectorInfo{
 				Pointer: "/a", Type: "string",
-				Value: application.Span{Text: `"abcde  fg"`, Role: application.RoleStringValue},
+				Value: documentview.Span{Text: `"abcde  fg"`, Role: documentview.RoleStringValue},
 				Label: "a", Naming: application.NamedKey,
 			},
 			field: "Value", want: `"abcde  fg"`,
@@ -355,7 +356,7 @@ func TestRenderInspectorPaneKeepsSpacesAcrossTheWrap(t *testing.T) {
 		"a key": {
 			info: application.InspectorInfo{
 				Pointer: "/x", Type: "null",
-				Value: application.Span{Text: "null", Role: application.RoleNullValue},
+				Value: documentview.Span{Text: "null", Role: documentview.RoleNullValue},
 				Label: "keyabc de", Naming: application.NamedKey,
 			},
 			field: "Key", want: "keyabc de",
@@ -365,7 +366,7 @@ func TestRenderInspectorPaneKeepsSpacesAcrossTheWrap(t *testing.T) {
 		"a pointer": {
 			info: application.InspectorInfo{
 				Pointer: "/abcdef gh", Type: "null",
-				Value: application.Span{Text: "null", Role: application.RoleNullValue},
+				Value: documentview.Span{Text: "null", Role: documentview.RoleNullValue},
 				Label: "abcdef gh", Naming: application.NamedKey,
 			},
 			field: "Path", want: "/abcdef gh",

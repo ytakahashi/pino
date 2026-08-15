@@ -1,6 +1,9 @@
 package application
 
-import "github.com/ytakahashi/pino/internal/domain"
+import (
+	"github.com/ytakahashi/pino/internal/application/documentview"
+	"github.com/ytakahashi/pino/internal/domain"
+)
 
 // Deps are the outside capabilities pino needs, as ports. The command line
 // builds the adapters and passes them in; nothing below this layer knows
@@ -16,8 +19,8 @@ type Deps struct {
 	// a map is a nil call discovered by running the program, whereas a field
 	// left out is something the compiler and the exhaustive switch below can
 	// both be made to point at.
-	JSONView Renderer
-	TreeView Renderer
+	JSONView documentview.Renderer
+	TreeView documentview.Renderer
 }
 
 // App is the whole state of a pino session.
@@ -144,7 +147,7 @@ func (a *App) Frame() Frame {
 // message it receives, so this will want memoising on the root and the render
 // options; until it measurably hurts, rendering afresh keeps the rows
 // impossible to get out of step with the document.
-func (a *App) render() []Line {
+func (a *App) render() []documentview.Line {
 	if a.doc == nil {
 		return nil
 	}
@@ -157,7 +160,7 @@ func (a *App) render() []Line {
 // It is the whole of what switching views does to rendering: the rest of this
 // layer asks for rows and is given rows, and never learns which renderer made
 // them.
-func (a *App) renderer() Renderer {
+func (a *App) renderer() documentview.Renderer {
 	switch a.view.ViewMode {
 	case ViewJSON:
 		return a.deps.JSONView
@@ -405,7 +408,7 @@ func nearest(root domain.Node, p domain.Path) domain.Path {
 // lines is a parameter rather than something produced here, so that the
 // actions leaving the rows alone say so by handing over the ones they already
 // have. Only the ones that change which rows exist lay the document out again.
-func (a *App) settle(lines []Line) {
+func (a *App) settle(lines []documentview.Line) {
 	row := visibleRow(lines, a.view.Cursor)
 	if row < 0 {
 		row = firstRow(lines)
@@ -434,7 +437,7 @@ func (a *App) settle(lines []Line) {
 // The document is laid out once: which rows exist does not depend on where the
 // cursor is, so the same rows answer both where to go and what to settle
 // against.
-func (a *App) moveBy(step func(lines []Line, from int) int) {
+func (a *App) moveBy(step func(lines []documentview.Line, from int) int) {
 	lines := a.render()
 
 	if from := visibleRow(lines, a.view.Cursor); from >= 0 {
@@ -451,7 +454,7 @@ func (a *App) moveBy(step func(lines []Line, from int) int) {
 // Unlike moveBy this needs no row to start from: where these actions go does
 // not depend on where they begin, so they still work when the cursor has been
 // left pointing at something no longer drawn.
-func (a *App) moveTo(pick func(lines []Line) int) {
+func (a *App) moveTo(pick func(lines []documentview.Line) int) {
 	lines := a.render()
 
 	if to := pick(lines); to >= 0 {
@@ -656,7 +659,7 @@ func (a *App) moveOut() {
 		return
 	}
 
-	if lines[from].Kind == LineOpen && !lines[from].Path.IsRoot() {
+	if lines[from].Kind == documentview.LineOpen && !lines[from].Path.IsRoot() {
 		if a.view.Collapse(lines[from].Path) {
 			a.settle(a.render())
 

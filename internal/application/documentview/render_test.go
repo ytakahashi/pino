@@ -1,4 +1,4 @@
-package application
+package documentview
 
 import (
 	"testing"
@@ -76,15 +76,5 @@ func TestStringSpanLeavesShortValuesAlone(t *testing.T) {
 				t.Errorf("stringSpan(%q, 64) = %s, want %s", v, got.Text, want.Text)
 			}
 		})
-	}
-}
-
-// The view state is what carries the limit to the renderer, so a document
-// opened without anyone choosing one still has values shortened.
-func TestNewViewStateShortensLongValues(t *testing.T) {
-	t.Parallel()
-
-	if got := NewViewState().RenderOptions().MaxStrLen; got <= 0 {
-		t.Errorf("MaxStrLen = %d, want a limit; long values would be drawn in full", got)
 	}
 }

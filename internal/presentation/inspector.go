@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ytakahashi/pino/internal/application"
+	"github.com/ytakahashi/pino/internal/application/documentview"
 )
 
 // fieldNameWidth is the column the values of the stacked pane begin in.
@@ -30,7 +31,7 @@ type inspectorField struct {
 
 	// Value is the text, and the Role to colour it by when the text is the
 	// document's own.
-	Value application.Span
+	Value documentview.Span
 
 	// Styled says whether Value carries a Role, since the zero Role is a real
 	// one rather than an absence.
@@ -97,7 +98,7 @@ func inspectorFields(info application.InspectorInfo) []inspectorField {
 	return fields
 }
 
-func plainSpan(text string) application.Span { return application.Span{Text: text} }
+func plainSpan(text string) documentview.Span { return documentview.Span{Text: text} }
 
 // RenderInspectorPane draws the pane that stands beside the tree: exactly
 // height rows of exactly width columns.
