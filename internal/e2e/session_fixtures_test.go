@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	teatest "github.com/charmbracelet/x/exp/teatest/v2"
 
+	"github.com/ytakahashi/pino/internal/application"
 	"github.com/ytakahashi/pino/internal/cli"
 )
 
@@ -50,6 +51,27 @@ func writeConfig(t *testing.T) string {
 	}
 
 	return path
+}
+
+// missingPath is a path in a directory that exists, with nothing at it. It is
+// where a new document is opened from, and where saving one creates a file.
+func missingPath(t *testing.T) string {
+	t.Helper()
+
+	return filepath.Join(t.TempDir(), "fresh.json")
+}
+
+// readFile is what is on disk, read with the standard library so that what a
+// scenario asserts about a file does not come back through pino.
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) = %v", path, err)
+	}
+
+	return string(data)
 }
 
 // screenObserver keeps every screen the model drew, in the order it drew them,
@@ -185,7 +207,27 @@ func (m observedModel) View() tea.View { return m.inner.View() }
 func start(t *testing.T, onFirstScreen string) (*teatest.TestModel, *screenWaiter) {
 	t.Helper()
 
-	model, err := cli.NewProgramModel(writeConfig(t))
+	tm, waiter, _ := startAt(t, writeConfig(t), onFirstScreen)
+
+	return tm, waiter
+}
+
+// startAt is start on a document a scenario built itself, and answers the path
+// to it as well. A scenario about saving reads that file back, which means
+// naming it before the program is given it.
+func startAt(t *testing.T, path, onFirstScreen string) (*teatest.TestModel, *screenWaiter, string) {
+	t.Helper()
+
+	return startWith(t, path, application.Config{}, onFirstScreen)
+}
+
+// startWith is startAt with the choices the command line would have made. It
+// is how a scenario checks that a flag reaches the document rather than
+// stopping at the flag set.
+func startWith(t *testing.T, path string, cfg application.Config, onFirstScreen string) (*teatest.TestModel, *screenWaiter, string) {
+	t.Helper()
+
+	model, err := cli.NewProgramModel(path, cfg)
 	if err != nil {
 		t.Fatalf("NewProgramModel() = %v", err)
 	}
@@ -211,7 +253,7 @@ func start(t *testing.T, onFirstScreen string) (*teatest.TestModel, *screenWaite
 		return strings.Contains(strings.Join(screen, "\n"), onFirstScreen)
 	})
 
-	return tm, waiter
+	return tm, waiter, path
 }
 
 // finalScreen quits and answers the screen the program stopped on, one entry

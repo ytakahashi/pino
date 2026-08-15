@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -46,10 +47,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	showVersion := fs.Bool("version", false, "print version information and exit")
 
-	// Accepted and not read. The width only takes effect when a document is
-	// written back, which pino cannot do yet; taking the flag now keeps the
-	// command line it will be part of settled.
-	fs.Int("indent", 0, "indentation width, overriding the one detected in the file")
+	indent := fs.Int("indent", 0, "indentation width, overriding the one detected in the file")
 
 	switch err := fs.Parse(args); {
 	case errors.Is(err, flag.ErrHelp):
@@ -79,13 +77,21 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
+	cfg, err := configFrom(fs, *indent)
+	if err != nil {
+		printf(stderr, "pino: %v\n", err)
+		usage(stderr, fs)
+
+		return exitUsage
+	}
+
 	path := fs.Arg(0)
 
 	// The document is opened before the terminal is taken over: pino is a
 	// structural editor and has no way to repair a broken file, so the reason
 	// it cannot be opened is worth more on the terminal the user launched pino
 	// from than on a screen that would have nothing to offer them.
-	model, err := NewProgramModel(path)
+	model, err := NewProgramModel(path, cfg)
 	if err != nil {
 		reportOpenError(stderr, path, err)
 
@@ -119,15 +125,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 //
 // The terminal is untouched here: the document is read, parsed and laid out,
 // and nothing is drawn until a program is given what comes back.
-func NewProgramModel(path string) (tea.Model, error) {
-	// The layout the document is written back with is still the file's own:
-	// the flag that overrides it is accepted and not yet read.
+func NewProgramModel(path string, cfg application.Config) (tea.Model, error) {
 	app := application.New(application.Deps{
 		Parser:   jsonparser.New(),
 		Files:    filestore.New(),
 		JSONView: documentview.NewJSONRenderer(),
 		TreeView: documentview.NewTreeRenderer(),
-	}, application.Config{})
+	}, cfg)
 
 	if err := app.Open(path); err != nil {
 		return nil, err
@@ -135,6 +139,57 @@ func NewProgramModel(path string) (tea.Model, error) {
 
 	return presentation.NewModel(app, presentation.DefaultTheme()), nil
 }
+
+// configFrom is what the command line asked pino to do, as opposed to what it
+// gave pino to do it with.
+//
+// Whether --indent was given is asked of the set rather than read off the
+// value, because a width of zero is a request in its own right: it asks for no
+// indentation, while the flag being absent asks for the file's own. A default
+// value cannot say which of the two happened.
+//
+// A width outside the range is refused rather than repaired. It is a misuse
+// of the command line, and the exit code says so; guessing what was meant
+// would make "-2" a way of writing "0".
+func configFrom(fs *flag.FlagSet, indent int) (application.Config, error) {
+	var cfg application.Config
+
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "indent" {
+			cfg.OverrideIndent = true
+		}
+	})
+
+	if !cfg.OverrideIndent {
+		return cfg, nil
+	}
+
+	if indent < 0 || indent > maxIndent {
+		return application.Config{}, fmt.Errorf(
+			"indentation width %d is not between 0 and %d", indent, maxIndent)
+	}
+
+	// Spaces, which is the only width a number can mean. A file indented with
+	// tabs keeps them by not being overridden at all.
+	cfg.IndentOverride = strings.Repeat(" ", indent)
+
+	return cfg, nil
+}
+
+// maxIndent is the widest level pino will write.
+//
+// JSON forbids nothing here, and the limit is not about JSON. The number
+// arrives from a command line, and every space of it is allocated and then
+// drawn on every row of every level: without a bound, a mistyped width is a
+// request to build a string of whatever the flag parser accepted, which for
+// the largest of them is not a string that can exist.
+//
+// Documents are written with two spaces or four. Eight is the width a tab has
+// traditionally been drawn at, and twice what anything here is likely to ask
+// for, so it is past the useful range rather than in the middle of it: at the
+// narrowest terminal pino draws in, a document four levels deep at this width
+// has nothing left of the row.
+const maxIndent = 8
 
 // printf puts a message on the terminal.
 //

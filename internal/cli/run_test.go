@@ -3,13 +3,18 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/ytakahashi/pino/internal/application"
 	"github.com/ytakahashi/pino/internal/infrastructure/jsonparser"
 )
 
@@ -184,7 +189,7 @@ func TestOpeningAPathThatHoldsNothingStartsADocument(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "new.json")
 
-	model, err := NewProgramModel(path)
+	model, err := NewProgramModel(path, application.Config{})
 	if err != nil {
 		t.Fatalf("NewProgramModel: %v", err)
 	}
@@ -195,6 +200,109 @@ func TestOpeningAPathThatHoldsNothingStartsADocument(t *testing.T) {
 
 	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("Stat after opening a missing path returned %v, want it still missing", err)
+	}
+}
+
+// The width a document is written back with is a policy the reader chooses,
+// and "not chosen" is one of the answers: a width of zero asks for no
+// indentation, while the flag being absent asks for the file's own.
+func TestIndentIsReadFromTheCommandLine(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		args []string
+		want application.Config
+	}{
+		"not given": {
+			args: nil,
+			want: application.Config{},
+		},
+		"none at all": {
+			args: []string{"-indent", "0"},
+			want: application.Config{IndentOverride: "", OverrideIndent: true},
+		},
+		"one space": {
+			args: []string{"-indent", "1"},
+			want: application.Config{IndentOverride: " ", OverrideIndent: true},
+		},
+		"two spaces": {
+			args: []string{"-indent", "2"},
+			want: application.Config{IndentOverride: "  ", OverrideIndent: true},
+		},
+		"four spaces": {
+			args: []string{"-indent", "4"},
+			want: application.Config{IndentOverride: "    ", OverrideIndent: true},
+		},
+		"the widest there is": {
+			args: []string{"-indent", strconv.Itoa(maxIndent)},
+			want: application.Config{IndentOverride: strings.Repeat(" ", maxIndent), OverrideIndent: true},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			fs := flag.NewFlagSet("pino", flag.ContinueOnError)
+			fs.SetOutput(io.Discard)
+
+			indent := fs.Int("indent", 0, "")
+
+			if err := fs.Parse(tc.args); err != nil {
+				t.Fatalf("Parse(%v): %v", tc.args, err)
+			}
+
+			got, err := configFrom(fs, *indent)
+			if err != nil {
+				t.Fatalf("configFrom: %v", err)
+			}
+
+			if got != tc.want {
+				t.Errorf("configFrom(%v) = %#v, want %#v", tc.args, got, tc.want)
+			}
+		})
+	}
+}
+
+// A width that is not a width is a misuse of the command line, which is a
+// different thing from a file that could not be opened, and says so with the
+// exit code.
+func TestRunRefusesAnIndentThatIsNotAWidth(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string][]string{
+		"negative":     {"-indent", "-2"},
+		"not a number": {"-indent", "wide"},
+		"fractional":   {"-indent", "2.5"},
+
+		// A width no document could use is a mistyped one. The largest of
+		// them is a string that cannot be built at all, so it has to be
+		// refused rather than repeated into.
+		"wider than pino writes": {"-indent", strconv.Itoa(maxIndent + 1)},
+		"absurd":                 {"-indent", "1000000"},
+		"the largest there is":   {"-indent", strconv.FormatInt(math.MaxInt64, 10)},
+	}
+
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			path := write(t, "config.json", "{}\n")
+
+			code, stdout, stderr := run(t, append(args, path)...)
+
+			if code != exitUsage {
+				t.Errorf("exit code = %d, want %d", code, exitUsage)
+			}
+
+			if stdout != "" {
+				t.Errorf("stdout = %q, want it empty", stdout)
+			}
+
+			if !strings.Contains(stderr, "usage: pino") {
+				t.Errorf("stderr = %q, want it to describe the usage", stderr)
+			}
+		})
 	}
 }
 

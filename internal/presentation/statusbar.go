@@ -57,12 +57,28 @@ func leftFields(info application.StatusInfo) []string {
 		// leaves no room for it leaves none for this bar either.
 	}
 
+	// Last, and on this side, because this is the end that is cut when the bar
+	// does not fit. A reason for a failure can be any length, and it is the
+	// one field already written out in full a row above: the dialog holding it
+	// is what makes sure it was read, so what is left here is a reminder while
+	// that dialog is up rather than the only telling of it.
+	if info.Error != "" {
+		fields = append(fields, printable(info.Error))
+	}
+
 	return fields
 }
 
 // rightFields say what state the document is in, and what pino is waiting for.
 func rightFields(info application.StatusInfo, lines int, pending Pending) []string {
 	fields := []string{lineCount(lines), "indent:" + indentLabel(info.Indent)}
+
+	// Two independent things, so two fields rather than one that has to choose
+	// between them: a document whose file has still to be created and which
+	// has been typed into is both, and the first save clears both at once.
+	if info.New {
+		fields = append(fields, "new")
+	}
 
 	if info.Dirty {
 		fields = append(fields, "modified")

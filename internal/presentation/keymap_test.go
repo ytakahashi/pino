@@ -48,6 +48,14 @@ func TestResolveMapsNormalModeKeysToActions(t *testing.T) {
 		{name: "t changes a type", key: key('t'), want: application.ActionChangeType{}},
 		{name: "u undoes", key: key('u'), want: application.ActionUndo{}},
 		{name: "ctrl+r redoes", key: ctrl('r'), want: application.ActionRedo{}},
+		{name: "ctrl+s saves", key: ctrl('s'), want: application.ActionSave{}},
+		{
+			// s alone is free, and left that way: a key that writes a file
+			// should not be one keystroke away from every other letter.
+			name: "s alone is not bound",
+			key:  key('s'),
+			want: nil,
+		},
 
 		{name: "G goes to the end", key: shifted('g', 'G'), want: application.ActionMoveLast{}},
 		{name: "ctrl+d reads on", key: ctrl('d'), want: application.ActionScrollHalfDown{}},
@@ -216,22 +224,30 @@ func TestResolveQuitsDuringAPrefix(t *testing.T) {
 // bindings of the one they will be entered from: a key pressed while editing
 // belongs to the editor, not to the document.
 func TestResolveIgnoresNormalModeKeysOutsideNormalMode(t *testing.T) {
+	// Ctrl+S is here rather than among the bindings above because it writes a
+	// file: a key that reaches a prompt or a text box must not save the
+	// document behind it. Ctrl+C is the one exception, and it has a test of
+	// its own.
+	keys := map[string]tea.KeyPressMsg{"q": key('q'), "ctrl+s": ctrl('s')}
+
 	for _, mode := range allModes {
 		if mode == application.ModeNormal {
 			continue
 		}
 
-		t.Run(mode.String(), func(t *testing.T) {
-			got, pending := Resolve(key('q'), mode, PendingNone)
+		for name, k := range keys {
+			t.Run(mode.String()+" "+name, func(t *testing.T) {
+				got, pending := Resolve(k, mode, PendingNone)
 
-			if got != nil {
-				t.Errorf("Resolve(q, %v) = %v, want nil", mode, got)
-			}
+				if got != nil {
+					t.Errorf("Resolve(%s, %v) = %v, want nil", name, mode, got)
+				}
 
-			if pending != PendingNone {
-				t.Errorf("Resolve(q, %v) left %v waiting", mode, pending)
-			}
-		})
+				if pending != PendingNone {
+					t.Errorf("Resolve(%s, %v) left %v waiting", name, mode, pending)
+				}
+			})
+		}
 	}
 }
 

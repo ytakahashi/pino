@@ -27,6 +27,18 @@ func withDirty(info application.StatusInfo) application.StatusInfo {
 	return info
 }
 
+func withNew(info application.StatusInfo) application.StatusInfo {
+	info.New = true
+
+	return info
+}
+
+func withError(info application.StatusInfo, message string) application.StatusInfo {
+	info.Error = message
+
+	return info
+}
+
 func withIndent(info application.StatusInfo, indent string) application.StatusInfo {
 	info.Indent = indent
 

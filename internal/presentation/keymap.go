@@ -135,6 +135,12 @@ func resolveNormal(k tea.KeyPressMsg) (application.Action, Pending) {
 	case "ctrl+r":
 		return application.ActionRedo{}, PendingNone
 
+	// Saving is a control key rather than a letter, as it is in the editors
+	// pino sits beside on a terminal. What it does when there is nothing to
+	// write, or when the file has changed underneath, is not decided here.
+	case "ctrl+s":
+		return application.ActionSave{}, PendingNone
+
 	// Nothing is bound to g or z alone, so there is no ambiguity to time out
 	// of: the next key press decides, however long it takes to arrive.
 	case "g":

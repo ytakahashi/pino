@@ -58,6 +58,21 @@ func TestRenderStatusBarDrawsEveryField(t *testing.T) {
 			want:  " NORMAL  JSON  config.json  11 lines  indent:tab",
 		},
 		{
+			// A file that has still to be created. Nothing has been typed into
+			// it, so there is nothing unsaved in it either.
+			name:  "a new document",
+			info:  withNew(open),
+			lines: 1,
+			want:  " NORMAL  JSON  config.json  1 line  indent:2  new",
+		},
+		{
+			// The two are independent, and both go at the first save.
+			name:  "a new document with edits in it",
+			info:  withDirty(withNew(open)),
+			lines: 1,
+			want:  " NORMAL  JSON  config.json  1 line  indent:2  new  modified",
+		},
+		{
 			name:  "four spaces",
 			info:  withIndent(open, "    "),
 			lines: 11,
@@ -124,6 +139,37 @@ func TestRenderStatusBarShowsTheSelection(t *testing.T) {
 				t.Errorf("RenderStatusBar() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// Something that went wrong is said on the bar as well as in the dialog above
+// it, and on the side that is cut: the dialog is what makes sure it was read,
+// so the bar carries it while that dialog is up rather than instead of it.
+func TestRenderStatusBarCarriesAFailure(t *testing.T) {
+	info := withError(withDirty(application.StatusInfo{
+		Mode:     application.ModeConfirm,
+		ViewMode: application.ViewJSON,
+		Name:     "config.json",
+		Indent:   "  ",
+	}), "save config.json: permission denied")
+
+	want := " CONFIRM  JSON  config.json  save config.json: permission denied" +
+		"  11 lines  indent:2  modified"
+
+	if got := statusText(Theme{}, info, 11, PendingNone, 120); got != want {
+		t.Errorf("RenderStatusBar() = %q, want %q", got, want)
+	}
+
+	// Narrower than the reason is long. What the document is in stays, and the
+	// reason is what gives way — which is the whole of why it is drawn twice.
+	bar := ansi.Strip(Theme{}.RenderStatusBar(info, 11, PendingNone, 60))
+
+	if !strings.HasSuffix(bar, "11 lines  indent:2  modified ") {
+		t.Errorf("the bar ends %q, want the state of the document", bar)
+	}
+
+	if got := lipgloss.Width(bar); got != 60 {
+		t.Errorf("width = %d, want 60", got)
 	}
 }
 
