@@ -133,11 +133,11 @@ func TestLayoutForChoosesAPlacementFromTheAvailableSpace(t *testing.T) {
 		// The band comes out of the screen before the inspector: the answer is
 		// being typed into it, while the pane describes a selection the answer
 		// is about to change.
-		"the tree view with a prompt and an inspector below": {
+		"the tree view with a prompt hides the inspector below": {
 			width: 60, height: 20, view: application.ViewTree, prompt: 4,
 			want: layout{
-				BodyWidth: 60, BodyHeight: 9,
-				Inspector: placeBelow, InspectorHeight: 6, PromptHeight: 4,
+				BodyWidth: 60, BodyHeight: 15,
+				Inspector: placeNone, PromptHeight: 4,
 			},
 		},
 
@@ -195,10 +195,10 @@ func TestLayoutForFitsTheTerminal(t *testing.T) {
 	}
 }
 
-// The boundaries are the whole of what the division says, and a question being
-// asked is not one of them: the same terminal falls on the same side of each
-// with a band up as without one.
-func TestLayoutForKeepsItsBoundariesWithAPrompt(t *testing.T) {
+// A narrow tree hides its stacked inspector while a prompt is open, leaving
+// the document visible. A wide tree keeps the side pane because it costs no
+// body rows.
+func TestLayoutForPrioritizesTheDocumentWhilePrompting(t *testing.T) {
 	t.Parallel()
 
 	views := []application.ViewMode{application.ViewJSON, application.ViewTree}
@@ -207,16 +207,32 @@ func TestLayoutForKeepsItsBoundariesWithAPrompt(t *testing.T) {
 		for _, width := range []int{59, 60, 99, 100} {
 			for _, height := range []int{9, 10, 40} {
 				bare := layoutFor(width, height, view, 0)
-				asked := layoutFor(width, height, view, 3)
+				asked := layoutFor(width, height, view, ruleRows+noticeBodyRows)
 
 				if bare.TooSmall != asked.TooSmall {
 					t.Errorf("layoutFor(%d, %d, %v) reports too small = %v with a prompt and %v without",
 						width, height, view, asked.TooSmall, bare.TooSmall)
 				}
 
-				if bare.Inspector != asked.Inspector || bare.BodyWidth != asked.BodyWidth {
-					t.Errorf("layoutFor(%d, %d, %v) divides the columns differently with a prompt: %+v, want %+v",
+				if asked.BodyWidth != bare.BodyWidth {
+					t.Errorf("layoutFor(%d, %d, %v) changed body width with a prompt: %+v, want %+v",
 						width, height, view, asked, bare)
+				}
+
+				if view == application.ViewTree && width < wideWidth && asked.Inspector != placeNone {
+					t.Errorf("layoutFor(%d, %d, Tree) keeps %v with a prompt, want none", width, height, asked.Inspector)
+				}
+
+				if view == application.ViewTree && width >= minWidth && height >= minHeight && asked.BodyHeight <= 0 {
+					t.Errorf("layoutFor(%d, %d, Tree) leaves no document rows with a prompt", width, height)
+				}
+
+				if view == application.ViewTree && width == minWidth && height == minHeight && asked.BodyHeight != 5 {
+					t.Errorf("layoutFor(60, 10, Tree) leaves %d body rows with a notice, want 5", asked.BodyHeight)
+				}
+
+				if view == application.ViewTree && width >= wideWidth && asked.Inspector != placeSide {
+					t.Errorf("layoutFor(%d, %d, Tree) moves side inspector with a prompt, got %v", width, height, asked.Inspector)
 				}
 			}
 		}

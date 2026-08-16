@@ -35,7 +35,9 @@ const (
 type placement uint8
 
 const (
-	placeNone placement = iota // the JSON view, which has no inspector
+	// The JSON view has no inspector. A narrow Tree view also uses this while
+	// a prompt is open, so the document remains visible behind its question.
+	placeNone placement = iota
 	placeSide
 	placeBelow
 )
@@ -112,6 +114,15 @@ func layoutFor(width, height int, view application.ViewMode, prompt int) layout 
 			l.Inspector = placeSide
 			l.InspectorWidth = inspectorWidth
 			l.BodyWidth = max(width-inspectorWidth-ruleWidth, 0)
+
+			break
+		}
+
+		// A stacked inspector and an active prompt consume every body row at
+		// the minimum terminal size. The prompt is acting on the document, so
+		// keep its subject visible and derive the inspector again when it ends.
+		if prompt > 0 {
+			l.Inspector = placeNone
 
 			break
 		}

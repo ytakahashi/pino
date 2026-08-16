@@ -55,3 +55,17 @@ func refused(p application.PromptInfo) application.PromptInfo {
 
 	return p
 }
+
+func noticePrompt(severity application.NoticeSeverity, detail string) application.PromptInfo {
+	notice := application.NoticeInfo{
+		Summary:  "Could not save config.json.",
+		Detail:   detail,
+		Severity: severity,
+	}
+
+	return application.PromptInfo{
+		Kind:    application.PromptChoice,
+		Choices: []application.Choice{{Key: 'o', Label: "OK"}},
+		Notice:  &notice,
+	}
+}

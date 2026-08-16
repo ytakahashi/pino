@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/ytakahashi/pino/internal/application"
 )
 
@@ -31,6 +33,8 @@ func TestPromptRowsCountsTheRowsThatAreDrawn(t *testing.T) {
 		"nothing being asked":  {application.PromptInfo{}, nil},
 		"a refused value":      {refused(textPrompt(false)), []string{"80x0"}},
 		"a refused long value": {refused(textPrompt(true)), []string{"a", "b", "c"}},
+		"an error notice":      {noticePrompt(application.NoticeError, "permission denied"), nil},
+		"a warning notice":     {noticePrompt(application.NoticeWarning, strings.Repeat("x", 120)), nil},
 	}
 
 	for name, tc := range tests {
@@ -187,6 +191,80 @@ func TestNothingIsDrawnWhenNothingIsAsked(t *testing.T) {
 
 	if got := promptRows(application.PromptInfo{}, 0); got != 0 {
 		t.Errorf("promptRows() = %d, want 0", got)
+	}
+}
+
+func TestRuntimeNoticeKeepsItsConclusionAndAcknowledgementOnShortScreens(t *testing.T) {
+	t.Parallel()
+
+	notice := application.NoticeInfo{
+		Summary:  "Could not save config.json.",
+		Detail:   "permission denied because the destination directory has a deliberately long name",
+		Severity: application.NoticeError,
+	}
+	prompt := application.PromptInfo{
+		Kind:    application.PromptChoice,
+		Choices: []application.Choice{{Key: 'o', Label: "OK"}},
+		Notice:  &notice,
+	}
+
+	rows := DefaultTheme().RenderPrompt(prompt, nil, 60)
+	if got, want := len(rows), ruleRows+noticeBodyRows; got != want {
+		t.Fatalf("RenderPrompt() drew %d rows, want %d", got, want)
+	}
+
+	plain := bandRows(prompt, nil, 60)
+	if !strings.HasSuffix(plain[0], " Esc cancel ") {
+		t.Errorf("notice rule = %q, want the cancellation hint", plain[0])
+	}
+
+	if !strings.Contains(plain[1], notice.Summary) || !strings.Contains(plain[2], "[o] OK") {
+		t.Errorf("notice rows = %q, want conclusion then acknowledgement", plain)
+	}
+
+	if !strings.HasSuffix(plain[3], "…") {
+		t.Errorf("detail row = %q, want an ellipsis", plain[3])
+	}
+
+	for _, row := range rows {
+		if got := ansi.StringWidth(row); got > 60 {
+			t.Errorf("notice row width = %d, want at most 60: %q", got, row)
+		}
+	}
+}
+
+func TestRuntimeNoticeStylesWarningsDifferentlyFromErrors(t *testing.T) {
+	t.Parallel()
+
+	base := application.PromptInfo{Kind: application.PromptChoice}
+	errorNotice := application.NoticeInfo{Summary: "Could not save config.json.", Detail: "same detail"}
+	warningNotice := application.NoticeInfo{
+		Summary: "Saved config.json, but durability could not be confirmed.", Detail: "same detail",
+		Severity: application.NoticeWarning,
+	}
+
+	base.Notice = &errorNotice
+	errorRow := DefaultTheme().RenderPrompt(base, nil, 80)[3]
+	base.Notice = &warningNotice
+	warningRow := DefaultTheme().RenderPrompt(base, nil, 80)[3]
+
+	if errorRow == warningRow {
+		t.Error("warning detail is styled the same as an error detail")
+	}
+}
+
+func TestRuntimeNoticeDrawsTheChoiceItReceives(t *testing.T) {
+	t.Parallel()
+
+	notice := application.NoticeInfo{Summary: "Could not save config.json.", Detail: "permission denied"}
+	prompt := application.PromptInfo{
+		Kind:    application.PromptChoice,
+		Choices: []application.Choice{{Key: 'x', Label: "Close"}},
+		Notice:  &notice,
+	}
+
+	if got := bandRows(prompt, nil, 60)[2]; got != " [x] Close" {
+		t.Errorf("notice choice row = %q, want the choice the prompt offers", got)
 	}
 }
 

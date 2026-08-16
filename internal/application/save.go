@@ -49,7 +49,7 @@ func (a *App) save(quitAfter, overwrite bool) []Effect {
 
 	encoded, err := a.validateEncoding()
 	if err != nil {
-		a.fail(err)
+		a.noticeSaveEncoding(src, err)
 
 		return nil
 	}
@@ -57,7 +57,7 @@ func (a *App) save(quitAfter, overwrite bool) []Effect {
 	if !overwrite {
 		status, err := a.deps.Files.HasChangedSince(src.Path, a.meta)
 		if err != nil {
-			a.fail(err)
+			a.noticeSaveCheck(src, err)
 
 			return nil
 		}
@@ -79,7 +79,7 @@ func (a *App) save(quitAfter, overwrite bool) []Effect {
 			// change would offer them an Overwrite that skips the very check
 			// whose answer could not be read — which is how a file nobody
 			// looked at gets written over.
-			a.fail(errStoreStatus)
+			a.noticeSaveSafely(src, errStoreStatus)
 
 			return nil
 		}
@@ -150,7 +150,7 @@ func (a *App) applyWrite(src FileSource, out WriteOutcome, err error, quitAfter 
 	// Nothing was replaced. The document is exactly as dirty as it was, the
 	// file is exactly as it was, and the Meta still describes it.
 	case !out.Committed && err != nil:
-		a.fail(err)
+		a.noticeSave(src, err)
 
 	case out.Committed && out.Meta != nil:
 		a.doc.MarkSaved()
@@ -169,7 +169,7 @@ func (a *App) applyWrite(src FileSource, out WriteOutcome, err error, quitAfter 
 		// is nothing left to lose by staying: the document is saved, so the
 		// next attempt to leave goes straight out.
 		if err != nil {
-			a.fail(err)
+			a.noticeDurability(src, err)
 
 			return nil
 		}
@@ -182,16 +182,39 @@ func (a *App) applyWrite(src FileSource, out WriteOutcome, err error, quitAfter 
 		// A commit without a Meta, or a failure that reports neither, is a
 		// combination the port does not allow. Guessing which half to believe
 		// is how a document comes to be marked saved when it was not.
-		a.fail(errStoreContract)
+		a.noticeSaveSafely(src, errStoreContract)
 	}
 
 	return nil
 }
 
-// fail puts a message on screen and leaves the document alone.
-//
-// Errors from saving and reloading are not returned to the terminal: it has
-// no better answer than pino does, and stopping the program because a file
-// could not be written is how the edits in it are lost. The session holds the
-// message until the reader dismisses it.
-func (a *App) fail(err error) { a.flow = &errorFlow{message: err.Error()} }
+// notice puts an operation result on screen until the reader acknowledges it.
+// Errors are not returned to the terminal: stopping because a file could not
+// be written is how the edits in it are lost.
+func (a *App) notice(summary string, severity NoticeSeverity, err error) {
+	a.flow = &noticeFlow{notice: NoticeInfo{
+		Summary:  summary,
+		Detail:   err.Error(),
+		Severity: severity,
+	}}
+}
+
+func (a *App) noticeSaveEncoding(src FileSource, err error) {
+	a.notice("Could not safely encode "+src.Name()+".", NoticeError, err)
+}
+
+func (a *App) noticeSaveCheck(src FileSource, err error) {
+	a.notice("Could not check "+src.Name()+" for outside changes.", NoticeError, err)
+}
+
+func (a *App) noticeSave(src FileSource, err error) {
+	a.notice("Could not save "+src.Name()+".", NoticeError, err)
+}
+
+func (a *App) noticeSaveSafely(src FileSource, err error) {
+	a.notice("Could not save "+src.Name()+" safely.", NoticeError, err)
+}
+
+func (a *App) noticeDurability(src FileSource, err error) {
+	a.notice("Saved "+src.Name()+", but durability could not be confirmed.", NoticeWarning, err)
+}

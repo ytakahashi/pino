@@ -3,6 +3,7 @@ package presentation
 import (
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ytakahashi/pino/internal/application"
@@ -24,6 +25,12 @@ const (
 	// is what fits the six types on two rows at the narrowest terminal pino
 	// draws in.
 	choicesPerRow = 3
+
+	// noticeBodyRows is what a runtime notice takes under its rule: what came
+	// of the operation, the key that dismisses it, and the cause beneath. It
+	// is a fixed three rather than as many as the cause happens to need, so
+	// that a long OS error cannot push the acknowledgement off a short screen.
+	noticeBodyRows = 3
 )
 
 // promptRows is how many rows the band takes, the rule above it included, and
@@ -36,6 +43,13 @@ const (
 func promptRows(p application.PromptInfo, inputRows int) int {
 	if p.Kind == application.PromptNone {
 		return 0
+	}
+
+	// A notice has a fixed conclusion, acknowledgement and cause. Its detail
+	// must not grow the band, or a long OS error could hide the only key that
+	// dismisses it on a short terminal.
+	if p.Notice != nil {
+		return ruleRows + noticeBodyRows
 	}
 
 	rows := ruleRows
@@ -117,6 +131,12 @@ func (t Theme) RenderPrompt(p application.PromptInfo, input []string, width int)
 		return nil
 	}
 
+	if p.Notice != nil {
+		rows := []string{t.ruleWithHint(hintFor(p), width)}
+
+		return append(rows, t.renderNotice(*p.Notice, p.Choices, width)...)
+	}
+
 	body := t.promptBody(p, input)
 
 	rows := make([]string, 0, len(body)+2)
@@ -128,6 +148,51 @@ func (t Theme) RenderPrompt(p application.PromptInfo, input []string, width int)
 	}
 
 	return rows
+}
+
+// renderNotice keeps the outcome and the acknowledgement visible before the
+// underlying cause. Runtime results are deliberately not normal prompts: an
+// error detail has no reason to take rows away from the next action.
+//
+// The notice arrives by value, and the choices beside it: these rows are what
+// a result that is there looks like, and whether one is being reported at all
+// is the caller's question rather than a state this has to be given.
+func (t Theme) renderNotice(n application.NoticeInfo, choices []application.Choice, width int) []string {
+	detailStyle := t.PromptError
+	if n.Severity == application.NoticeWarning {
+		detailStyle = t.PromptWarning
+	}
+
+	return []string{
+		noticeRow(t.Prompt, n.Summary, width),
+		t.noticeChoiceRow(choices, width),
+		noticeRow(detailStyle, n.Detail, width),
+	}
+}
+
+// noticeRow makes every runtime notice row a single printable terminal row.
+func noticeRow(style lipgloss.Style, text string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	return promptPad + style.Render(ansi.Truncate(printable(text), max(width-len(promptPad), 0), "…"))
+}
+
+// noticeChoiceRow reads the acknowledgement from the prompt that owns it.
+// The notice flow and its renderer must not separately decide which key
+// dismisses the result.
+//
+// A notice offering nothing draws a blank row rather than a key of this
+// function's own making: writing one here is the two answers to that question
+// again, the other way round. The flow that raised the notice is the side that
+// has to say how it is left.
+func (t Theme) noticeChoiceRow(choices []application.Choice, width int) string {
+	if width <= 0 || len(choices) == 0 {
+		return ""
+	}
+
+	return promptPad + ansi.Truncate(t.renderChoice(choices[0]), max(width-len(promptPad), 0), "…")
 }
 
 // promptBody is the rows the question itself takes.

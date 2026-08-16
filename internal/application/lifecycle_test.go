@@ -314,8 +314,8 @@ func TestSaveAndQuitStaysToReportAnUnconfirmedWrite(t *testing.T) {
 		t.Error("the document is dirty although the file was replaced")
 	}
 
-	if got := app.Status().Error; got != syncErr.Error() {
-		t.Errorf("the bar reads %q, want the reason the write was not confirmed", got)
+	if got := app.Status().Notice; got == nil || got.Detail != syncErr.Error() || got.Severity != NoticeWarning {
+		t.Errorf("the notice = %+v, want a durability warning", got)
 	}
 
 	// The document is saved, so asking again goes straight out.
@@ -665,8 +665,8 @@ func TestAFailedReloadChangesNothing(t *testing.T) {
 				t.Error("the layout or the Meta was replaced by a failed reload")
 			}
 
-			if app.Status().Error == "" {
-				t.Error("the failure was not put on screen")
+			if got := app.Status().Notice; got == nil || got.Summary != "Could not reload config.json." || got.Severity != NoticeError {
+				t.Errorf("the notice = %+v, want a reload error", got)
 			}
 		})
 	}
@@ -693,8 +693,8 @@ func TestReloadingADeletedFileKeepsTheDocument(t *testing.T) {
 		t.Error("the document became a new one when its file went")
 	}
 
-	if app.Status().Error == "" {
-		t.Error("the failure was not put on screen")
+	if got := app.Status().Notice; got == nil || got.Summary != "Could not reload config.json." {
+		t.Errorf("the notice = %+v, want a reload error", got)
 	}
 }
 
@@ -716,15 +716,15 @@ func TestAFailureIsShownUntilItIsAcknowledged(t *testing.T) {
 			press(app, ActionSave{})
 
 			info := app.Prompt()
-			if info.Kind != PromptChoice || info.Title != writeErr.Error() {
-				t.Errorf("the prompt reads %q, want the reason the save failed", info.Title)
+			if info.Kind != PromptChoice || info.Notice == nil || info.Notice.Summary != "Could not save config.json." {
+				t.Errorf("the prompt = %+v, want a save notice", info)
 			}
 
 			if got, want := promptKeys(info), []rune{'o'}; string(got) != string(want) {
 				t.Errorf("the prompt offers %q, want %q", string(got), string(want))
 			}
 
-			if app.Status().Error != writeErr.Error() {
+			if got := app.Status().Notice; got == nil || got.Detail != writeErr.Error() {
 				t.Error("the bar does not carry the failure while the dialog is up")
 			}
 
@@ -734,7 +734,7 @@ func TestAFailureIsShownUntilItIsAcknowledged(t *testing.T) {
 				t.Errorf("mode = %v, want the message gone", app.Mode())
 			}
 
-			if app.Status().Error != "" {
+			if app.Status().Notice != nil {
 				t.Error("the bar still carries a failure that was acknowledged")
 			}
 

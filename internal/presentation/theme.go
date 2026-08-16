@@ -50,13 +50,14 @@ type Theme struct {
 	// The band pino asks a question in: what it asks and what is being typed
 	// into it, the keys it will take, and why the last answer was refused.
 	//
-	// None of the three is a Role either. What a prompt says is pino speaking
+	// None of these is a Role either. What a prompt says is pino speaking
 	// rather than the document, which is the whole reason the answer being
 	// typed is drawn plainly: a value gets the colours of its type once it is
 	// in the document, and not before.
-	Prompt      lipgloss.Style
-	PromptHint  lipgloss.Style
-	PromptError lipgloss.Style
+	Prompt        lipgloss.Style
+	PromptHint    lipgloss.Style
+	PromptError   lipgloss.Style
+	PromptWarning lipgloss.Style
 
 	// The help screen: what it calls itself, the headings down its left, and
 	// the keys beside them. The words about the keys are drawn plainly, being
@@ -117,11 +118,12 @@ func DefaultTheme() Theme {
 		// The question and the answer are the brightest thing on the screen
 		// while they are up, since they are what is being attended to. The keys
 		// on offer are dimmer, being a reminder rather than a message, and a
-		// refusal is red: it is the one thing here that has to be noticed
-		// rather than read in turn.
-		Prompt:      lipgloss.NewStyle().Foreground(lipgloss.Color("252")),
-		PromptHint:  lipgloss.NewStyle().Foreground(lipgloss.Color("244")),
-		PromptError: lipgloss.NewStyle().Foreground(lipgloss.Color("203")),
+		// refusal is red. A durability warning is amber instead: the file was
+		// saved, so presenting it as an error would say the wrong thing.
+		Prompt:        lipgloss.NewStyle().Foreground(lipgloss.Color("252")),
+		PromptHint:    lipgloss.NewStyle().Foreground(lipgloss.Color("244")),
+		PromptError:   lipgloss.NewStyle().Foreground(lipgloss.Color("203")),
+		PromptWarning: lipgloss.NewStyle().Foreground(lipgloss.Color("215")),
 
 		// The help screen reads as a table, so the two columns that are the
 		// same on every row are dimmed and the keys are left bright: what a

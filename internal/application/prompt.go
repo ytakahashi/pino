@@ -32,6 +32,27 @@ type Choice struct {
 	Label string
 }
 
+// NoticeSeverity says whether a runtime result left the document unsaved or
+// only left its durability unconfirmed.
+type NoticeSeverity uint8
+
+const (
+	NoticeError NoticeSeverity = iota
+	NoticeWarning
+)
+
+// NoticeInfo is the user-facing result of an operation that must be read
+// before the session continues.
+//
+// Summary tells the reader what operation reached which result. Detail keeps
+// the underlying cause available without making filesystem implementation
+// terms the primary message.
+type NoticeInfo struct {
+	Summary  string
+	Detail   string
+	Severity NoticeSeverity
+}
+
 // PromptInfo is what pino is waiting to be told.
 //
 // It is worked out from the flow in progress on every read, the way the status
@@ -55,6 +76,11 @@ type PromptInfo struct {
 	// newline stays editable; a number is not, and a widget that cannot make
 	// one is the shortest way of saying so.
 	Multiline bool
+
+	// Notice is set only for a runtime result awaiting acknowledgement.
+	// Keeping it apart from Error prevents an edit validation failure from
+	// acquiring runtime warning semantics.
+	Notice *NoticeInfo
 }
 
 // Prompt is what the session is waiting to be told, and nothing when it is
