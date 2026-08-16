@@ -185,6 +185,21 @@ type (
 func (ActionUndo) isAction() {}
 func (ActionRedo) isAction() {}
 
+// ActionShowHelp asks for the list of what the keys do, and ActionCloseHelp
+// for the document back.
+//
+// They are two Actions rather than one that toggles, because the keys that
+// close the screen are not the key that opened it: Esc and q close it and mean
+// something else entirely elsewhere. A toggle would also answer a stray
+// request to show help by hiding it.
+type (
+	ActionShowHelp  struct{}
+	ActionCloseHelp struct{}
+)
+
+func (ActionShowHelp) isAction()  {}
+func (ActionCloseHelp) isAction() {}
+
 // ActionResize reports how many rows the document can be drawn in.
 //
 // It is the one Action that does not come from a key. Resizing a window is

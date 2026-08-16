@@ -153,6 +153,58 @@ func (f *errorFlow) choose(a *App, key rune) []Effect {
 	return nil
 }
 
+// helpFlow is the list of what the keys do, on screen in place of the
+// document.
+//
+// It is a flow, and therefore a mode, rather than something the drawing side
+// keeps to itself. A screen that replaced the document while the session went
+// on answering "normal" would be a state where what is drawn and what a key
+// press means disagree, which is the thing one field for whatever is in
+// progress exists to prevent.
+//
+// It holds nothing. What is listed is every key there is, which does not
+// depend on the document, and the words are the terminal's own: a category
+// heading laid out in 60 columns is not something this layer can check or
+// should carry.
+type helpFlow struct{}
+
+func (*helpFlow) mode() Mode { return ModeHelp }
+
+// prompt is nothing. Help asks no question, and saying so is what sends a key
+// press through the key table rather than into a list of choices: this screen
+// is read, and the keys pressed on it are ordinary keys with a mode of their
+// own.
+func (*helpFlow) prompt(*App) PromptInfo { return PromptInfo{} }
+
+// choose takes no key, there being no choices drawn to press. Closing arrives
+// as an Action of its own.
+func (*helpFlow) choose(*App, rune) []Effect { return nil }
+
+// showHelp puts the list of keys on screen.
+//
+// Only a session in the middle of nothing gets it. An edit or a question is
+// gathering an answer, and replacing it with a screen that cannot take one
+// would abandon the answer without the reader having withdrawn it — the same
+// reason a flow is one field rather than a stack.
+func (a *App) showHelp() {
+	if a.flow != nil {
+		return
+	}
+
+	a.flow = &helpFlow{}
+}
+
+// closeHelp gives the document back.
+//
+// It closes help and nothing else. The keys that ask for it mean other things
+// in other modes, so a request arriving while something else is in progress is
+// one that was meant for that other thing.
+func (a *App) closeHelp() {
+	if _, ok := a.flow.(*helpFlow); ok {
+		a.flow = nil
+	}
+}
+
 // reload reads the file again and shows what it now holds.
 //
 // Everything about the document goes: the tree, the versions of it, and where

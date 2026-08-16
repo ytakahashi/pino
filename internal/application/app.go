@@ -348,6 +348,12 @@ func (a *App) Do(act Action) []Effect {
 	case ActionToggleView:
 		a.toggleView()
 
+	case ActionShowHelp:
+		a.showHelp()
+
+	case ActionCloseHelp:
+		a.closeHelp()
+
 	case ActionEdit:
 		return a.edit()
 

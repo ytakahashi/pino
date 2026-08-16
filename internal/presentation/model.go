@@ -103,6 +103,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.act(application.ActionPromptChange{Text: m.editor.Value()})
 
 	case tea.MouseWheelMsg:
+		// The wheel scrolls the document, and help is the one screen drawn
+		// without one on it. A turn taken there would move the offset and
+		// carry the selection along with it, so the reader would close help
+		// onto a screen they had not moved. A question is different: the
+		// document is still behind it, and scrolling to look at more of it is
+		// part of answering.
+		if m.app.Mode() == application.ModeHelp {
+			return m, nil
+		}
+
 		rows, ok := wheelDistance(msg)
 		if !ok {
 			return m, nil
@@ -310,6 +320,25 @@ func (m Model) View() tea.View {
 
 	frame := m.app.Frame()
 	info := m.app.Status()
+
+	// The help screen takes the place of the document and of the inspector,
+	// with the status bar left where it was: what file is open and whether it
+	// has unsaved work in it are true of the session whatever is being read.
+	//
+	// It is drawn after the size has been checked rather than before, since a
+	// terminal too small for the document is too small for this: a screen
+	// showing part of what the keys do would leave a reader worse off than one
+	// saying how much room pino needs.
+	//
+	// Nothing here reaches the layout. Help does not change what layoutFor is
+	// given, so the room the document has does not move while help is up, which
+	// is what keeps the cursor and the scroll exactly where they were left.
+	if info.Mode == application.ModeHelp {
+		help := m.theme.RenderHelp(m.width, m.height-statusBarRows)
+		help = append(help, m.theme.RenderStatusBar(info, len(frame.Lines), m.pending, m.width))
+
+		return fullScreen(strings.Join(help, "\n"), m.mouse)
+	}
 
 	rows := make([]string, 0, m.height)
 
