@@ -77,9 +77,9 @@ type PromptInfo struct {
 	// one is the shortest way of saying so.
 	Multiline bool
 
-	// Notice is set only for a runtime result awaiting acknowledgement. Keeping it apart
-	// from Error prevents an edit validation failure from acquiring runtime
-	// warning semantics.
+	// Notice is set only for a runtime result awaiting acknowledgement.
+	// Keeping it apart from Error prevents an edit validation failure from
+	// acquiring runtime warning semantics.
 	Notice *NoticeInfo
 }
 

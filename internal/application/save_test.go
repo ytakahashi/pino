@@ -227,10 +227,38 @@ func TestSaveWritesNothingWhenTheDocumentWouldNotSurviveEncoding(t *testing.T) {
 				t.Error("the document was marked saved although nothing was written")
 			}
 
-			if app.Prompt().Kind != PromptChoice || app.Status().Notice == nil {
-				t.Error("the failure was not put on screen")
+			if got := app.Status().Notice; app.Prompt().Kind != PromptChoice || got == nil ||
+				got.Summary != "Could not safely encode config.json." || got.Severity != NoticeError {
+				t.Errorf("the notice = %+v, want an encoding error", got)
 			}
 		})
+	}
+}
+
+// A failed outside-change check is not a conflict: pino does not know whether
+// it is safe to offer Overwrite, so the document remains dirty with a notice.
+func TestSaveReportsWhenItCannotCheckForOutsideChanges(t *testing.T) {
+	t.Parallel()
+
+	checkErr := errors.New("input/output error")
+	app, files := saving(t, sample(t))
+	files.statusErr = checkErr
+
+	editValue(t, app, "/server/ports/0", "8081")
+	press(app, ActionSave{})
+
+	if len(files.writes) != 0 {
+		t.Error("the document was written although its outside changes could not be checked")
+	}
+
+	if !app.doc.IsDirty() {
+		t.Error("the document was marked saved although its outside changes were not checked")
+	}
+
+	if got := app.Status().Notice; got == nil ||
+		got.Summary != "Could not check config.json for outside changes." ||
+		got.Detail != checkErr.Error() || got.Severity != NoticeError {
+		t.Errorf("the notice = %+v, want an outside-change check error", got)
 	}
 }
 

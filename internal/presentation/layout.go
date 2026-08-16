@@ -35,7 +35,9 @@ const (
 type placement uint8
 
 const (
-	placeNone placement = iota // the JSON view, which has no inspector
+	// The JSON view has no inspector. A narrow Tree view also uses this while
+	// a prompt is open, so the document remains visible behind its question.
+	placeNone placement = iota
 	placeSide
 	placeBelow
 )
