@@ -145,15 +145,15 @@ func TestRenderStatusBarShowsTheSelection(t *testing.T) {
 // Something that went wrong is said on the bar as well as in the dialog above
 // it, and on the side that is cut: the dialog is what makes sure it was read,
 // so the bar carries it while that dialog is up rather than instead of it.
-func TestRenderStatusBarCarriesAFailure(t *testing.T) {
-	info := withError(withDirty(application.StatusInfo{
+func TestRenderStatusBarCarriesANoticeSummary(t *testing.T) {
+	info := withNotice(withDirty(application.StatusInfo{
 		Mode:     application.ModeConfirm,
 		ViewMode: application.ViewJSON,
 		Name:     "config.json",
 		Indent:   "  ",
-	}), "save config.json: permission denied")
+	}), "Could not save config.json.")
 
-	want := " CONFIRM  JSON  config.json  save config.json: permission denied" +
+	want := " CONFIRM  JSON  config.json  Could not save config.json." +
 		"  11 lines  indent:2  modified"
 
 	if got := statusText(Theme{}, info, 11, PendingNone, 120); got != want {

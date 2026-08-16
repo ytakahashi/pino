@@ -58,12 +58,11 @@ func leftFields(info application.StatusInfo) []string {
 	}
 
 	// Last, and on this side, because this is the end that is cut when the bar
-	// does not fit. A reason for a failure can be any length, and it is the
-	// one field already written out in full a row above: the dialog holding it
-	// is what makes sure it was read, so what is left here is a reminder while
-	// that dialog is up rather than the only telling of it.
-	if info.Error != "" {
-		fields = append(fields, printable(info.Error))
+	// does not fit. A runtime summary can be any length, and it is already
+	// written out in full above: the notice holding it is what makes sure it
+	// was read, so what is left here is a reminder rather than the only telling.
+	if info.Notice != nil {
+		fields = append(fields, printable(info.Notice.Summary))
 	}
 
 	return fields

@@ -116,6 +116,15 @@ func layoutFor(width, height int, view application.ViewMode, prompt int) layout 
 			break
 		}
 
+		// A stacked inspector and an active prompt consume every body row at
+		// the minimum terminal size. The prompt is acting on the document, so
+		// keep its subject visible and derive the inspector again when it ends.
+		if prompt > 0 {
+			l.Inspector = placeNone
+
+			break
+		}
+
 		// Never more rows than are left once the bar has taken its own. The
 		// pane wants six, and a terminal with fewer than that is one the
 		// screen is about to say it cannot draw in; claiming six rows of

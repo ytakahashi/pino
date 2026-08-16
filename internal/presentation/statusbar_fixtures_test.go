@@ -33,8 +33,8 @@ func withNew(info application.StatusInfo) application.StatusInfo {
 	return info
 }
 
-func withError(info application.StatusInfo, message string) application.StatusInfo {
-	info.Error = message
+func withNotice(info application.StatusInfo, summary string) application.StatusInfo {
+	info.Notice = &application.NoticeInfo{Summary: summary}
 
 	return info
 }

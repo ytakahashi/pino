@@ -227,7 +227,7 @@ func TestSaveWritesNothingWhenTheDocumentWouldNotSurviveEncoding(t *testing.T) {
 				t.Error("the document was marked saved although nothing was written")
 			}
 
-			if app.Prompt().Kind != PromptChoice || app.Status().Error == "" {
+			if app.Prompt().Kind != PromptChoice || app.Status().Notice == nil {
 				t.Error("the failure was not put on screen")
 			}
 		})
@@ -256,8 +256,9 @@ func TestSaveKeepsTheDocumentWhenTheWriteFailedBeforeCommitting(t *testing.T) {
 		t.Error("the session dropped the Meta of the file that is still there")
 	}
 
-	if got := app.Status().Error; got != writeErr.Error() {
-		t.Errorf("the bar reads %q, want the reason the write failed", got)
+	if got := app.Status().Notice; got == nil ||
+		got.Summary != "Could not save config.json." || got.Detail != writeErr.Error() || got.Severity != NoticeError {
+		t.Errorf("the notice = %+v, want a save error", got)
 	}
 }
 
@@ -283,8 +284,10 @@ func TestSaveMarksADocumentSavedWhenTheRenameCommitted(t *testing.T) {
 		t.Error("the session did not take the Meta of the file it wrote")
 	}
 
-	if got := app.Status().Error; got != syncErr.Error() {
-		t.Errorf("the bar reads %q, want the reason the write could not be confirmed", got)
+	if got := app.Status().Notice; got == nil ||
+		got.Summary != "Saved config.json, but durability could not be confirmed." ||
+		got.Detail != syncErr.Error() || got.Severity != NoticeWarning {
+		t.Errorf("the notice = %+v, want a durability warning", got)
 	}
 }
 
@@ -314,8 +317,9 @@ func TestSaveRefusesAStateThePortDoesNotDefine(t *testing.T) {
 		t.Errorf("the prompt offers %q, want %q", string(got), string(want))
 	}
 
-	if got := app.Status().Error; got != errStoreStatus.Error() {
-		t.Errorf("the bar reads %q, want the store's answer refused", got)
+	if got := app.Status().Notice; got == nil ||
+		got.Summary != "Could not save config.json safely." || got.Detail != errStoreStatus.Error() {
+		t.Errorf("the notice = %+v, want a safe-save error", got)
 	}
 }
 
@@ -347,7 +351,7 @@ func TestSaveRefusesAnAnswerThePortDoesNotAllow(t *testing.T) {
 				t.Error("the document was marked saved on an answer the port does not allow")
 			}
 
-			if app.Status().Error == "" {
+			if app.Status().Notice == nil {
 				t.Error("the store's answer was accepted silently")
 			}
 		})

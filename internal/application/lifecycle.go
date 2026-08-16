@@ -127,25 +127,34 @@ func (a *App) quit() []Effect {
 	return nil
 }
 
-// errorFlow is something that could not be done, waiting to be acknowledged.
+// noticeFlow is a runtime result waiting to be acknowledged.
 //
 // It is a flow rather than a field beside one because that is what it is: the
 // session is holding a message and taking one key, which is a mode as much as
 // a confirmation is. Being one of the flows also means it cannot sit behind
 // an edit prompt, unseen, to be answered later.
-type errorFlow struct{ message string }
+type noticeFlow struct{ notice NoticeInfo }
 
-func (*errorFlow) mode() Mode { return ModeConfirm }
+func (*noticeFlow) mode() Mode { return ModeConfirm }
 
-func (f *errorFlow) prompt(*App) PromptInfo {
+// info returns a copy so callers describing the session cannot alter the
+// notice the flow is waiting to have acknowledged.
+func (f *noticeFlow) info() *NoticeInfo {
+	info := f.notice
+
+	return &info
+}
+
+func (f *noticeFlow) prompt(*App) PromptInfo {
 	return PromptInfo{
 		Kind:    PromptChoice,
-		Title:   f.message,
+		Title:   f.notice.Summary,
 		Choices: []Choice{{Key: 'o', Label: "OK"}},
+		Notice:  f.info(),
 	}
 }
 
-func (f *errorFlow) choose(a *App, key rune) []Effect {
+func (f *noticeFlow) choose(a *App, key rune) []Effect {
 	if key == 'o' {
 		a.flow = nil
 	}
@@ -226,7 +235,7 @@ func (a *App) reload() {
 
 	read, err := a.read(src.Path, false)
 	if err != nil {
-		a.fail(err)
+		a.notice("Could not reload "+src.Name()+".", NoticeError, err)
 
 		return
 	}

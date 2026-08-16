@@ -28,10 +28,9 @@ type StatusInfo struct {
 	// save, which clears them together.
 	New bool
 
-	// Error is why the last thing the session was asked to do failed, while
-	// the message is still on screen. The bar carries it as well as the
-	// dialog, since a dialog is answered and gone while the bar stays.
-	Error string
+	// Notice is the runtime result still waiting to be acknowledged. The bar
+	// shows its summary while the prompt keeps the full cause available.
+	Notice *NoticeInfo
 
 	// Pointer locates the selected node, as RFC 6901 spells it: the root is
 	// the empty string. How to show that is left to whoever draws the bar,
@@ -60,8 +59,8 @@ func (a *App) Status() StatusInfo {
 		info.New = src.New
 	}
 
-	if f, ok := a.flow.(*errorFlow); ok {
-		info.Error = f.message
+	if f, ok := a.flow.(*noticeFlow); ok {
+		info.Notice = f.info()
 	}
 
 	if a.doc != nil {

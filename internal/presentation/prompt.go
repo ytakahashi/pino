@@ -3,6 +3,7 @@ package presentation
 import (
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ytakahashi/pino/internal/application"
@@ -36,6 +37,13 @@ const (
 func promptRows(p application.PromptInfo, inputRows int) int {
 	if p.Kind == application.PromptNone {
 		return 0
+	}
+
+	// A notice has a fixed conclusion, acknowledgement and cause. Its detail
+	// must not grow the band, or a long OS error could hide the only key that
+	// dismisses it on a short terminal.
+	if p.Notice != nil {
+		return 3
 	}
 
 	rows := ruleRows
@@ -117,6 +125,10 @@ func (t Theme) RenderPrompt(p application.PromptInfo, input []string, width int)
 		return nil
 	}
 
+	if p.Notice != nil {
+		return t.renderNotice(*p.Notice, width)
+	}
+
 	body := t.promptBody(p, input)
 
 	rows := make([]string, 0, len(body)+2)
@@ -128,6 +140,31 @@ func (t Theme) RenderPrompt(p application.PromptInfo, input []string, width int)
 	}
 
 	return rows
+}
+
+// renderNotice keeps the outcome and the acknowledgement visible before the
+// underlying cause. Runtime results are deliberately not normal prompts: an
+// error detail has no reason to take rows away from the next action.
+func (t Theme) renderNotice(n application.NoticeInfo, width int) []string {
+	detailStyle := t.PromptError
+	if n.Severity == application.NoticeWarning {
+		detailStyle = t.PromptWarning
+	}
+
+	return []string{
+		noticeRow(t.Prompt, n.Summary, width),
+		noticeRow(t.Prompt, "[o] OK", width),
+		noticeRow(detailStyle, n.Detail, width),
+	}
+}
+
+// noticeRow makes every runtime notice row a single printable terminal row.
+func noticeRow(style lipgloss.Style, text string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	return promptPad + style.Render(ansi.Truncate(printable(text), max(width-len(promptPad), 0), "…"))
 }
 
 // promptBody is the rows the question itself takes.
