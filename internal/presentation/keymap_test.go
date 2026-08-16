@@ -236,6 +236,13 @@ func TestResolveIgnoresNormalModeKeysOutsideNormalMode(t *testing.T) {
 		}
 
 		for name, k := range keys {
+			// Help binds q itself, to put itself away. It is the same shape of
+			// rule rather than an exception to it: the key belongs to what is
+			// on screen, and what is on screen there is the help screen.
+			if mode == application.ModeHelp && name == "q" {
+				continue
+			}
+
 			t.Run(mode.String()+" "+name, func(t *testing.T) {
 				got, pending := Resolve(k, mode, PendingNone)
 

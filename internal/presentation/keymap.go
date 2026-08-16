@@ -42,15 +42,33 @@ func (p Pending) String() string {
 }
 
 // binding is one row of the key table: every spelling that asks for one
-// Action, and the Action asked for.
+// Action, the Action asked for, and how the row reads on the help screen.
 //
 // The keys are spelled as a terminal reports them, since that is what the
 // table is matched against. Keys[0] is the one written back to a reader, so a
 // row answers both of the questions asked of the table: what a press means,
 // and which key a request is made by.
+//
+// A row is one entry of the help screen and never more than one. What that
+// costs is a key whose entry would read differently under two headings — Enter
+// both folds and edits — and what it buys is a screen that cannot fall out of
+// step with the table: every row is on it exactly once, which is a property a
+// test can hold the two to.
 type binding struct {
 	Keys   []string
 	Action application.Action
+
+	// Group is the heading the entry appears under, and HelpKeys and
+	// Description are the entry itself.
+	//
+	// The words are here rather than beside the Action they name because they
+	// are neither: what ActionMoveNext means belongs to the application, while
+	// "j/↓ next" is four words chosen to fit beside seven others in 60
+	// columns. HelpKeys is spelled for a reader rather than as a terminal
+	// reports the key, which is what lets one entry name an arrow and a letter.
+	Group       helpGroup
+	HelpKeys    string
+	Description string
 }
 
 // normalBindings is the table for reading a document.
@@ -64,48 +82,129 @@ type binding struct {
 // modifiers keeps the table readable and, more importantly, keeps q and Q
 // apart: vim gives shifted keys their own meanings, and pino follows.
 var normalBindings = []binding{
-	{Keys: []string{"j", "down"}, Action: application.ActionMoveNext{}},
-	{Keys: []string{"k", "up"}, Action: application.ActionMovePrev{}},
-	{Keys: []string{"h", "left"}, Action: application.ActionMoveOut{}},
-	{Keys: []string{"l", "right"}, Action: application.ActionMoveIn{}},
+	{
+		Keys: []string{"j", "down"}, Action: application.ActionMoveNext{},
+		Group: helpMove, HelpKeys: "j/↓", Description: "next",
+	},
+	{
+		Keys: []string{"k", "up"}, Action: application.ActionMovePrev{},
+		Group: helpMove, HelpKeys: "k/↑", Description: "previous",
+	},
+	{
+		Keys: []string{"h", "left"}, Action: application.ActionMoveOut{},
+		Group: helpMove, HelpKeys: "h/←", Description: "out",
+	},
+	{
+		Keys: []string{"l", "right"}, Action: application.ActionMoveIn{},
+		Group: helpMove, HelpKeys: "l/→", Description: "in",
+	},
 
 	// Tab alone. A terminal reports it as its own key rather than as the
 	// character it once was, so "shift+tab" matches no row: there are two
 	// views and one key between them, and stepping backwards through two is
 	// stepping forwards.
-	{Keys: []string{"tab"}, Action: application.ActionToggleView{}},
+	{
+		Keys: []string{"tab"}, Action: application.ActionToggleView{},
+		Group: helpView, HelpKeys: "Tab", Description: "switch",
+	},
 
-	{Keys: []string{"G"}, Action: application.ActionMoveLast{}},
-	{Keys: []string{"ctrl+d"}, Action: application.ActionScrollHalfDown{}},
-	{Keys: []string{"ctrl+u"}, Action: application.ActionScrollHalfUp{}},
+	// The key that asks for the screen this row is written on. It is listed
+	// there for a reader who arrived some other way and wants to know how they
+	// did it; how to leave is on the title row instead, where it is needed.
+	{
+		Keys: []string{"?"}, Action: application.ActionShowHelp{},
+		Group: helpView, HelpKeys: "?", Description: "help",
+	},
+
+	{
+		Keys: []string{"G"}, Action: application.ActionMoveLast{},
+		Group: helpJump, HelpKeys: "G", Description: "last",
+	},
+	{
+		Keys: []string{"ctrl+d"}, Action: application.ActionScrollHalfDown{},
+		Group: helpJump, HelpKeys: "Ctrl+d", Description: "down",
+	},
+	{
+		Keys: []string{"ctrl+u"}, Action: application.ActionScrollHalfUp{},
+		Group: helpJump, HelpKeys: "Ctrl+u", Description: "up",
+	},
 
 	// Editing. What Enter does depends on what is selected, which is why one
 	// key covers six answers: this table says that the document is to be acted
-	// on, and the layer holding it says what acting on it means.
-	{Keys: []string{"enter"}, Action: application.ActionEdit{}},
-	{Keys: []string{"r"}, Action: application.ActionRenameKey{}},
-	{Keys: []string{"a"}, Action: application.ActionAddChild{}},
-	{Keys: []string{"A"}, Action: application.ActionAddSibling{}},
-	{Keys: []string{"d"}, Action: application.ActionDelete{}},
-	{Keys: []string{"t"}, Action: application.ActionChangeType{}},
+	// on, and the layer holding it says what acting on it means. The entry says
+	// both of the things a reader will meet, since a row promising only one of
+	// them would read as a key that does not work on the other.
+	{
+		Keys: []string{"enter"}, Action: application.ActionEdit{},
+		Group: helpEdit, HelpKeys: "Enter", Description: "value/fold",
+	},
+	{
+		Keys: []string{"r"}, Action: application.ActionRenameKey{},
+		Group: helpEdit, HelpKeys: "r", Description: "key",
+	},
+	{
+		Keys: []string{"a"}, Action: application.ActionAddChild{},
+		Group: helpStructure, HelpKeys: "a", Description: "child",
+	},
+	{
+		Keys: []string{"A"}, Action: application.ActionAddSibling{},
+		Group: helpStructure, HelpKeys: "A", Description: "sibling",
+	},
+	{
+		Keys: []string{"d"}, Action: application.ActionDelete{},
+		Group: helpStructure, HelpKeys: "d", Description: "delete",
+	},
+	{
+		Keys: []string{"t"}, Action: application.ActionChangeType{},
+		Group: helpEdit, HelpKeys: "t", Description: "type",
+	},
 
-	{Keys: []string{"u"}, Action: application.ActionUndo{}},
-	{Keys: []string{"ctrl+r"}, Action: application.ActionRedo{}},
+	{
+		Keys: []string{"u"}, Action: application.ActionUndo{},
+		Group: helpHistory, HelpKeys: "u", Description: "undo",
+	},
+	{
+		Keys: []string{"ctrl+r"}, Action: application.ActionRedo{},
+		Group: helpHistory, HelpKeys: "Ctrl+r", Description: "redo",
+	},
 
 	// Saving is a control key rather than a letter, as it is in the editors
 	// pino sits beside on a terminal. What it does when there is nothing to
 	// write, or when the file has changed underneath, is not decided here.
-	{Keys: []string{"ctrl+s"}, Action: application.ActionSave{}},
+	{
+		Keys: []string{"ctrl+s"}, Action: application.ActionSave{},
+		Group: helpHistory, HelpKeys: "Ctrl+s", Description: "save",
+	},
 
-	{Keys: []string{"q"}, Action: application.ActionQuit{}},
+	// Ctrl+C asks for the same thing and is bound above every mode rather than
+	// in this table, so it is named on this row instead of getting one of its
+	// own: two entries for one request would be the screen saying pino can be
+	// left twice.
+	{
+		Keys: []string{"q"}, Action: application.ActionQuit{},
+		Group: helpHistory, HelpKeys: "q/Ctrl+c", Description: "quit",
+	},
 }
 
+// helpClose is every key that puts the help screen away.
+//
+// Three, because three different habits bring a reader to the same wish: the
+// key that opened it, the key that withdraws everything else in pino, and the
+// key that leaves a pager. What is drawn on the title row is built from this
+// list, so the screen cannot come to advertise a way out it does not take.
+var helpClose = []string{"?", "esc", "q"}
+
 // pendingBinding is one row of the table for sequences of two keys: the prefix
-// typed first, and the keys that complete it.
+// typed first, the keys that complete it, and how the sequence reads on the
+// help screen.
 type pendingBinding struct {
 	Prefix Pending
 	Keys   []string
 	Action application.Action
+
+	Group       helpGroup
+	HelpKeys    string
+	Description string
 }
 
 // pendingBindings is every sequence a document is read by.
@@ -115,9 +214,18 @@ type pendingBinding struct {
 // either: they are the prefixes as they are spelled, and resolving reads them
 // from there.
 var pendingBindings = []pendingBinding{
-	{Prefix: PendingG, Keys: []string{"g"}, Action: application.ActionMoveFirst{}},
-	{Prefix: PendingZ, Keys: []string{"R"}, Action: application.ActionExpandAll{}},
-	{Prefix: PendingZ, Keys: []string{"M"}, Action: application.ActionCollapseAll{}},
+	{
+		Prefix: PendingG, Keys: []string{"g"}, Action: application.ActionMoveFirst{},
+		Group: helpJump, HelpKeys: "gg", Description: "first",
+	},
+	{
+		Prefix: PendingZ, Keys: []string{"R"}, Action: application.ActionExpandAll{},
+		Group: helpFold, HelpKeys: "zR", Description: "expand all",
+	},
+	{
+		Prefix: PendingZ, Keys: []string{"M"}, Action: application.ActionCollapseAll{},
+		Group: helpFold, HelpKeys: "zM", Description: "collapse all",
+	},
 }
 
 // Resolve is the Action a key press stands for, along with the prefix left
@@ -160,7 +268,10 @@ func Resolve(k tea.KeyPressMsg, mode application.Mode, pending Pending) (applica
 
 		return resolveNormal(k)
 
-	case application.ModeEdit, application.ModeInsert, application.ModeConfirm, application.ModeHelp:
+	case application.ModeHelp:
+		return resolveHelp(k), PendingNone
+
+	case application.ModeEdit, application.ModeInsert, application.ModeConfirm:
 		return nil, PendingNone
 	}
 
@@ -192,6 +303,19 @@ func resolveNormal(k tea.KeyPressMsg) (application.Action, Pending) {
 	// nothing, and cancelling a half-typed sequence is what falling through
 	// already does.
 	return nil, PendingNone
+}
+
+// resolveHelp is what a key press means while the help screen is up.
+//
+// Only the ways out are bound. A screen listing what the keys do is read
+// rather than acted on, and a key that went on working underneath it would act
+// on a document nobody can see.
+func resolveHelp(k tea.KeyPressMsg) application.Action {
+	if slices.Contains(helpClose, k.String()) {
+		return application.ActionCloseHelp{}
+	}
+
+	return nil
 }
 
 // resolvePending is the key that completes a prefix.

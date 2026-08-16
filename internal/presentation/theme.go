@@ -58,6 +58,17 @@ type Theme struct {
 	PromptHint  lipgloss.Style
 	PromptError lipgloss.Style
 
+	// The help screen: what it calls itself, the headings down its left, and
+	// the keys beside them. The words about the keys are drawn plainly, being
+	// the thing the eye lands on last.
+	//
+	// None of the three is a Role either, for the reason the prompt's styles
+	// are not: this screen is pino talking about itself, and no renderer
+	// produces any of it.
+	HelpTitle lipgloss.Style
+	HelpGroup lipgloss.Style
+	HelpKey   lipgloss.Style
+
 	// Cursor is laid over the row the selection is on, keeping each span's own
 	// colour: it says which row, not what is in it.
 	//
@@ -111,6 +122,15 @@ func DefaultTheme() Theme {
 		Prompt:      lipgloss.NewStyle().Foreground(lipgloss.Color("252")),
 		PromptHint:  lipgloss.NewStyle().Foreground(lipgloss.Color("244")),
 		PromptError: lipgloss.NewStyle().Foreground(lipgloss.Color("203")),
+
+		// The help screen reads as a table, so the two columns that are the
+		// same on every row are dimmed and the keys are left bright: what a
+		// reader came for is which key, and the heading is how they find the
+		// row it is on. The title is the brightest, being the one row that says
+		// what the screen is and how to leave it.
+		HelpTitle: lipgloss.NewStyle().Foreground(lipgloss.Color("252")),
+		HelpGroup: lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
+		HelpKey:   lipgloss.NewStyle().Foreground(lipgloss.Color("39")),
 
 		// The selected row is marked by a band behind it rather than by an
 		// arrow in front of it: an arrow would need a column of its own and

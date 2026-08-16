@@ -374,3 +374,90 @@ func TestViewFillsTheCursorRowInTheJSONView(t *testing.T) {
 		t.Errorf("the selected row is %d wide, want the full %d", got, width)
 	}
 }
+
+// The help screen stands where the document was, with the status bar left
+// where it is: which file is open and whether it has unsaved work in it are
+// true of the session whatever is being read.
+func TestViewShowsHelpInPlaceOfTheDocument(t *testing.T) {
+	m := press(t, sized(t, openTestApp(t), 60, 10), key('?'))
+
+	got := rows(t, m)
+	if len(got) != 10 {
+		t.Fatalf("View() drew %d rows, want 10", len(got))
+	}
+
+	if !strings.HasPrefix(got[0], "pino help") {
+		t.Errorf("the first row is %q, want the help screen", got[0])
+	}
+
+	for i, row := range got[:9] {
+		if strings.Contains(row, `"host"`) {
+			t.Errorf("row %d is %q, want the document gone from under the help", i, row)
+		}
+	}
+
+	bar := got[9]
+
+	if !strings.HasPrefix(bar, " HELP  JSON  config.json") {
+		t.Errorf("the bar begins %q, want the mode and the open file", bar)
+	}
+
+	if !strings.HasSuffix(bar, "4 lines  indent:2 ") {
+		t.Errorf("the bar ends %q, want the state of the document", bar)
+	}
+}
+
+// A terminal too small for the document is too small for this. Part of a
+// screen saying what the keys do would leave a reader worse off than one
+// saying how much room pino needs, and every key goes on working either way.
+func TestViewPrefersTheSizeWarningToHelp(t *testing.T) {
+	m := press(t, sized(t, openTestApp(t), 60, 10), key('?'))
+
+	if got := rows(t, sizedFrom(t, m, 40, 10))[0]; !strings.HasPrefix(got, "terminal too small") {
+		t.Errorf("the first row is %q, want the size pino needs", got)
+	}
+}
+
+// Closing brings back the screen help replaced, down to the row the cursor was
+// on: nothing was drawn underneath, so there is nothing to restore.
+func TestClosingHelpDrawsTheScreenItReplaced(t *testing.T) {
+	closes := map[string]tea.KeyPressMsg{
+		"?":   key('?'),
+		"esc": special(tea.KeyEscape),
+		"q":   key('q'),
+	}
+
+	for name, k := range closes {
+		t.Run("closed by "+name, func(t *testing.T) {
+			m := press(t, sized(t, openTestApp(t), 60, 10), key('j'))
+
+			before := m.View().Content
+
+			if got := press(t, m, key('?'), k).View().Content; got != before {
+				t.Errorf("the screen came back as\n%s\nwant\n%s", got, before)
+			}
+		})
+	}
+}
+
+// The wheel scrolls the document, and help is the one screen drawn without
+// one. A turn taken behind it would move the offset and carry the selection
+// along with it, so closing would come back to a screen the reader never
+// moved.
+func TestHelpIgnoresTheWheel(t *testing.T) {
+	m := press(t, sized(t, openApp(t, longDocument(t)), 60, 10), key('j'))
+
+	before := m.View().Content
+
+	help := press(t, m, key('?'))
+	turned, _ := help.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+
+	back, ok := turned.(Model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want Model", turned)
+	}
+
+	if got := press(t, back, special(tea.KeyEscape)).View().Content; got != before {
+		t.Errorf("the screen came back as\n%s\nwant\n%s", got, before)
+	}
+}
