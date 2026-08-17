@@ -23,6 +23,16 @@ const (
 	PendingZ
 )
 
+// TerminalAction is a request to change how pino uses the terminal rather
+// than to change or navigate the document. It stays in presentation because
+// the application has no terminal behaviour to carry out.
+type TerminalAction uint8
+
+const (
+	TerminalNone TerminalAction = iota
+	TerminalToggleMouse
+)
+
 // String is the prefix as it was typed, which is what the status bar shows.
 // Nothing waiting is nothing to show.
 //
@@ -186,6 +196,28 @@ var normalBindings = []binding{
 	},
 }
 
+// terminalBinding is one row of the keys that change how pino uses the
+// terminal. These keys resolve alongside the document's keys, but their
+// requests never cross into the application layer.
+type terminalBinding struct {
+	Keys     []string
+	Terminal TerminalAction
+
+	Group       helpGroup
+	HelpKeys    string
+	Description string
+}
+
+// This table is separate from normalBindings so that every row there keeps
+// carrying an application Action. Combining the two would require nil Actions
+// and weaken the invariant that every document binding asks for something.
+var terminalBindings = []terminalBinding{
+	{
+		Keys: []string{"m"}, Terminal: TerminalToggleMouse,
+		Group: helpView, HelpKeys: "m", Description: "select",
+	},
+}
+
 // helpClose is every key that puts the help screen away.
 //
 // Three, because three different habits bring a reader to the same wish: the
@@ -228,14 +260,15 @@ var pendingBindings = []pendingBinding{
 	},
 }
 
-// Resolve is the Action a key press stands for, along with the prefix left
-// waiting afterwards. Either may be empty: a prefix produces no Action, and
-// most keys leave nothing waiting.
+// Resolve is the application or terminal request a key press stands for,
+// along with the prefix left waiting afterwards. Each may be empty: a prefix
+// produces no request, and most keys leave nothing waiting.
 //
-// The table lives here and the meaning of an Action lives in the application
-// layer, which splits the interaction along a line testable from both sides:
-// a key table on one side, a state transition on the other. Nothing in this
-// function knows what quitting does.
+// The tables live here and the meaning of an application Action lives in the
+// application layer, which splits the interaction along a line testable from
+// both sides: a key table on one side, a state transition on the other.
+// Terminal requests remain on this side of that boundary. Nothing in this
+// function knows what quitting or toggling mouse reporting does.
 //
 // The prefix is a parameter and a result rather than a field of something,
 // which keeps this a plain function of what was typed and what was waiting.
@@ -245,13 +278,17 @@ var pendingBindings = []pendingBinding{
 // It takes a key press rather than the tea.KeyMsg interface, which also
 // covers releases: a terminal that reports both would otherwise resolve one
 // keystroke to the same Action twice.
-func Resolve(k tea.KeyPressMsg, mode application.Mode, pending Pending) (application.Action, Pending) {
+func Resolve(
+	k tea.KeyPressMsg,
+	mode application.Mode,
+	pending Pending,
+) (application.Action, TerminalAction, Pending) {
 	// The terminal's own way out is bound before anything else is consulted,
 	// so that no mode and no half-typed sequence can become a dead end. A mode
 	// that wants Ctrl+C for something else has to claim it here, rather than
 	// getting it by being the one the key press happens to reach.
 	if k.String() == "ctrl+c" {
-		return application.ActionQuit{}, PendingNone
+		return application.ActionQuit{}, TerminalNone, PendingNone
 	}
 
 	// The remaining bindings are per mode because the same key means
@@ -263,46 +300,52 @@ func Resolve(k tea.KeyPressMsg, mode application.Mode, pending Pending) (applica
 	switch mode {
 	case application.ModeNormal:
 		if pending != PendingNone {
-			return resolvePending(k, pending), PendingNone
+			return resolvePending(k, pending), TerminalNone, PendingNone
 		}
 
 		return resolveNormal(k)
 
 	case application.ModeHelp:
-		return resolveHelp(k), PendingNone
+		return resolveHelp(k), TerminalNone, PendingNone
 
 	case application.ModeEdit, application.ModeInsert, application.ModeConfirm:
-		return nil, PendingNone
+		return nil, TerminalNone, PendingNone
 	}
 
-	return nil, PendingNone
+	return nil, TerminalNone, PendingNone
 }
 
 // resolveNormal is what a key press means while a document is being read.
 //
-// The table is consulted before the prefixes, so a key that means something on
-// its own can never also start a sequence. Nothing is bound to g or z alone,
+// The tables are consulted before the prefixes, so a key that means something
+// on its own can never also start a sequence. Nothing is bound to g or z alone,
 // which is why there is no ambiguity to time out of: the next key press
 // decides, however long it takes to arrive.
-func resolveNormal(k tea.KeyPressMsg) (application.Action, Pending) {
+func resolveNormal(k tea.KeyPressMsg) (application.Action, TerminalAction, Pending) {
 	s := k.String()
 
 	for _, b := range normalBindings {
 		if slices.Contains(b.Keys, s) {
-			return b.Action, PendingNone
+			return b.Action, TerminalNone, PendingNone
+		}
+	}
+
+	for _, b := range terminalBindings {
+		if slices.Contains(b.Keys, s) {
+			return nil, b.Terminal, PendingNone
 		}
 	}
 
 	for _, b := range pendingBindings {
 		if s == b.Prefix.String() {
-			return nil, b.Prefix
+			return nil, TerminalNone, b.Prefix
 		}
 	}
 
 	// Esc is among the keys that fall through here. In normal mode it means
 	// nothing, and cancelling a half-typed sequence is what falling through
 	// already does.
-	return nil, PendingNone
+	return nil, TerminalNone, PendingNone
 }
 
 // resolveHelp is what a key press means while the help screen is up.

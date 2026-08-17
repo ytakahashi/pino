@@ -187,10 +187,14 @@ func TestHelpTakesOnlyTheKeysThatCloseIt(t *testing.T) {
 		t.Run("closed by "+name, func(t *testing.T) {
 			t.Parallel()
 
-			got, pending := Resolve(k, application.ModeHelp, PendingNone)
+			got, terminal, pending := Resolve(k, application.ModeHelp, PendingNone)
 
 			if got != (application.ActionCloseHelp{}) {
 				t.Errorf("Resolve(%q, HELP) = %v, want the screen to close", name, got)
+			}
+
+			if terminal != TerminalNone {
+				t.Errorf("Resolve(%q, HELP) asks for terminal action %v, want none", name, terminal)
 			}
 
 			if pending != PendingNone {
@@ -210,10 +214,14 @@ func TestHelpTakesOnlyTheKeysThatCloseIt(t *testing.T) {
 		t.Run(name+" does nothing", func(t *testing.T) {
 			t.Parallel()
 
-			got, pending := Resolve(k, application.ModeHelp, PendingNone)
+			got, terminal, pending := Resolve(k, application.ModeHelp, PendingNone)
 
 			if got != nil {
 				t.Errorf("Resolve(%q, HELP) = %v, want nothing", name, got)
+			}
+
+			if terminal != TerminalNone {
+				t.Errorf("Resolve(%q, HELP) asks for terminal action %v, want none", name, terminal)
 			}
 
 			if pending != PendingNone {
@@ -227,10 +235,14 @@ func TestHelpTakesOnlyTheKeysThatCloseIt(t *testing.T) {
 func TestTheHelpKeyAsksForTheScreen(t *testing.T) {
 	t.Parallel()
 
-	got, pending := Resolve(key('?'), application.ModeNormal, PendingNone)
+	got, terminal, pending := Resolve(key('?'), application.ModeNormal, PendingNone)
 
 	if got != (application.ActionShowHelp{}) {
 		t.Errorf("Resolve(?) = %v, want the help screen", got)
+	}
+
+	if terminal != TerminalNone {
+		t.Errorf("Resolve(?) asks for terminal action %v, want none", terminal)
 	}
 
 	if pending != PendingNone {

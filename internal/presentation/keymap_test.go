@@ -75,16 +75,36 @@ func TestResolveMapsNormalModeKeysToActions(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, pending := Resolve(tc.key, application.ModeNormal, PendingNone)
+			got, terminal, pending := Resolve(tc.key, application.ModeNormal, PendingNone)
 
 			if got != tc.want {
 				t.Errorf("Resolve(%q) = %v, want %v", tc.key.String(), got, tc.want)
+			}
+
+			if terminal != TerminalNone {
+				t.Errorf("Resolve(%q) asks for terminal action %v, want none", tc.key.String(), terminal)
 			}
 
 			if pending != PendingNone {
 				t.Errorf("Resolve(%q) left %v waiting, want nothing", tc.key.String(), pending)
 			}
 		})
+	}
+}
+
+func TestResolveMapsNormalModeTerminalKeysToTerminalActions(t *testing.T) {
+	got, terminal, pending := Resolve(key('m'), application.ModeNormal, PendingNone)
+
+	if got != nil {
+		t.Errorf("Resolve(m) = %v, want no application action", got)
+	}
+
+	if terminal != TerminalToggleMouse {
+		t.Errorf("Resolve(m) asks for terminal action %v, want %v", terminal, TerminalToggleMouse)
+	}
+
+	if pending != PendingNone {
+		t.Errorf("Resolve(m) left %v waiting, want nothing", pending)
 	}
 }
 
@@ -100,10 +120,14 @@ func TestResolveStartsAPrefix(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, pending := Resolve(tc.key, application.ModeNormal, PendingNone)
+			got, terminal, pending := Resolve(tc.key, application.ModeNormal, PendingNone)
 
 			if got != nil {
 				t.Errorf("Resolve(%q) = %v, want nothing until the next key", name, got)
+			}
+
+			if terminal != TerminalNone {
+				t.Errorf("Resolve(%q) asks for terminal action %v, want none", name, terminal)
 			}
 
 			if pending != tc.want {
@@ -168,6 +192,28 @@ func TestResolveCancelsAPrefix(t *testing.T) {
 	}
 }
 
+// A key that does not complete a prefix cancels it instead of being retried on
+// its own. Otherwise a mistyped gm would unexpectedly change terminal state.
+func TestResolveDoesNotCarryOutATerminalKeyDuringAPrefix(t *testing.T) {
+	for _, pending := range []Pending{PendingG, PendingZ} {
+		t.Run(pending.String(), func(t *testing.T) {
+			got, terminal, next := Resolve(key('m'), application.ModeNormal, pending)
+
+			if got != nil {
+				t.Errorf("Resolve(m, %v) = %v, want no application action", pending, got)
+			}
+
+			if terminal != TerminalNone {
+				t.Errorf("Resolve(m, %v) asks for terminal action %v, want none", pending, terminal)
+			}
+
+			if next != PendingNone {
+				t.Errorf("Resolve(m, %v) left %v waiting, want nothing", pending, next)
+			}
+		})
+	}
+}
+
 // After a sequence has been completed the next one starts over, so the same
 // prefix twice over is two requests rather than one and a stray key.
 func TestResolveRepeatsASequence(t *testing.T) {
@@ -196,10 +242,14 @@ func TestResolveQuitsFromEveryMode(t *testing.T) {
 
 	for _, mode := range allModes {
 		t.Run(mode.String(), func(t *testing.T) {
-			got, pending := Resolve(ctrl('c'), mode, PendingNone)
+			got, terminal, pending := Resolve(ctrl('c'), mode, PendingNone)
 
 			if got != want {
 				t.Errorf("Resolve(ctrl+c, %v) = %v, want %v", mode, got, want)
+			}
+
+			if terminal != TerminalNone {
+				t.Errorf("Resolve(ctrl+c, %v) asks for terminal action %v, want none", mode, terminal)
 			}
 
 			if pending != PendingNone {
@@ -244,10 +294,14 @@ func TestResolveIgnoresNormalModeKeysOutsideNormalMode(t *testing.T) {
 			}
 
 			t.Run(mode.String()+" "+name, func(t *testing.T) {
-				got, pending := Resolve(k, mode, PendingNone)
+				got, terminal, pending := Resolve(k, mode, PendingNone)
 
 				if got != nil {
 					t.Errorf("Resolve(%s, %v) = %v, want nil", name, mode, got)
+				}
+
+				if terminal != TerminalNone {
+					t.Errorf("Resolve(%s, %v) asks for terminal action %v, want none", name, mode, terminal)
 				}
 
 				if pending != PendingNone {
@@ -258,13 +312,44 @@ func TestResolveIgnoresNormalModeKeysOutsideNormalMode(t *testing.T) {
 	}
 }
 
+// A letter key cannot be claimed across modes the way Ctrl+C is: a text prompt
+// must still be able to receive m as text. Keeping terminal bindings behind
+// normal-mode resolution prevents terminal behaviour from taking it first.
+func TestResolveIgnoresTerminalKeysOutsideNormalMode(t *testing.T) {
+	for _, mode := range allModes {
+		if mode == application.ModeNormal {
+			continue
+		}
+
+		t.Run(mode.String(), func(t *testing.T) {
+			got, terminal, pending := Resolve(key('m'), mode, PendingNone)
+
+			if got != nil {
+				t.Errorf("Resolve(m, %v) = %v, want no application action", mode, got)
+			}
+
+			if terminal != TerminalNone {
+				t.Errorf("Resolve(m, %v) asks for terminal action %v, want none", mode, terminal)
+			}
+
+			if pending != PendingNone {
+				t.Errorf("Resolve(m, %v) left %v waiting, want nothing", mode, pending)
+			}
+		})
+	}
+}
+
 // A sequence started in normal mode does not survive into another: the key
 // that would complete it means something else there.
 func TestResolveDropsAPrefixOnAChangeOfMode(t *testing.T) {
-	got, pending := Resolve(key('g'), application.ModeEdit, PendingG)
+	got, terminal, pending := Resolve(key('g'), application.ModeEdit, PendingG)
 
 	if got != nil {
 		t.Errorf("Resolve(g, edit) = %v, want nil", got)
+	}
+
+	if terminal != TerminalNone {
+		t.Errorf("Resolve(g, edit) asks for terminal action %v, want none", terminal)
 	}
 
 	if pending != PendingNone {
@@ -393,9 +478,13 @@ func TestAdvertisedKeysResolveToTheOperationsTheyName(t *testing.T) {
 			t.Errorf("the key advertised as %q is sent as %q", op.spelling, got)
 		}
 
-		got, pending := Resolve(op.press, application.ModeNormal, PendingNone)
+		got, terminal, pending := Resolve(op.press, application.ModeNormal, PendingNone)
 		if got != op.act {
 			t.Errorf("Resolve(%q) = %v, want %v", op.spelling, got, op.act)
+		}
+
+		if terminal != TerminalNone {
+			t.Errorf("Resolve(%q) asks for terminal action %v, want none", op.spelling, terminal)
 		}
 
 		// An editing key is complete in itself. One that left a prefix waiting
@@ -429,6 +518,67 @@ func TestTheKeyTableBindsEachKeyOnce(t *testing.T) {
 			}
 
 			seen[k] = b.Action
+		}
+	}
+}
+
+// A terminal row has one complete request and one complete description. Its
+// action cannot be the zero value because that is how resolving says that no
+// terminal behaviour was requested.
+func TestTheTerminalKeyTableHoldsCompleteUniqueBindings(t *testing.T) {
+	t.Parallel()
+
+	seen := map[string]TerminalAction{}
+
+	for _, b := range terminalBindings {
+		if b.Terminal == TerminalNone {
+			t.Errorf("the row holding %v asks for no terminal action", b.Keys)
+		}
+
+		if len(b.Keys) == 0 {
+			t.Errorf("terminal action %v is bound to no key", b.Terminal)
+		}
+
+		if b.Group == helpNone {
+			t.Errorf("terminal action %v has no help group", b.Terminal)
+		}
+
+		if b.HelpKeys == "" {
+			t.Errorf("terminal action %v has no help key", b.Terminal)
+		}
+
+		if b.Description == "" {
+			t.Errorf("terminal action %v has no description", b.Terminal)
+		}
+
+		for _, k := range b.Keys {
+			if first, dup := seen[k]; dup {
+				t.Errorf("%q asks for terminal actions %v and %v", k, first, b.Terminal)
+			}
+
+			seen[k] = b.Terminal
+		}
+	}
+}
+
+// Normal and terminal tables are consulted before prefixes. A key appearing
+// in more than one of those places would make the later meaning unreachable.
+func TestTerminalKeysDoNotConflictWithDocumentKeysOrPrefixes(t *testing.T) {
+	t.Parallel()
+
+	for _, terminal := range terminalBindings {
+		for _, k := range terminal.Keys {
+			for _, normal := range normalBindings {
+				if slices.Contains(normal.Keys, k) {
+					t.Errorf("%q asks for both %T and terminal action %v", k, normal.Action, terminal.Terminal)
+				}
+			}
+
+			for _, pending := range pendingBindings {
+				if k == pending.Prefix.String() {
+					t.Errorf("%q both starts a sequence and asks for terminal action %v", k, terminal.Terminal)
+				}
+			}
 		}
 	}
 }
