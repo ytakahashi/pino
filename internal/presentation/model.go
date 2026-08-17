@@ -158,7 +158,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.act(ResolveChoice(msg, p))
 
 	case application.PromptNone:
-		act, pending := Resolve(msg, m.app.Mode(), m.pending)
+		act, _, pending := Resolve(msg, m.app.Mode(), m.pending)
 		m.pending = pending
 
 		return m.act(act)

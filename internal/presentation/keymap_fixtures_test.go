@@ -41,7 +41,7 @@ func feed(mode application.Mode, keys ...tea.KeyPressMsg) ([]application.Action,
 	for _, k := range keys {
 		var act application.Action
 
-		act, pending = Resolve(k, mode, pending)
+		act, _, pending = Resolve(k, mode, pending)
 		if act != nil {
 			got = append(got, act)
 		}
