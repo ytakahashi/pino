@@ -13,7 +13,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	teatest "github.com/charmbracelet/x/exp/teatest/v2"
 
-	"github.com/ytakahashi/pino/internal/application"
 	"github.com/ytakahashi/pino/internal/cli"
 )
 
@@ -218,13 +217,13 @@ func start(t *testing.T, onFirstScreen string) (*teatest.TestModel, *screenWaite
 func startAt(t *testing.T, path, onFirstScreen string) (*teatest.TestModel, *screenWaiter, string) {
 	t.Helper()
 
-	return startWith(t, path, application.Config{}, onFirstScreen)
+	return startWith(t, path, cli.ProgramConfig{}, onFirstScreen)
 }
 
 // startWith is startAt with the choices the command line would have made. It
 // is how a scenario checks that a flag reaches the document rather than
 // stopping at the flag set.
-func startWith(t *testing.T, path string, cfg application.Config, onFirstScreen string) (*teatest.TestModel, *screenWaiter, string) {
+func startWith(t *testing.T, path string, cfg cli.ProgramConfig, onFirstScreen string) (*teatest.TestModel, *screenWaiter, string) {
 	t.Helper()
 
 	model, err := cli.NewProgramModel(path, cfg)

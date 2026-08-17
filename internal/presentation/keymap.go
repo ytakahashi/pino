@@ -105,7 +105,7 @@ var normalBindings = []binding{
 	// stepping forwards.
 	{
 		Keys: []string{"tab"}, Action: application.ActionToggleView{},
-		Group: helpView, HelpKeys: "Tab", Description: "switch",
+		Group: helpView, HelpKeys: "Tab", Description: "view",
 	},
 
 	// The key that asks for the screen this row is written on. It is listed

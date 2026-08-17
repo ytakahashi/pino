@@ -95,7 +95,8 @@ type helpLine struct {
 // second place — a reader who cannot get out of a text box is stuck — so what
 // the tables cannot say is said here, beside what they can.
 var contextualEntries = []helpEntry{
-	{Group: helpView, Keys: "mouse wheel", Description: "scroll"},
+	{Group: helpView, Keys: "wheel", Description: "scroll"},
+	{Group: helpView, Keys: "--no-mouse", Description: "select"},
 	{Group: helpPrompt, Keys: "Enter", Description: "accept"},
 	{Group: helpPrompt, Keys: "Esc", Description: "cancel"},
 	{Group: helpPrompt, Keys: "Ctrl+j", Description: "newline"},

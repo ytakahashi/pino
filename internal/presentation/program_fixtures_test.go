@@ -27,7 +27,7 @@ func start(t *testing.T, root domain.Node, onFirstScreen string) *teatest.TestMo
 
 	tm := teatest.NewTestModel(
 		t,
-		NewModel(openApp(t, root), DefaultTheme()),
+		NewModel(openApp(t, root), DefaultTheme(), ModelConfig{}),
 		teatest.WithInitialTermSize(80, 24),
 	)
 

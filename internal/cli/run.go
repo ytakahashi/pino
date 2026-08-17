@@ -48,6 +48,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	showVersion := fs.Bool("version", false, "print version information and exit")
 
 	indent := fs.Int("indent", 0, "indentation width, overriding the one detected in the file")
+	noMouse := fs.Bool("no-mouse", false, "disable mouse reporting to allow terminal text selection")
 
 	switch err := fs.Parse(args); {
 	case errors.Is(err, flag.ErrHelp):
@@ -77,7 +78,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	cfg, err := configFrom(fs, *indent)
+	cfg, err := configFrom(fs, *indent, *noMouse)
 	if err != nil {
 		printf(stderr, "pino: %v\n", err)
 		usage(stderr, fs)
@@ -115,6 +116,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// ProgramConfig is every policy the command line passes into the assembled
+// program. Application policies remain nested so terminal concerns cannot
+// leak into the document session.
+type ProgramConfig struct {
+	Application  application.Config
+	DisableMouse bool
+}
+
 // NewProgramModel opens a document and answers the model that draws it.
 //
 // This is the assembly Run performs, kept apart from it because everything
@@ -125,19 +134,21 @@ func Run(args []string, stdout, stderr io.Writer) int {
 //
 // The terminal is untouched here: the document is read, parsed and laid out,
 // and nothing is drawn until a program is given what comes back.
-func NewProgramModel(path string, cfg application.Config) (tea.Model, error) {
+func NewProgramModel(path string, cfg ProgramConfig) (tea.Model, error) {
 	app := application.New(application.Deps{
 		Parser:   jsonparser.New(),
 		Files:    filestore.New(),
 		JSONView: documentview.NewJSONRenderer(),
 		TreeView: documentview.NewTreeRenderer(),
-	}, cfg)
+	}, cfg.Application)
 
 	if err := app.Open(path); err != nil {
 		return nil, err
 	}
 
-	return presentation.NewModel(app, presentation.DefaultTheme()), nil
+	return presentation.NewModel(app, presentation.DefaultTheme(), presentation.ModelConfig{
+		DisableMouse: cfg.DisableMouse,
+	}), nil
 }
 
 // configFrom is what the command line asked pino to do, as opposed to what it
@@ -151,29 +162,37 @@ func NewProgramModel(path string, cfg application.Config) (tea.Model, error) {
 // A width outside the range is refused rather than repaired. It is a misuse
 // of the command line, and the exit code says so; guessing what was meant
 // would make "-2" a way of writing "0".
-func configFrom(fs *flag.FlagSet, indent int) (application.Config, error) {
-	var cfg application.Config
+//
+// disableMouse is carried straight through: there is nothing to validate in a
+// bool, and no default to tell apart from a choice. It is a parameter here
+// rather than something Run puts on afterwards so that every flag lands in the
+// config in one place, and so that a test can hold the whole of that reading
+// to the flags it was given. Its being dropped from the config returned
+// alongside an error is of no consequence, since a caller that got an error
+// has a usage message to print and nothing to configure.
+func configFrom(fs *flag.FlagSet, indent int, disableMouse bool) (ProgramConfig, error) {
+	var appCfg application.Config
 
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "indent" {
-			cfg.OverrideIndent = true
+			appCfg.OverrideIndent = true
 		}
 	})
 
-	if !cfg.OverrideIndent {
-		return cfg, nil
+	if !appCfg.OverrideIndent {
+		return ProgramConfig{DisableMouse: disableMouse}, nil
 	}
 
 	if indent < 0 || indent > maxIndent {
-		return application.Config{}, fmt.Errorf(
+		return ProgramConfig{}, fmt.Errorf(
 			"indentation width %d is not between 0 and %d", indent, maxIndent)
 	}
 
 	// Spaces, which is the only width a number can mean. A file indented with
 	// tabs keeps them by not being overridden at all.
-	cfg.IndentOverride = strings.Repeat(" ", indent)
+	appCfg.IndentOverride = strings.Repeat(" ", indent)
 
-	return cfg, nil
+	return ProgramConfig{Application: appCfg, DisableMouse: disableMouse}, nil
 }
 
 // maxIndent is the widest level pino will write.
