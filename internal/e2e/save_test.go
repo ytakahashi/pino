@@ -1,13 +1,17 @@
 package e2e
 
 import (
+	"errors"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/ytakahashi/pino/internal/application"
+	"github.com/ytakahashi/pino/internal/cli"
 )
 
 // Saving crosses every boundary pino has: a key press, a state transition, an
@@ -120,7 +124,9 @@ func TestTheProgramCreatesAFileThatWasNotThere(t *testing.T) {
 func TestTheProgramSavesWithTheIndentAskedFor(t *testing.T) {
 	t.Parallel()
 
-	cfg := application.Config{IndentOverride: "  ", OverrideIndent: true}
+	cfg := cli.ProgramConfig{Application: application.Config{
+		IndentOverride: "  ", OverrideIndent: true,
+	}}
 
 	tm, waiter, path := startWith(t, writeConfig(t), cfg, "localhost")
 
@@ -161,6 +167,67 @@ func TestTheProgramSavesWithTheIndentAskedFor(t *testing.T) {
 
 	if got := readFile(t, path); got != want {
 		t.Errorf("the file holds:\n%s\nwant:\n%s", got, want)
+	}
+
+	finalScreen(t, tm)
+}
+
+// A write that could not be carried out is reported in words about the file
+// the reader named, and the session goes on holding the document. Losing the
+// edits because the file system said no is the one outcome a save must not
+// have.
+//
+// The failure is made by taking the directory away rather than by taking write
+// permission off it. Permission bits answer differently depending on who the
+// test runs as, while a path that is not there fails the same way on every
+// machine, and the store reports it before anything on disk has been touched.
+func TestTheProgramKeepsTheDocumentWhenTheWriteFails(t *testing.T) {
+	t.Parallel()
+
+	path := missingPath(t)
+
+	tm, waiter, _ := startAt(t, path, "{}")
+
+	waiter.wait(t, func(screen []string) bool {
+		return strings.Contains(statusRow(screen), "new")
+	})
+
+	// Somebody else takes the directory away while pino holds the document.
+	if err := os.RemoveAll(filepath.Dir(path)); err != nil {
+		t.Fatalf("RemoveAll() = %v", err)
+	}
+
+	tm.Send(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+
+	// What is on screen names the file and the operation, rather than the
+	// temporary file the store got as far as trying to make.
+	failed := waiter.wait(t, func(screen []string) bool {
+		return strings.Contains(strings.Join(screen, "\n"), "Could not save fresh.json.")
+	})
+
+	if got := strings.Join(failed, "\n"); !strings.Contains(got, "[o] OK") {
+		t.Errorf("the notice offers no way out:\n%s", got)
+	}
+
+	// Nothing was written, so the document is exactly as unsaved as it was.
+	if got := statusRow(failed); !strings.Contains(got, "new") {
+		t.Errorf("the bar reads %q, want the document still waiting to be created", got)
+	}
+
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Stat(%s) = %v, want nothing at the path", path, err)
+	}
+
+	// Acknowledging the notice puts the reader back on the document rather
+	// than ending the session with it.
+	tm.Type("o")
+
+	acknowledged := waiter.wait(t, func(screen []string) bool {
+		return strings.Contains(statusRow(screen), "NORMAL")
+	})
+
+	if got := strings.Join(acknowledged, "\n"); !strings.Contains(got, "{}") {
+		t.Errorf("the document is not back on screen:\n%s", got)
 	}
 
 	finalScreen(t, tm)

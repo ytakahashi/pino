@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/ytakahashi/pino/internal/application"
 	"github.com/ytakahashi/pino/internal/infrastructure/jsonparser"
 )
@@ -77,10 +79,14 @@ func TestHelpPrintsUsage(t *testing.T) {
 		t.Errorf("stdout = %q, want it to describe the usage", stdout)
 	}
 
-	for _, flag := range []string{"-version", "-indent"} {
+	for _, flag := range []string{"-version", "-indent", "-no-mouse"} {
 		if !strings.Contains(stdout, flag) {
 			t.Errorf("stdout = %q, want it to list %s", stdout, flag)
 		}
+	}
+
+	if !strings.Contains(stdout, "terminal text selection") {
+		t.Errorf("stdout = %q, want the mouse option to explain its trade-off", stdout)
 	}
 
 	if stderr != "" {
@@ -189,7 +195,7 @@ func TestOpeningAPathThatHoldsNothingStartsADocument(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "new.json")
 
-	model, err := NewProgramModel(path, application.Config{})
+	model, err := NewProgramModel(path, ProgramConfig{})
 	if err != nil {
 		t.Fatalf("NewProgramModel: %v", err)
 	}
@@ -203,39 +209,78 @@ func TestOpeningAPathThatHoldsNothingStartsADocument(t *testing.T) {
 	}
 }
 
-// The width a document is written back with is a policy the reader chooses,
-// and "not chosen" is one of the answers: a width of zero asks for no
-// indentation, while the flag being absent asks for the file's own.
-func TestIndentIsReadFromTheCommandLine(t *testing.T) {
+// The program config reaches the frames that control terminal mouse reporting.
+// The first frame is enough to observe it because every later frame goes
+// through the same full-screen constructor.
+func TestProgramConfigControlsMouseReporting(t *testing.T) {
+	t.Parallel()
+
+	path := write(t, "config.json", "{}\n")
+
+	tests := map[string]struct {
+		cfg  ProgramConfig
+		want tea.MouseMode
+	}{
+		"default":  {want: tea.MouseModeCellMotion},
+		"disabled": {cfg: ProgramConfig{DisableMouse: true}, want: tea.MouseModeNone},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			model, err := NewProgramModel(path, tc.cfg)
+			if err != nil {
+				t.Fatalf("NewProgramModel: %v", err)
+			}
+
+			if got := model.View().MouseMode; got != tc.want {
+				t.Errorf("MouseMode = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// Every flag pino takes is one config away from the session it starts, and
+// "not given" is one of the answers each of them has. A width of zero asks for
+// no indentation while the flag being absent asks for the file's own, and a
+// mouse nobody said anything about is the mouse pino reports by default.
+func TestTheCommandLineIsReadIntoAProgramConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
 		args []string
-		want application.Config
+		want ProgramConfig
 	}{
 		"not given": {
 			args: nil,
-			want: application.Config{},
+			want: ProgramConfig{},
 		},
 		"none at all": {
 			args: []string{"-indent", "0"},
-			want: application.Config{IndentOverride: "", OverrideIndent: true},
+			want: ProgramConfig{Application: application.Config{IndentOverride: "", OverrideIndent: true}},
 		},
 		"one space": {
 			args: []string{"-indent", "1"},
-			want: application.Config{IndentOverride: " ", OverrideIndent: true},
+			want: ProgramConfig{Application: application.Config{IndentOverride: " ", OverrideIndent: true}},
 		},
 		"two spaces": {
 			args: []string{"-indent", "2"},
-			want: application.Config{IndentOverride: "  ", OverrideIndent: true},
+			want: ProgramConfig{Application: application.Config{IndentOverride: "  ", OverrideIndent: true}},
 		},
 		"four spaces": {
 			args: []string{"-indent", "4"},
-			want: application.Config{IndentOverride: "    ", OverrideIndent: true},
+			want: ProgramConfig{Application: application.Config{IndentOverride: "    ", OverrideIndent: true}},
 		},
 		"the widest there is": {
 			args: []string{"-indent", strconv.Itoa(maxIndent)},
-			want: application.Config{IndentOverride: strings.Repeat(" ", maxIndent), OverrideIndent: true},
+			want: ProgramConfig{Application: application.Config{
+				IndentOverride: strings.Repeat(" ", maxIndent), OverrideIndent: true,
+			}},
+		},
+		"mouse disabled": {
+			args: []string{"-no-mouse"},
+			want: ProgramConfig{DisableMouse: true},
 		},
 	}
 
@@ -247,12 +292,13 @@ func TestIndentIsReadFromTheCommandLine(t *testing.T) {
 			fs.SetOutput(io.Discard)
 
 			indent := fs.Int("indent", 0, "")
+			noMouse := fs.Bool("no-mouse", false, "")
 
 			if err := fs.Parse(tc.args); err != nil {
 				t.Fatalf("Parse(%v): %v", tc.args, err)
 			}
 
-			got, err := configFrom(fs, *indent)
+			got, err := configFrom(fs, *indent, *noMouse)
 			if err != nil {
 				t.Fatalf("configFrom: %v", err)
 			}

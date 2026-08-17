@@ -53,9 +53,18 @@ type Model struct {
 	// reports the wheel alone, so clicks and drags are captured too and
 	// dragging no longer selects text to copy. That is a real loss for anyone
 	// reading JSON over ssh, which is why the choice is a value here rather
-	// than something written into the frame: turning it off is one field, and
-	// an option to would set it where the program is assembled.
+	// than something written into the frame: turning it off is one field that
+	// an option sets where the program is assembled.
 	mouse bool
+}
+
+// ModelConfig is the terminal behaviour chosen where the program is assembled.
+//
+// DisableMouse is negative so that the zero value preserves pino's default:
+// the terminal reports the wheel unless the reader explicitly gives text
+// selection priority instead.
+type ModelConfig struct {
+	DisableMouse bool
 }
 
 // NewModel puts a session on the terminal.
@@ -63,8 +72,8 @@ type Model struct {
 // The theme is a parameter rather than a package default so that the colours
 // are settled where the rest of the program is assembled, which is where an
 // option to choose one would arrive.
-func NewModel(app *application.App, theme Theme) Model {
-	return Model{app: app, theme: theme, mouse: true}
+func NewModel(app *application.App, theme Theme, cfg ModelConfig) Model {
+	return Model{app: app, theme: theme, mouse: !cfg.DisableMouse}
 }
 
 // Init has nothing to start. The document is opened before the program runs,

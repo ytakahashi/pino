@@ -71,6 +71,20 @@ func TestHelpFitsTheSmallestTerminalWhenDrawn(t *testing.T) {
 	}
 }
 
+// Mouse reporting makes the wheel available at the cost of the terminal's
+// own text selection, so the help screen names both sides of that choice.
+func TestHelpOffersMouseScrollingAndTextSelection(t *testing.T) {
+	t.Parallel()
+
+	on := strings.Join(helpRows(minWidth), "\n")
+
+	for _, want := range []string{"wheel scroll", "--no-mouse select"} {
+		if !strings.Contains(on, want) {
+			t.Errorf("help = %q, want it to offer %q", on, want)
+		}
+	}
+}
+
 // The screen is a block of exactly the size it was asked for, the way the
 // inspector is: it is stacked above a status bar that has to stay on the last
 // row.
