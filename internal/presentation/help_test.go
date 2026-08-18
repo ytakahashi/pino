@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -76,12 +77,32 @@ func TestHelpFitsTheSmallestTerminalWhenDrawn(t *testing.T) {
 func TestHelpOffersMouseScrollingAndTextSelection(t *testing.T) {
 	t.Parallel()
 
-	on := strings.Join(helpRows(minWidth), "\n")
+	var view string
+	for _, row := range helpRows(minWidth) {
+		if strings.HasPrefix(row, helpView.String()) {
+			view = row
 
-	for _, want := range []string{"wheel scroll", "--no-mouse select"} {
-		if !strings.Contains(on, want) {
-			t.Errorf("help = %q, want it to offer %q", on, want)
+			break
 		}
+	}
+
+	if view == "" {
+		t.Fatal("help has no View row")
+	}
+
+	wheel := strings.Index(view, "wheel scroll")
+	selecting := strings.Index(view, "m select")
+
+	if wheel < 0 {
+		t.Errorf("the View row = %q, want it to offer wheel scrolling", view)
+	}
+
+	if selecting < 0 {
+		t.Errorf("the View row = %q, want it to offer terminal text selection", view)
+	}
+
+	if wheel >= 0 && selecting >= 0 && wheel > selecting {
+		t.Errorf("the View row = %q, want wheel scrolling before text selection", view)
 	}
 }
 
@@ -119,36 +140,73 @@ func TestRenderHelpFillsTheRoomItIsGiven(t *testing.T) {
 func TestHelpNamesEveryBoundKeyExactlyOnce(t *testing.T) {
 	t.Parallel()
 
-	on := strings.Join(helpRows(minWidth), "\n")
-
-	bound := make([]binding, 0, len(normalBindings)+len(pendingBindings))
-	bound = append(bound, normalBindings...)
-
-	for _, b := range pendingBindings {
-		bound = append(bound, binding{Action: b.Action, HelpKeys: b.HelpKeys, Description: b.Description})
+	type describedBinding struct {
+		group       helpGroup
+		keys        string
+		description string
+		request     string
 	}
 
-	spelt := map[string]application.Action{}
+	bound := make([]describedBinding, 0,
+		len(normalBindings)+len(pendingBindings)+len(terminalBindings))
+
+	for _, b := range normalBindings {
+		bound = append(bound, describedBinding{
+			group: b.Group, keys: b.HelpKeys, description: b.Description,
+			request: fmt.Sprintf("%T", b.Action),
+		})
+	}
+
+	for _, b := range pendingBindings {
+		bound = append(bound, describedBinding{
+			group: b.Group, keys: b.HelpKeys, description: b.Description,
+			request: fmt.Sprintf("%T", b.Action),
+		})
+	}
+
+	for _, b := range terminalBindings {
+		bound = append(bound, describedBinding{
+			group: b.Group, keys: b.HelpKeys, description: b.Description,
+			request: fmt.Sprintf("terminal action %d", b.Terminal),
+		})
+	}
+
+	spelt := map[string]string{}
+	// The title has no group label; only body rows can hold binding entries.
+	body := helpRows(minWidth)[1:]
 
 	for _, b := range bound {
-		if b.HelpKeys == "" {
-			t.Errorf("%T is bound and is on no row of the help screen", b.Action)
+		if b.keys == "" {
+			t.Errorf("%s is bound and has no help key", b.request)
 
 			continue
 		}
 
-		if first, dup := spelt[b.HelpKeys]; dup {
-			t.Errorf("%q is written for both %T and %T", b.HelpKeys, first, b.Action)
+		if first, dup := spelt[b.keys]; dup {
+			t.Errorf("%q is written for both %s and %s", b.keys, first, b.request)
 		}
 
-		spelt[b.HelpKeys] = b.Action
+		spelt[b.keys] = b.request
 
-		if b.Description == "" {
-			t.Errorf("%q is on the screen and says nothing about what it does", b.HelpKeys)
+		if b.description == "" {
+			t.Errorf("%q is on the screen and says nothing about what it does", b.keys)
 		}
 
-		if !strings.Contains(on, b.HelpKeys) {
-			t.Errorf("%q asks for %T and is not written on the screen", b.HelpKeys, b.Action)
+		written := b.keys + " " + b.description
+		matches := 0
+		for _, row := range body {
+			count := strings.Count(row, written)
+			matches += count
+
+			if count > 0 && !strings.HasPrefix(row, pad(b.group.String(), helpLabelWidth)) {
+				t.Errorf("%q asks for %s under %s, but is written on row %q",
+					b.keys, b.request, b.group, row)
+			}
+		}
+
+		if matches != 1 {
+			t.Errorf("%q asks for %s and is written on the help screen %d times, want 1",
+				b.keys, b.request, matches)
 		}
 	}
 }

@@ -1,10 +1,13 @@
 package presentation
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/ytakahashi/pino/internal/application"
 )
 
 // What Update makes of a message: the keys it answers, the ones it holds, the
@@ -45,6 +48,75 @@ func TestUpdateIgnoresUnboundKey(t *testing.T) {
 	assertSameSession(t, next, m)
 }
 
+// Mouse reporting is presentation state: changing it redraws the terminal's
+// input policy without asking the application to change the session.
+func TestUpdateTogglesMouseReportingWithoutChangingTheSession(t *testing.T) {
+	tests := map[string]struct {
+		cfg      ModelConfig
+		initial  tea.MouseMode
+		toggled  tea.MouseMode
+		restored tea.MouseMode
+	}{
+		"enabled initially": {
+			initial:  tea.MouseModeCellMotion,
+			toggled:  tea.MouseModeNone,
+			restored: tea.MouseModeCellMotion,
+		},
+		"disabled initially": {
+			cfg:      ModelConfig{DisableMouse: true},
+			initial:  tea.MouseModeNone,
+			toggled:  tea.MouseModeCellMotion,
+			restored: tea.MouseModeNone,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			app := openApp(t, nestedDocument(t))
+			m := sizedWithConfig(t, app, minWidth, minHeight, tc.cfg)
+
+			beforeStatus := app.Status()
+			beforeFrame := app.Frame()
+			beforePrompt := app.Prompt()
+
+			if got := m.View().MouseMode; got != tc.initial {
+				t.Fatalf("MouseMode = %v, want %v", got, tc.initial)
+			}
+
+			next, cmd := m.Update(key('m'))
+			if cmd != nil {
+				t.Errorf("Update(m) = %v, want no command", cmd)
+			}
+
+			toggled, ok := next.(Model)
+			if !ok {
+				t.Fatalf("Update() returned %T, want Model", next)
+			}
+
+			if got := toggled.View().MouseMode; got != tc.toggled {
+				t.Errorf("MouseMode after m = %v, want %v", got, tc.toggled)
+			}
+
+			if got := app.Status(); !reflect.DeepEqual(got, beforeStatus) {
+				t.Errorf("Status() after m = %#v, want %#v", got, beforeStatus)
+			}
+
+			if got := app.Frame(); !reflect.DeepEqual(got, beforeFrame) {
+				t.Errorf("Frame() after m = %#v, want %#v", got, beforeFrame)
+			}
+
+			if got := app.Prompt(); !reflect.DeepEqual(got, beforePrompt) {
+				t.Errorf("Prompt() after m = %#v, want %#v", got, beforePrompt)
+			}
+
+			restored := press(t, toggled, key('m'))
+			if got := restored.View().MouseMode; got != tc.restored {
+				t.Errorf("MouseMode after m twice = %v, want %v", got, tc.restored)
+			}
+		})
+	}
+}
+
 // A prefix key produces nothing on its own and is remembered until the key
 // that completes it arrives.
 func TestUpdateRemembersAPrefix(t *testing.T) {
@@ -74,6 +146,45 @@ func TestUpdateRemembersAPrefix(t *testing.T) {
 
 	if done.pending != PendingNone {
 		t.Errorf("pending = %v after gg, want nothing waiting", done.pending)
+	}
+}
+
+// A mistyped sequence is cancelled as a sequence; its second key is not
+// retried as a terminal request that changes input policy unexpectedly.
+func TestUpdateDoesNotToggleMouseReportingDuringAPrefix(t *testing.T) {
+	for _, prefix := range []tea.KeyPressMsg{key('g'), key('z')} {
+		t.Run(prefix.String(), func(t *testing.T) {
+			m := sized(t, openTestApp(t), 80, 24)
+			after := press(t, m, prefix, key('m'))
+
+			if got := after.View().MouseMode; got != tea.MouseModeCellMotion {
+				t.Errorf("MouseMode after %sm = %v, want %v", prefix.String(), got, tea.MouseModeCellMotion)
+			}
+
+			if after.pending != PendingNone {
+				t.Errorf("pending after %sm = %v, want nothing", prefix.String(), after.pending)
+			}
+		})
+	}
+}
+
+// Help accepts only the keys that close it. A terminal key shown on that
+// screen takes effect only after the reader returns to the document.
+func TestUpdateDoesNotToggleMouseReportingInHelp(t *testing.T) {
+	m := press(t, sized(t, openTestApp(t), 80, 24), key('?'))
+
+	if m.app.Mode() != application.ModeHelp {
+		t.Fatal("? did not open help")
+	}
+
+	after := press(t, m, key('m'))
+
+	if got := after.View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Errorf("MouseMode after m in help = %v, want %v", got, tea.MouseModeCellMotion)
+	}
+
+	if after.app.Mode() != application.ModeHelp {
+		t.Error("m closed help")
 	}
 }
 
@@ -149,6 +260,44 @@ func TestUpdateScrollsOnTheWheel(t *testing.T) {
 
 	if got := rows(t, up)[0]; strings.TrimRight(got, " ") != "{" {
 		t.Errorf("row 0 = %q, want the top of the document again", got)
+	}
+}
+
+// A wheel event may already be in flight when the frame disabling reporting
+// reaches the terminal. Once reporting is off, that event must not move the
+// document pino is no longer asking the terminal to report on.
+func TestUpdateIgnoresTheWheelWhileMouseReportingIsOff(t *testing.T) {
+	m := press(t, sized(t, openApp(t, longDocument(t)), minWidth, minHeight), key('m'))
+	before := m.app.Frame()
+
+	next, cmd := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	if cmd != nil {
+		t.Errorf("Update(wheel) = %v, want no command", cmd)
+	}
+
+	after, ok := next.(Model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want Model", next)
+	}
+
+	if got := after.app.Frame(); !reflect.DeepEqual(got, before) {
+		t.Errorf("Frame() after wheel with reporting off = %#v, want %#v", got, before)
+	}
+
+	if got := after.View().MouseMode; got != tea.MouseModeNone {
+		t.Errorf("MouseMode after wheel = %v, want %v", got, tea.MouseModeNone)
+	}
+
+	enabled := press(t, after, key('m'))
+	next, _ = enabled.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+
+	scrolled, ok := next.(Model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want Model", next)
+	}
+
+	if got := scrolled.app.Frame().Scroll; got == before.Scroll {
+		t.Error("the wheel did not move the window after reporting was restored")
 	}
 }
 

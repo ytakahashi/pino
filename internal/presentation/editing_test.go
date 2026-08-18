@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -54,6 +55,22 @@ func TestTheKeysOfTheDocumentDoNotReachThePrompt(t *testing.T) {
 
 	if got := rows(t, m); !strings.Contains(got[1], `"host": "localhostj"`) {
 		t.Errorf("the document reads %q", got[1])
+	}
+}
+
+// A letter used by the document screen for terminal behaviour still belongs
+// to a text box while one is on screen.
+func TestTheMouseKeyTypesIntoATextPrompt(t *testing.T) {
+	t.Parallel()
+
+	m := press(t, sized(t, openTestApp(t), 60, 12), key('j'), enterKey, key('m'))
+
+	if got := band(t, m); !strings.Contains(got[1], "localhostm") {
+		t.Errorf("the band reads %q, want m typed into the box", got)
+	}
+
+	if got := m.View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Errorf("MouseMode after m in a text prompt = %v, want %v", got, tea.MouseModeCellMotion)
 	}
 }
 
@@ -125,6 +142,24 @@ func TestChoosingATypeFromTheListChangesTheValue(t *testing.T) {
 
 	if got := band(t, m); got != nil {
 		t.Errorf("the band is still up: %q", got)
+	}
+}
+
+// A letter that is not among a choice prompt's offers does nothing there,
+// even when the document screen gives it terminal behaviour.
+func TestTheMouseKeyDoesNothingInAChoicePrompt(t *testing.T) {
+	t.Parallel()
+
+	m := press(t, sized(t, openTestApp(t), 60, 12), key('j'), key('j'), key('t'))
+	before := m.app.Prompt()
+	m = press(t, m, key('m'))
+
+	if got := m.app.Prompt(); !reflect.DeepEqual(got, before) {
+		t.Errorf("Prompt() after m = %#v, want %#v", got, before)
+	}
+
+	if got := m.View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Errorf("MouseMode after m in a choice prompt = %v, want %v", got, tea.MouseModeCellMotion)
 	}
 }
 
