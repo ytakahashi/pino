@@ -51,69 +51,46 @@ func TestUpdateIgnoresUnboundKey(t *testing.T) {
 // Mouse reporting is presentation state: changing it redraws the terminal's
 // input policy without asking the application to change the session.
 func TestUpdateTogglesMouseReportingWithoutChangingTheSession(t *testing.T) {
-	tests := map[string]struct {
-		cfg      ModelConfig
-		initial  tea.MouseMode
-		toggled  tea.MouseMode
-		restored tea.MouseMode
-	}{
-		"enabled initially": {
-			initial:  tea.MouseModeCellMotion,
-			toggled:  tea.MouseModeNone,
-			restored: tea.MouseModeCellMotion,
-		},
-		"disabled initially": {
-			cfg:      ModelConfig{DisableMouse: true},
-			initial:  tea.MouseModeNone,
-			toggled:  tea.MouseModeCellMotion,
-			restored: tea.MouseModeNone,
-		},
+	app := openApp(t, nestedDocument(t))
+	m := sized(t, app, minWidth, minHeight)
+
+	beforeStatus := app.Status()
+	beforeFrame := app.Frame()
+	beforePrompt := app.Prompt()
+
+	if got := m.View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Fatalf("MouseMode = %v, want %v", got, tea.MouseModeCellMotion)
 	}
 
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			app := openApp(t, nestedDocument(t))
-			m := sizedWithConfig(t, app, minWidth, minHeight, tc.cfg)
+	next, cmd := m.Update(key('m'))
+	if cmd != nil {
+		t.Errorf("Update(m) = %v, want no command", cmd)
+	}
 
-			beforeStatus := app.Status()
-			beforeFrame := app.Frame()
-			beforePrompt := app.Prompt()
+	toggled, ok := next.(Model)
+	if !ok {
+		t.Fatalf("Update() returned %T, want Model", next)
+	}
 
-			if got := m.View().MouseMode; got != tc.initial {
-				t.Fatalf("MouseMode = %v, want %v", got, tc.initial)
-			}
+	if got := toggled.View().MouseMode; got != tea.MouseModeNone {
+		t.Errorf("MouseMode after m = %v, want %v", got, tea.MouseModeNone)
+	}
 
-			next, cmd := m.Update(key('m'))
-			if cmd != nil {
-				t.Errorf("Update(m) = %v, want no command", cmd)
-			}
+	if got := app.Status(); !reflect.DeepEqual(got, beforeStatus) {
+		t.Errorf("Status() after m = %#v, want %#v", got, beforeStatus)
+	}
 
-			toggled, ok := next.(Model)
-			if !ok {
-				t.Fatalf("Update() returned %T, want Model", next)
-			}
+	if got := app.Frame(); !reflect.DeepEqual(got, beforeFrame) {
+		t.Errorf("Frame() after m = %#v, want %#v", got, beforeFrame)
+	}
 
-			if got := toggled.View().MouseMode; got != tc.toggled {
-				t.Errorf("MouseMode after m = %v, want %v", got, tc.toggled)
-			}
+	if got := app.Prompt(); !reflect.DeepEqual(got, beforePrompt) {
+		t.Errorf("Prompt() after m = %#v, want %#v", got, beforePrompt)
+	}
 
-			if got := app.Status(); !reflect.DeepEqual(got, beforeStatus) {
-				t.Errorf("Status() after m = %#v, want %#v", got, beforeStatus)
-			}
-
-			if got := app.Frame(); !reflect.DeepEqual(got, beforeFrame) {
-				t.Errorf("Frame() after m = %#v, want %#v", got, beforeFrame)
-			}
-
-			if got := app.Prompt(); !reflect.DeepEqual(got, beforePrompt) {
-				t.Errorf("Prompt() after m = %#v, want %#v", got, beforePrompt)
-			}
-
-			restored := press(t, toggled, key('m'))
-			if got := restored.View().MouseMode; got != tc.restored {
-				t.Errorf("MouseMode after m twice = %v, want %v", got, tc.restored)
-			}
-		})
+	restored := press(t, toggled, key('m'))
+	if got := restored.View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Errorf("MouseMode after m twice = %v, want %v", got, tea.MouseModeCellMotion)
 	}
 }
 

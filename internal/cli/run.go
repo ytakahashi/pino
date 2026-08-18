@@ -48,7 +48,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	showVersion := fs.Bool("version", false, "print version information and exit")
 
 	indent := fs.Int("indent", 0, "indentation width, overriding the one detected in the file")
-	noMouse := fs.Bool("no-mouse", false, "disable mouse reporting to allow terminal text selection")
 
 	switch err := fs.Parse(args); {
 	case errors.Is(err, flag.ErrHelp):
@@ -78,7 +77,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	cfg, err := configFrom(fs, *indent, *noMouse)
+	cfg, err := configFrom(fs, *indent)
 	if err != nil {
 		printf(stderr, "pino: %v\n", err)
 		usage(stderr, fs)
@@ -117,11 +116,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 // ProgramConfig is every policy the command line passes into the assembled
-// program. Application policies remain nested so terminal concerns cannot
-// leak into the document session.
+// program. Application policies are nested rather than flattened so that a
+// policy of the command line itself has somewhere to arrive without becoming
+// a setting of the document session.
 type ProgramConfig struct {
-	Application  application.Config
-	DisableMouse bool
+	Application application.Config
 }
 
 // NewProgramModel opens a document and answers the model that draws it.
@@ -146,9 +145,7 @@ func NewProgramModel(path string, cfg ProgramConfig) (tea.Model, error) {
 		return nil, err
 	}
 
-	return presentation.NewModel(app, presentation.DefaultTheme(), presentation.ModelConfig{
-		DisableMouse: cfg.DisableMouse,
-	}), nil
+	return presentation.NewModel(app, presentation.DefaultTheme()), nil
 }
 
 // configFrom is what the command line asked pino to do, as opposed to what it
@@ -162,15 +159,7 @@ func NewProgramModel(path string, cfg ProgramConfig) (tea.Model, error) {
 // A width outside the range is refused rather than repaired. It is a misuse
 // of the command line, and the exit code says so; guessing what was meant
 // would make "-2" a way of writing "0".
-//
-// disableMouse is carried straight through: there is nothing to validate in a
-// bool, and no default to tell apart from a choice. It is a parameter here
-// rather than something Run puts on afterwards so that every flag lands in the
-// config in one place, and so that a test can hold the whole of that reading
-// to the flags it was given. Its being dropped from the config returned
-// alongside an error is of no consequence, since a caller that got an error
-// has a usage message to print and nothing to configure.
-func configFrom(fs *flag.FlagSet, indent int, disableMouse bool) (ProgramConfig, error) {
+func configFrom(fs *flag.FlagSet, indent int) (ProgramConfig, error) {
 	var appCfg application.Config
 
 	fs.Visit(func(f *flag.Flag) {
@@ -180,7 +169,7 @@ func configFrom(fs *flag.FlagSet, indent int, disableMouse bool) (ProgramConfig,
 	})
 
 	if !appCfg.OverrideIndent {
-		return ProgramConfig{DisableMouse: disableMouse}, nil
+		return ProgramConfig{}, nil
 	}
 
 	if indent < 0 || indent > maxIndent {
@@ -192,7 +181,7 @@ func configFrom(fs *flag.FlagSet, indent int, disableMouse bool) (ProgramConfig,
 	// tabs keeps them by not being overridden at all.
 	appCfg.IndentOverride = strings.Repeat(" ", indent)
 
-	return ProgramConfig{Application: appCfg, DisableMouse: disableMouse}, nil
+	return ProgramConfig{Application: appCfg}, nil
 }
 
 // maxIndent is the widest level pino will write.

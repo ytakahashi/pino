@@ -19,7 +19,7 @@ import (
 // cannot be worked out from a size that is not known yet. The empty frame is
 // replaced as soon as the size arrives.
 func TestViewIsEmptyBeforeTheSizeIsKnown(t *testing.T) {
-	m := NewModel(openTestApp(t), DefaultTheme(), ModelConfig{})
+	m := NewModel(openTestApp(t), DefaultTheme())
 
 	if got := m.View().Content; got != "" {
 		t.Errorf("View() = %q, want %q", got, "")
@@ -275,21 +275,9 @@ func TestViewAsksForTheMouse(t *testing.T) {
 		t.Errorf("MouseMode = %v, want %v", got, tea.MouseModeCellMotion)
 	}
 
-	// Turning it off through the public construction boundary gives the
-	// terminal its own text selection back.
-	m = sizedWithConfig(t, openTestApp(t), 60, 10, ModelConfig{DisableMouse: true})
-
-	if got := m.View().MouseMode; got != tea.MouseModeNone {
-		t.Errorf("MouseMode = %v with the mouse off, want %v", got, tea.MouseModeNone)
-	}
-
 	// The frame drawn before the size is known says the same thing.
-	if got := NewModel(openTestApp(t), DefaultTheme(), ModelConfig{}).View().MouseMode; got != tea.MouseModeCellMotion {
+	if got := NewModel(openTestApp(t), DefaultTheme()).View().MouseMode; got != tea.MouseModeCellMotion {
 		t.Errorf("the first frame has MouseMode = %v, want %v", got, tea.MouseModeCellMotion)
-	}
-
-	if got := NewModel(openTestApp(t), DefaultTheme(), ModelConfig{DisableMouse: true}).View().MouseMode; got != tea.MouseModeNone {
-		t.Errorf("the first frame with the mouse off has MouseMode = %v, want %v", got, tea.MouseModeNone)
 	}
 }
 
@@ -357,7 +345,7 @@ func TestViewUsesTheAlternateScreen(t *testing.T) {
 
 	app := openTestApp(t)
 
-	if !NewModel(app, DefaultTheme(), ModelConfig{}).View().AltScreen {
+	if !NewModel(app, DefaultTheme()).View().AltScreen {
 		t.Error("the first frame is not on the alternate screen")
 	}
 
