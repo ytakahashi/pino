@@ -53,8 +53,8 @@ type Model struct {
 	// reports the wheel alone, so clicks and drags are captured too and
 	// dragging no longer selects text to copy. That is a real loss for anyone
 	// reading JSON over ssh, which is why the choice is a value here rather
-	// than something written into the frame: turning it off is one field that
-	// an option sets where the program is assembled.
+	// than something written into the frame: an option chooses its initial
+	// value, and the terminal key can reverse that choice while pino is open.
 	mouse bool
 }
 
@@ -83,9 +83,10 @@ func (m Model) Init() tea.Cmd { return nil }
 
 // Update answers a message with the next model.
 //
-// A key press is resolved to an Action, handed to the application, and what
-// comes back is a list of effects to carry out. Nothing here decides what a
-// key does; this is only the place that knows a key was pressed at all.
+// A key press is resolved to an application Action or a terminal request. An
+// Action is handed to the application and its effects are carried out; a
+// terminal request changes only the presentation state held here. The keymap,
+// rather than this function, still decides what the key asks for.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -118,7 +119,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// onto a screen they had not moved. A question is different: the
 		// document is still behind it, and scrolling to look at more of it is
 		// part of answering.
-		if m.app.Mode() == application.ModeHelp {
+		//
+		// A wheel event can already be queued when the frame that disables
+		// reporting reaches the terminal. Once reporting is off, pino ignores
+		// input it is no longer asking the terminal to send.
+		if !m.mouse || m.app.Mode() == application.ModeHelp {
 			return m, nil
 		}
 
@@ -158,8 +163,15 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.act(ResolveChoice(msg, p))
 
 	case application.PromptNone:
-		act, _, pending := Resolve(msg, m.app.Mode(), m.pending)
+		act, terminal, pending := Resolve(msg, m.app.Mode(), m.pending)
 		m.pending = pending
+
+		switch terminal {
+		case TerminalToggleMouse:
+			m.mouse = !m.mouse
+
+		case TerminalNone:
+		}
 
 		return m.act(act)
 	}
@@ -329,6 +341,7 @@ func (m Model) View() tea.View {
 
 	frame := m.app.Frame()
 	info := m.app.Status()
+	bar := barState{Lines: len(frame.Lines), Pending: m.pending, Mouse: m.mouse}
 
 	// The help screen takes the place of the document and of the inspector,
 	// with the status bar left where it was: what file is open and whether it
@@ -344,7 +357,7 @@ func (m Model) View() tea.View {
 	// is what keeps the cursor and the scroll exactly where they were left.
 	if info.Mode == application.ModeHelp {
 		help := m.theme.RenderHelp(m.width, m.height-statusBarRows)
-		help = append(help, m.theme.RenderStatusBar(info, len(frame.Lines), m.pending, m.width))
+		help = append(help, m.theme.RenderStatusBar(info, bar, m.width))
 
 		return fullScreen(strings.Join(help, "\n"), m.mouse)
 	}
@@ -378,7 +391,7 @@ func (m Model) View() tea.View {
 
 	rows = m.withInspector(rows, l)
 	rows = append(rows, m.prompt(l)...)
-	rows = append(rows, m.theme.RenderStatusBar(info, len(frame.Lines), m.pending, m.width))
+	rows = append(rows, m.theme.RenderStatusBar(info, bar, m.width))
 
 	return fullScreen(strings.Join(rows, "\n"), m.mouse)
 }

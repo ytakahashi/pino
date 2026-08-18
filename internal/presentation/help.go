@@ -96,7 +96,6 @@ type helpLine struct {
 // the tables cannot say is said here, beside what they can.
 var contextualEntries = []helpEntry{
 	{Group: helpView, Keys: "wheel", Description: "scroll"},
-	{Group: helpView, Keys: "--no-mouse", Description: "select"},
 	{Group: helpPrompt, Keys: "Enter", Description: "accept"},
 	{Group: helpPrompt, Keys: "Esc", Description: "cancel"},
 	{Group: helpPrompt, Keys: "Ctrl+j", Description: "newline"},
@@ -119,8 +118,11 @@ const helpEntryGap = "  "
 //
 // The sequences come before the single keys within a heading, which is what
 // puts "gg first" beside "G last" in the order a reader would say them.
+// Contextual entries come before terminal bindings so the View row names the
+// wheel first and then the key that gives terminal selection priority.
 func helpEntries() []helpEntry {
-	entries := make([]helpEntry, 0, len(pendingBindings)+len(normalBindings)+len(contextualEntries))
+	entries := make([]helpEntry, 0,
+		len(pendingBindings)+len(normalBindings)+len(contextualEntries)+len(terminalBindings))
 
 	for _, b := range pendingBindings {
 		entries = append(entries, helpEntry{Group: b.Group, Keys: b.HelpKeys, Description: b.Description})
@@ -130,7 +132,13 @@ func helpEntries() []helpEntry {
 		entries = append(entries, helpEntry{Group: b.Group, Keys: b.HelpKeys, Description: b.Description})
 	}
 
-	return append(entries, contextualEntries...)
+	entries = append(entries, contextualEntries...)
+
+	for _, b := range terminalBindings {
+		entries = append(entries, helpEntry{Group: b.Group, Keys: b.HelpKeys, Description: b.Description})
+	}
+
+	return entries
 }
 
 // helpLines is the body of the screen: one line per heading, in order.

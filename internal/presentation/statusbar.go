@@ -13,16 +13,25 @@ import (
 // space left between the two ends of it.
 const separator = "  "
 
+// barState is what the status bar shows that the session does not report: how
+// many lines were drawn, a half-typed prefix, and whether the terminal is being
+// asked for the mouse.
+type barState struct {
+	Lines   int
+	Pending Pending
+	Mouse   bool
+}
+
 // RenderStatusBar draws the strip along the bottom of the screen.
 //
-// The number of lines and the prefix waiting are parameters rather than fields
-// of info, because neither is the session's to report: the lines are already
-// in the hands of whoever draws, and asking the application to count them
-// would render the whole document a second time on every redraw, while a
-// half-typed sequence never reaches the application at all.
-func (t Theme) RenderStatusBar(info application.StatusInfo, lines int, pending Pending, width int) string {
+// The state is separate from info because none of it is the session's to
+// report: the lines are already in the hands of whoever draws, asking the
+// application to count them would render the document again on every redraw,
+// and neither a half-typed sequence nor the terminal's input policy reaches the
+// application at all.
+func (t Theme) RenderStatusBar(info application.StatusInfo, state barState, width int) string {
 	left := " " + strings.Join(leftFields(info), separator)
-	right := strings.Join(rightFields(info, lines, pending), separator) + " "
+	right := strings.Join(rightFields(info, state), separator) + " "
 
 	// Cutting the text before it is styled, rather than bounding the style
 	// with a maximum width: a width set on a style wraps what does not fit,
@@ -68,9 +77,10 @@ func leftFields(info application.StatusInfo) []string {
 	return fields
 }
 
-// rightFields say what state the document is in, and what pino is waiting for.
-func rightFields(info application.StatusInfo, lines int, pending Pending) []string {
-	fields := []string{lineCount(lines), "indent:" + indentLabel(info.Indent)}
+// rightFields say what state the document and terminal are in, and what pino is
+// waiting for.
+func rightFields(info application.StatusInfo, state barState) []string {
+	fields := []string{lineCount(state.Lines), "indent:" + indentLabel(info.Indent)}
 
 	// Two independent things, so two fields rather than one that has to choose
 	// between them: a document whose file has still to be created and which
@@ -83,10 +93,17 @@ func rightFields(info application.StatusInfo, lines int, pending Pending) []stri
 		fields = append(fields, "modified")
 	}
 
+	// Mouse reporting captures clicks and drags at the cost of the terminal's
+	// own text selection. The default stays quiet; only the state that gives
+	// those inputs back to the terminal needs naming.
+	if !state.Mouse {
+		fields = append(fields, "select:on")
+	}
+
 	// A prefix key sits at the far end, as it does in vim: pressing one and
 	// seeing nothing happen is otherwise indistinguishable from a key that
 	// does nothing.
-	if label := pending.String(); label != "" {
+	if label := state.Pending.String(); label != "" {
 		fields = append(fields, label)
 	}
 

@@ -9,11 +9,18 @@ import (
 	"github.com/ytakahashi/pino/internal/application"
 )
 
-// statusText is the bar without styling, with the run of spaces between its
-// two ends collapsed to the separator that divides the fields. What is left is
-// the fields in the order they are drawn.
+// statusText is the bar as it is drawn by default, with mouse reporting on.
 func statusText(theme Theme, info application.StatusInfo, lines int, pending Pending, width int) string {
-	bar := ansi.Strip(theme.RenderStatusBar(info, lines, pending, width))
+	state := barState{Lines: lines, Pending: pending, Mouse: true}
+
+	return statusTextForState(theme, info, state, width)
+}
+
+// statusTextForState is the bar without styling, with the run of spaces
+// between its two ends collapsed to the separator that divides the fields.
+// What is left is the fields in the order they are drawn.
+func statusTextForState(theme Theme, info application.StatusInfo, state barState, width int) string {
+	bar := ansi.Strip(theme.RenderStatusBar(info, state, width))
 
 	return strings.TrimRight(gapPattern.ReplaceAllString(bar, separator), " ")
 }

@@ -162,7 +162,7 @@ func TestRenderStatusBarCarriesANoticeSummary(t *testing.T) {
 
 	// Narrower than the reason is long. What the document is in stays, and the
 	// reason is what gives way — which is the whole of why it is drawn twice.
-	bar := ansi.Strip(Theme{}.RenderStatusBar(info, 11, PendingNone, 60))
+	bar := ansi.Strip(Theme{}.RenderStatusBar(info, barState{Lines: 11, Mouse: true}, 60))
 
 	if !strings.HasSuffix(bar, "11 lines  indent:2  modified ") {
 		t.Errorf("the bar ends %q, want the state of the document", bar)
@@ -198,6 +198,49 @@ func TestRenderStatusBarShowsAPendingPrefix(t *testing.T) {
 	}
 }
 
+// Mouse reporting is the default and needs no label. Turning it off is named
+// for the terminal selection it makes available.
+func TestRenderStatusBarReportsTerminalSelection(t *testing.T) {
+	info := application.StatusInfo{
+		Mode:     application.ModeNormal,
+		ViewMode: application.ViewJSON,
+		Indent:   "  ",
+	}
+
+	enabled := barState{Lines: 11, Mouse: true}
+	if got := statusTextForState(Theme{}, info, enabled, 80); got != " NORMAL  JSON  11 lines  indent:2" {
+		t.Errorf("RenderStatusBar() = %q with mouse reporting on, want no selection state", got)
+	}
+
+	disabled := barState{Lines: 11}
+	if got := statusTextForState(Theme{}, info, disabled, 80); got != " NORMAL  JSON  11 lines  indent:2  select:on" {
+		t.Errorf("RenderStatusBar() = %q with mouse reporting off, want selection on", got)
+	}
+}
+
+// The whole right end survives a narrow screen, including the terminal state.
+// A prefix remains last because it is what pino is waiting for right now.
+func TestRenderStatusBarKeepsTheTerminalSelectionBeforeThePendingPrefix(t *testing.T) {
+	const width = 60
+
+	info := withDirty(withNew(application.StatusInfo{
+		Mode:     application.ModeNormal,
+		ViewMode: application.ViewJSON,
+		Name:     "config.json",
+		Indent:   "  ",
+	}))
+	state := barState{Lines: 11, Pending: PendingG}
+	bar := ansi.Strip(Theme{}.RenderStatusBar(info, state, width))
+
+	if want := "11 lines  indent:2  new  modified  select:on  g "; !strings.HasSuffix(bar, want) {
+		t.Errorf("the bar ends %q, want %q", bar, want)
+	}
+
+	if got := lipgloss.Width(bar); got != width {
+		t.Errorf("width = %d, want %d", got, width)
+	}
+}
+
 // The two ends are drawn at the two edges of the screen.
 func TestRenderStatusBarKeepsTheEndsApart(t *testing.T) {
 	const width = 80
@@ -209,7 +252,7 @@ func TestRenderStatusBarKeepsTheEndsApart(t *testing.T) {
 		Indent:   "  ",
 	}, "/server/port", "number"))
 
-	bar := ansi.Strip(Theme{}.RenderStatusBar(info, 11, PendingNone, width))
+	bar := ansi.Strip(Theme{}.RenderStatusBar(info, barState{Lines: 11, Mouse: true}, width))
 
 	if !strings.HasPrefix(bar, " NORMAL  JSON  config.json") {
 		t.Errorf("the bar begins %q, want the mode and the file", bar)
@@ -237,7 +280,7 @@ func TestRenderStatusBarCutsTheLeftEndFirst(t *testing.T) {
 
 	for _, width := range []int{80, 60, 45, 40} {
 		t.Run(strconv.Itoa(width), func(t *testing.T) {
-			bar := ansi.Strip(Theme{}.RenderStatusBar(info, 11, PendingNone, width))
+			bar := ansi.Strip(Theme{}.RenderStatusBar(info, barState{Lines: 11, Mouse: true}, width))
 
 			if !strings.HasSuffix(bar, "modified ") {
 				t.Errorf("the bar ends %q, want it still to say the document is modified", bar)
@@ -262,7 +305,7 @@ func TestRenderStatusBarDropsTheRightEndOnANarrowScreen(t *testing.T) {
 
 	for _, width := range []int{28, 20, 8, 1} {
 		t.Run(strconv.Itoa(width), func(t *testing.T) {
-			bar := ansi.Strip(Theme{}.RenderStatusBar(info, 11, PendingNone, width))
+			bar := ansi.Strip(Theme{}.RenderStatusBar(info, barState{Lines: 11, Mouse: true}, width))
 
 			if got := lipgloss.Width(bar); got != width {
 				t.Errorf("width = %d, want %d", got, width)
@@ -296,7 +339,7 @@ func TestRenderStatusBarNeutralisesThePointer(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			info := application.StatusInfo{Indent: "  ", Pointer: tc.pointer, Type: "string"}
 
-			got := Theme{}.RenderStatusBar(info, 11, PendingNone, 80)
+			got := Theme{}.RenderStatusBar(info, barState{Lines: 11, Mouse: true}, 80)
 
 			if strings.ContainsRune(got, '\n') {
 				t.Errorf("RenderStatusBar() spans several rows: %q", got)
@@ -326,7 +369,7 @@ func TestRenderStatusBarOccupiesExactlyOneRowOfTheWidth(t *testing.T) {
 
 	for _, width := range []int{120, 45, 12, 1} {
 		t.Run(strconv.Itoa(width), func(t *testing.T) {
-			got := DefaultTheme().RenderStatusBar(info, 11, PendingNone, width)
+			got := DefaultTheme().RenderStatusBar(info, barState{Lines: 11, Mouse: true}, width)
 
 			if strings.Contains(got, "\n") {
 				t.Fatalf("RenderStatusBar() spans several rows: %q", got)
@@ -367,7 +410,7 @@ func TestRenderStatusBarNeutralisesTheFileName(t *testing.T) {
 
 			// The zero theme adds no escapes of its own, so what is left in
 			// the result came from the name.
-			got := Theme{}.RenderStatusBar(info, 11, PendingNone, 80)
+			got := Theme{}.RenderStatusBar(info, barState{Lines: 11, Mouse: true}, 80)
 
 			if strings.ContainsRune(got, '\n') {
 				t.Errorf("RenderStatusBar() spans several rows: %q", got)
