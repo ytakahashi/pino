@@ -293,6 +293,39 @@ func TestViewAsksForTheMouse(t *testing.T) {
 	}
 }
 
+// The status bar reports the input policy used by the same frame. Help keeps
+// showing that state even though terminal keys take effect only after it is
+// closed.
+func TestViewReportsTerminalSelection(t *testing.T) {
+	bar := func(m Model) string {
+		t.Helper()
+
+		drawn := rows(t, m)
+
+		return drawn[len(drawn)-1]
+	}
+
+	m := sized(t, openTestApp(t), 60, 10)
+	if got := bar(m); strings.Contains(got, "select:on") {
+		t.Fatalf("the initial bar reads %q, want no terminal selection state", got)
+	}
+
+	selecting := press(t, m, key('m'))
+	if got := bar(selecting); !strings.Contains(got, "select:on") {
+		t.Errorf("the bar after m reads %q, want terminal selection on", got)
+	}
+
+	help := press(t, selecting, key('?'))
+	if got := bar(help); !strings.Contains(got, "select:on") {
+		t.Errorf("the bar in help reads %q, want terminal selection on", got)
+	}
+
+	restored := press(t, help, key('q'), key('m'))
+	if got := bar(restored); strings.Contains(got, "select:on") {
+		t.Errorf("the bar after restoring mouse reporting reads %q, want no selection state", got)
+	}
+}
+
 // However the terminal is shaped, the cursor is somewhere on it.
 func TestViewKeepsTheCursorOnScreen(t *testing.T) {
 	sizes := []struct{ width, height int }{

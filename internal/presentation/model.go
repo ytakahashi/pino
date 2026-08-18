@@ -341,6 +341,7 @@ func (m Model) View() tea.View {
 
 	frame := m.app.Frame()
 	info := m.app.Status()
+	bar := barState{Lines: len(frame.Lines), Pending: m.pending, Mouse: m.mouse}
 
 	// The help screen takes the place of the document and of the inspector,
 	// with the status bar left where it was: what file is open and whether it
@@ -356,7 +357,7 @@ func (m Model) View() tea.View {
 	// is what keeps the cursor and the scroll exactly where they were left.
 	if info.Mode == application.ModeHelp {
 		help := m.theme.RenderHelp(m.width, m.height-statusBarRows)
-		help = append(help, m.theme.RenderStatusBar(info, len(frame.Lines), m.pending, m.width))
+		help = append(help, m.theme.RenderStatusBar(info, bar, m.width))
 
 		return fullScreen(strings.Join(help, "\n"), m.mouse)
 	}
@@ -390,7 +391,7 @@ func (m Model) View() tea.View {
 
 	rows = m.withInspector(rows, l)
 	rows = append(rows, m.prompt(l)...)
-	rows = append(rows, m.theme.RenderStatusBar(info, len(frame.Lines), m.pending, m.width))
+	rows = append(rows, m.theme.RenderStatusBar(info, bar, m.width))
 
 	return fullScreen(strings.Join(rows, "\n"), m.mouse)
 }
