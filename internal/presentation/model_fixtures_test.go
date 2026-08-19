@@ -194,15 +194,7 @@ func openTestApp(t *testing.T) *application.App {
 func sized(t *testing.T, app *application.App, width, height int) Model {
 	t.Helper()
 
-	return sizedWithConfig(t, app, width, height, ModelConfig{})
-}
-
-// sizedWithConfig is a model built with an explicit terminal policy and then
-// told how much room it has.
-func sizedWithConfig(t *testing.T, app *application.App, width, height int, cfg ModelConfig) Model {
-	t.Helper()
-
-	next, _ := NewModel(app, DefaultTheme(), cfg).Update(
+	next, _ := NewModel(app, DefaultTheme()).Update(
 		tea.WindowSizeMsg{Width: width, Height: height},
 	)
 
