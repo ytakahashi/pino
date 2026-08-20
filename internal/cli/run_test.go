@@ -3,9 +3,7 @@ package cli
 import (
 	"bytes"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"io/fs"
 	"math"
 	"os"
@@ -14,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ytakahashi/pino/internal/application"
 	"github.com/ytakahashi/pino/internal/infrastructure/jsonparser"
 )
 
@@ -27,7 +24,8 @@ func TestRunReportsUsageErrors(t *testing.T) {
 	}{
 		{"no arguments", nil},
 		{"two files", []string{"a.json", "b.json"}},
-		{"unknown flag", []string{"-nope", "a.json"}},
+		{"unknown short option", []string{"-nope", "a.json"}},
+		{"unknown long option", []string{"--nope", "a.json"}},
 	}
 
 	for _, tt := range tests {
@@ -56,10 +54,16 @@ func TestRunReportsUsageErrors(t *testing.T) {
 func TestUnknownFlagIsNamed(t *testing.T) {
 	t.Parallel()
 
-	_, _, stderr := run(t, "-nope")
+	for _, arg := range []string{"-nope", "--nope"} {
+		t.Run(arg, func(t *testing.T) {
+			t.Parallel()
 
-	if !strings.Contains(stderr, "nope") {
-		t.Errorf("stderr = %q, want it to name the flag", stderr)
+			_, _, stderr := run(t, arg)
+
+			if !strings.Contains(stderr, "nope") {
+				t.Errorf("stderr = %q, want it to name the option", stderr)
+			}
+		})
 	}
 }
 
@@ -67,42 +71,61 @@ func TestUnknownFlagIsNamed(t *testing.T) {
 func TestHelpPrintsUsage(t *testing.T) {
 	t.Parallel()
 
-	code, stdout, stderr := run(t, "-help")
+	for _, arg := range []string{"--help", "-h"} {
+		t.Run(arg, func(t *testing.T) {
+			t.Parallel()
 
-	if code != exitOK {
-		t.Errorf("exit code = %d, want %d", code, exitOK)
-	}
+			code, stdout, stderr := run(t, arg)
 
-	if !strings.Contains(stdout, "usage: pino") {
-		t.Errorf("stdout = %q, want it to describe the usage", stdout)
-	}
+			if code != exitOK {
+				t.Errorf("exit code = %d, want %d", code, exitOK)
+			}
 
-	for _, flag := range []string{"-version", "-indent"} {
-		if !strings.Contains(stdout, flag) {
-			t.Errorf("stdout = %q, want it to list %s", stdout, flag)
-		}
-	}
+			if !strings.Contains(stdout, "usage: pino") {
+				t.Errorf("stdout = %q, want it to describe the usage", stdout)
+			}
 
-	if stderr != "" {
-		t.Errorf("stderr = %q, want it empty", stderr)
+			for _, option := range []string{"-h, --help", "-i, --indent int", "-v, --version"} {
+				if !strings.Contains(stdout, option) {
+					t.Errorf("stdout = %q, want it to list %s", stdout, option)
+				}
+			}
+
+			if stderr != "" {
+				t.Errorf("stderr = %q, want it empty", stderr)
+			}
+		})
 	}
 }
 
-func TestVersionPrintsTheBuildVersion(t *testing.T) {
+func TestLongAndShortVersionOptionsPrintTheSameBuildVersion(t *testing.T) {
 	t.Parallel()
 
-	code, stdout, stderr := run(t, "-version")
+	longCode, longStdout, longStderr := run(t, "--version")
+	shortCode, shortStdout, shortStderr := run(t, "-v")
 
-	if code != exitOK {
-		t.Errorf("exit code = %d, want %d", code, exitOK)
+	if shortCode != longCode {
+		t.Errorf("-v exit code = %d, want --version exit code %d", shortCode, longCode)
 	}
 
-	if !strings.HasPrefix(stdout, "pino ") || !strings.HasSuffix(stdout, "\n") {
-		t.Errorf("stdout = %q, want one line naming pino", stdout)
+	if shortStdout != longStdout {
+		t.Errorf("-v stdout = %q, want --version stdout %q", shortStdout, longStdout)
 	}
 
-	if stderr != "" {
-		t.Errorf("stderr = %q, want it empty", stderr)
+	if shortStderr != longStderr {
+		t.Errorf("-v stderr = %q, want --version stderr %q", shortStderr, longStderr)
+	}
+
+	if longCode != exitOK {
+		t.Errorf("exit code = %d, want %d", longCode, exitOK)
+	}
+
+	if !strings.HasPrefix(longStdout, "pino ") || !strings.HasSuffix(longStdout, "\n") {
+		t.Errorf("stdout = %q, want one line naming pino", longStdout)
+	}
+
+	if longStderr != "" {
+		t.Errorf("stderr = %q, want it empty", longStderr)
 	}
 }
 
@@ -111,8 +134,45 @@ func TestVersionPrintsTheBuildVersion(t *testing.T) {
 func TestVersionNeedsNoFile(t *testing.T) {
 	t.Parallel()
 
-	if code, _, _ := run(t, "-version"); code != exitOK {
+	if code, _, _ := run(t, "--version"); code != exitOK {
 		t.Errorf("exit code = %d, want %d", code, exitOK)
+	}
+}
+
+func TestRunRefusesUnsupportedOptionSpellings(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string][]string{
+		"single-dash help":    {"-help"},
+		"single-dash version": {"-version"},
+		"single-dash indent":  {"-indent", "2"},
+		"long short help":     {"--h"},
+		"long short version":  {"--v"},
+		"long short indent":   {"--i", "2"},
+
+		// pflag records h before finding the invalid x. Keep this case to
+		// ensure Run gives the parse error precedence over the help request.
+		"help with unknown shorthand": {"-hx"},
+	}
+
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			code, stdout, stderr := run(t, args...)
+
+			if code != exitUsage {
+				t.Errorf("exit code = %d, want %d", code, exitUsage)
+			}
+
+			if stdout != "" {
+				t.Errorf("stdout = %q, want it empty", stdout)
+			}
+
+			if !strings.Contains(stderr, "usage: pino") {
+				t.Errorf("stderr = %q, want it to describe the usage", stderr)
+			}
+		})
 	}
 }
 
@@ -203,69 +263,6 @@ func TestOpeningAPathThatHoldsNothingStartsADocument(t *testing.T) {
 	}
 }
 
-// Every flag pino takes is one config away from the session it starts, and
-// "not given" is one of the answers each of them has. A width of zero asks for
-// no indentation while the flag being absent asks for the file's own.
-func TestTheCommandLineIsReadIntoAProgramConfig(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]struct {
-		args []string
-		want ProgramConfig
-	}{
-		"not given": {
-			args: nil,
-			want: ProgramConfig{},
-		},
-		"none at all": {
-			args: []string{"-indent", "0"},
-			want: ProgramConfig{Application: application.Config{IndentOverride: "", OverrideIndent: true}},
-		},
-		"one space": {
-			args: []string{"-indent", "1"},
-			want: ProgramConfig{Application: application.Config{IndentOverride: " ", OverrideIndent: true}},
-		},
-		"two spaces": {
-			args: []string{"-indent", "2"},
-			want: ProgramConfig{Application: application.Config{IndentOverride: "  ", OverrideIndent: true}},
-		},
-		"four spaces": {
-			args: []string{"-indent", "4"},
-			want: ProgramConfig{Application: application.Config{IndentOverride: "    ", OverrideIndent: true}},
-		},
-		"the widest there is": {
-			args: []string{"-indent", strconv.Itoa(maxIndent)},
-			want: ProgramConfig{Application: application.Config{
-				IndentOverride: strings.Repeat(" ", maxIndent), OverrideIndent: true,
-			}},
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			fs := flag.NewFlagSet("pino", flag.ContinueOnError)
-			fs.SetOutput(io.Discard)
-
-			indent := fs.Int("indent", 0, "")
-
-			if err := fs.Parse(tc.args); err != nil {
-				t.Fatalf("Parse(%v): %v", tc.args, err)
-			}
-
-			got, err := configFrom(fs, *indent)
-			if err != nil {
-				t.Fatalf("configFrom: %v", err)
-			}
-
-			if got != tc.want {
-				t.Errorf("configFrom(%v) = %#v, want %#v", tc.args, got, tc.want)
-			}
-		})
-	}
-}
-
 // A width that is not a width is a misuse of the command line, which is a
 // different thing from a file that could not be opened, and says so with the
 // exit code.
@@ -273,16 +270,16 @@ func TestRunRefusesAnIndentThatIsNotAWidth(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string][]string{
-		"negative":     {"-indent", "-2"},
-		"not a number": {"-indent", "wide"},
-		"fractional":   {"-indent", "2.5"},
+		"negative":     {"--indent", "-2"},
+		"not a number": {"--indent", "wide"},
+		"fractional":   {"--indent", "2.5"},
 
 		// A width no document could use is a mistyped one. The largest of
 		// them is a string that cannot be built at all, so it has to be
 		// refused rather than repeated into.
-		"wider than pino writes": {"-indent", strconv.Itoa(maxIndent + 1)},
-		"absurd":                 {"-indent", "1000000"},
-		"the largest there is":   {"-indent", strconv.FormatInt(math.MaxInt64, 10)},
+		"wider than pino writes": {"--indent", strconv.Itoa(maxIndent + 1)},
+		"absurd":                 {"--indent", "1000000"},
+		"the largest there is":   {"--indent", strconv.FormatInt(math.MaxInt64, 10)},
 	}
 
 	for name, args := range tests {

@@ -30,6 +30,13 @@ linters:
       # Concrete adapters are injected by cli, which is the sole place
       # allowed to import infrastructure.
       rules:
+        cli-library:
+          files:
+            - $all
+            - '!**/internal/cli/**'
+          deny:
+            - pkg: github.com/spf13/pflag
+              desc: command-line libraries stay behind internal/cli
         domain:
           files:
             - '**/internal/domain/**'
