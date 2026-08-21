@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   BIN: '{{.ROOT_DIR}}/bin'
+  DIST: '{{.ROOT_DIR}}/dist'
   # .golangci-lint-version is the single source of truth for the linter version.
   GOLANGCI_VERSION:
     sh: cat .golangci-lint-version
@@ -82,6 +83,33 @@ tasks:
     desc: Build the binary into bin/
     cmds:
       - go build -o {{.BIN}}/pino ./cmd/pino
+
+  dist:
+    desc: Cross-build release archives into dist/
+    vars:
+      VERSION:
+        sh: git describe --tags --always --dirty
+      PLATFORMS: darwin/arm64 linux/amd64 linux/arm64
+    cmds:
+      - rm -rf "{{.DIST}}"
+      - mkdir -p "{{.DIST}}"
+      - |
+        set -eu
+        for platform in {{.PLATFORMS}}; do
+          os="${platform%/*}"
+          arch="${platform#*/}"
+          staging_dir="{{.DIST}}/${os}_${arch}"
+          archive="{{.DIST}}/pino_{{.VERSION}}_${os}_${arch}.tar.gz"
+
+          mkdir -p "${staging_dir}"
+          # pino has no cgo dependency, so cross-built binaries can be
+          # distributed without a target-specific C toolchain.
+          CGO_ENABLED=0 GOOS="${os}" GOARCH="${arch}" \
+            go build -trimpath -o "${staging_dir}/pino" ./cmd/pino
+          cp LICENSE README.md "${staging_dir}/"
+          tar -czf "${archive}" -C "${staging_dir}" pino LICENSE README.md
+        done
+      - cd "{{.DIST}}" && shasum -a 256 pino_*.tar.gz > checksums.txt
 
   check:
     desc: Run every check

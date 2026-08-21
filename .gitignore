@@ -8,8 +8,9 @@
 *.so
 *.dylib
 
-# Build output and development tools installed by `task tools`
+# Build output, release artifacts, and development tools installed by `task tools`
 /bin/
+/dist/
 
 # Test binary, built with `go test -c`
 *.test
