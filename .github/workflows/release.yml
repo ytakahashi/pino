@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Go derives the module version from the tag available at build time.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: arduino/setup-task@v3
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build release artifacts
+        run: task dist
+
+      - name: Verify release artifacts
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          version="$(./dist/linux_amd64/pino --version)"
+          if [[ "${version}" != "pino ${TAG} ("*")" ]]; then
+            echo "Expected a clean ${TAG} build, got: ${version}" >&2
+            exit 1
+          fi
+          if [[ "${version}" == *", modified)" ]]; then
+            echo "Release binaries must be built from a clean checkout." >&2
+            exit 1
+          fi
+
+          for platform in darwin_arm64 linux_amd64 linux_arm64; do
+            test -f "dist/pino_${TAG}_${platform}.tar.gz"
+          done
+
+          cd dist
+          shasum -a 256 -c checksums.txt
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          release_options=(--verify-tag --title "${TAG}")
+          if [[ "${TAG}" == *-* ]]; then
+            release_options+=(--generate-notes --prerelease --latest=false)
+          elif [[ "${TAG}" == "v0.1.0" ]]; then
+            # The first release uses the annotated tag message as its curated notes.
+            release_options+=(--notes-from-tag)
+          else
+            release_options+=(--generate-notes)
+          fi
+
+          gh release create "${TAG}" \
+            "dist/pino_${TAG}_darwin_arm64.tar.gz" \
+            "dist/pino_${TAG}_linux_amd64.tar.gz" \
+            "dist/pino_${TAG}_linux_arm64.tar.gz" \
+            dist/checksums.txt \
+            "${release_options[@]}"
