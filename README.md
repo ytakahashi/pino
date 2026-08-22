@@ -23,12 +23,8 @@ Choose a version from the
 The commands install the macOS build for Apple silicon:
 
 ```sh
-mkdir pino-{version}
-curl -sSfL https://github.com/ytakahashi/pino/releases/download/{version}/pino_{version}_darwin_arm64.tar.gz \
-  | tar -xz -C pino-{version}
-sudo mkdir -p /usr/local/bin
-sudo install -m 0755 pino-{version}/pino /usr/local/bin/pino
-rm -rf pino-{version}
+curl -sSfL https://github.com/ytakahashi/pino/releases/download/{version}/pino_{version}_darwin_arm64.tar.gz | tar -xz
+install -m 0755 pino /usr/local/bin/pino # or somewhere under $PATH
 ```
 
 For another supported platform, use the same commands after replacing
