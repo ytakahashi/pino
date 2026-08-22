@@ -14,6 +14,13 @@ An interactive terminal editor for JSON files.
 - Add, delete, rename, and change the type of values, with undo and redo.
 - Preserve the detected indentation and newline style when saving.
 
+### Views
+
+- JSON View presents the document as formatted JSON.
+- Tree View presents the same document as a compact hierarchy with details about
+  the selected node.
+- Press `Tab` to switch views; the same node remains selected.
+
 ## Install
 
 Choose a version from the
@@ -23,7 +30,7 @@ Choose a version from the
 The commands install the macOS build for Apple silicon:
 
 ```sh
-curl -sSfL https://github.com/ytakahashi/pino/releases/download/{version}/pino_{version}_darwin_arm64.tar.gz | tar -xz
+curl -sSfL https://github.com/ytakahashi/pino/releases/download/{version}/pino_{version}_darwin_arm64.tar.gz | tar -xz pino
 install -m 0755 pino /usr/local/bin/pino # or somewhere under $PATH
 ```
 
@@ -64,12 +71,6 @@ available keys.
 | `Ctrl+s`       | Save                            |
 | `q` / `Ctrl+c` | Quit                            |
 | `?`            | Show the complete key reference |
-
-## Views
-
-JSON View presents the document as formatted JSON. Tree View presents the same
-document as a compact hierarchy with details about the selected node. Press
-`Tab` to switch views; the same node remains selected.
 
 ## Options
 
