@@ -2,9 +2,23 @@
   "server": {
     "host": "localhost",
     "port": 8080,
-    "features": [
-      "search",
-      "history"
-    ]
-  }
+    "tls": true
+  },
+  "database": {
+    "driver": "postgres",
+    "host": "db.internal",
+    "pool": {
+      "min": 2,
+      "max": 10
+    }
+  },
+  "replicas": [
+    "us-east-1",
+    "eu-west-1"
+  ],
+  "logging": {
+    "level": "info",
+    "format": "json"
+  },
+  "maintenance": null
 }
