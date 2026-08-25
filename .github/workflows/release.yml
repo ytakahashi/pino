@@ -67,9 +67,6 @@ jobs:
           release_options=(--verify-tag --title "${TAG}")
           if [[ "${TAG}" == *-* ]]; then
             release_options+=(--generate-notes --prerelease --latest=false)
-          elif [[ "${TAG}" == "v0.1.0" ]]; then
-            # The first release uses the annotated tag message as its curated notes.
-            release_options+=(--notes-from-tag)
           else
             release_options+=(--generate-notes)
           fi

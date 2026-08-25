@@ -29,11 +29,11 @@ tasks:
       - test -x {{.BIN}}/golangci-lint
       - '{{.BIN}}/golangci-lint version 2>&1 | grep -q {{.GOLANGCI_SEMVER}}'
     cmds:
-      # golangci-lint does not support installation via `go install` or the
-      # go.mod tool directive, so the official script is used instead.
+      # The release binaries are tested by the golangci-lint maintainers and do
+      # not share dependencies with the application module.
       - >-
         curl -sSfL
-        https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh
+        https://golangci-lint.run/install.sh
         | sh -s -- -b {{.BIN}} {{.GOLANGCI_VERSION}}
 
   tools:dprint:
