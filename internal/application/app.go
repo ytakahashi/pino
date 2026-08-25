@@ -72,6 +72,11 @@ type App struct {
 	view   ViewState
 	source Source
 
+	// search is the last accepted term and values derived from the current
+	// root and cursor. settle rebuilds the derived values after it has made the
+	// cursor resolvable, rather than edits trying to carry old paths forward.
+	search searchState
+
 	// flow is what is in progress, and nil when nothing is.
 	//
 	// The mode is derived from it rather than held beside it. Two fields could
@@ -137,6 +142,10 @@ func (a *App) Open(path string) error {
 	// outlive it: a cursor, a scroll position and a folded set carried over
 	// from another file would point at nodes this one does not have.
 	a.view = NewViewState()
+	// A search describes the document being read. Reload keeps it because it
+	// replaces that document in place; opening another document starts without
+	// a term carried over from the previous one.
+	a.search = searchState{}
 
 	return nil
 }
@@ -226,9 +235,10 @@ func (a *App) Frame() Frame {
 	lines := a.render()
 
 	return Frame{
-		Lines:  lines,
-		Cursor: indexOf(lines, a.view.Cursor),
-		Scroll: a.view.Scroll,
+		Lines:   lines,
+		Cursor:  indexOf(lines, a.view.Cursor),
+		Scroll:  a.view.Scroll,
+		Matches: matchingRows(lines, a.search.hits),
 	}
 }
 
@@ -348,6 +358,15 @@ func (a *App) Do(act Action) []Effect {
 	case ActionToggleView:
 		a.toggleView()
 
+	case ActionSearch:
+		return a.beginSearch()
+
+	case ActionSearchNext:
+		a.searchNext()
+
+	case ActionSearchPrev:
+		a.searchPrev()
+
 	case ActionShowHelp:
 		a.showHelp()
 
@@ -372,10 +391,11 @@ func (a *App) Do(act Action) []Effect {
 	case ActionChangeType:
 		a.changeType()
 
-	// The four below answer a prompt. They do nothing when no edit is in
+	// The three below answer a prompt. They do nothing when no flow is in
 	// progress: they cannot arrive then, since nothing is on screen to send
 	// them, but an Action that could not be delivered is a better answer than
-	// one that reaches into a flow that is not there.
+	// one that reaches into a flow that is not there. Text answers are routed
+	// to the flow that put the input box on screen.
 	case ActionPromptChange:
 		a.validate(act.Text)
 
@@ -491,6 +511,16 @@ func (a *App) settle(lines []documentview.Line) {
 	}
 
 	a.view.Scroll = clampScroll(scroll, row, a.height, len(lines))
+
+	var root domain.Node
+	if a.doc != nil {
+		root = a.doc.Root()
+	}
+
+	// Cursor correction has to precede this. searchState treats a cursor that
+	// does not resolve as following every hit, which is useful as a safe
+	// fallback but is not the session state navigation should observe.
+	a.search.refresh(root, a.view.Cursor)
 }
 
 // moveBy selects the row step leads to, staying put when it leads nowhere.

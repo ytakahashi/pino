@@ -183,3 +183,42 @@ func TestNewViewStateShortensLongValues(t *testing.T) {
 		t.Errorf("MaxStrLen = %d, want a limit; long values would be drawn in full", got)
 	}
 }
+
+func TestRevealUnfoldsEveryAncestorAndLeavesTheTargetAlone(t *testing.T) {
+	t.Parallel()
+
+	target := path(
+		domain.KeySegment("server"),
+		domain.KeySegment("cache"),
+		domain.KeySegment("options"),
+	)
+	view := foldedState(t, "", "/server", "/server/cache", "/server/cache/options", "/other")
+
+	if !view.Reveal(target) {
+		t.Fatal("Reveal() = false, want ancestors to be unfolded")
+	}
+
+	want := []string{"/other", "/server/cache/options"}
+	if got := foldsOf(view); !slices.Equal(got, want) {
+		t.Errorf("folded %v, want %v", got, want)
+	}
+}
+
+func TestRevealReportsWhenNothingChanges(t *testing.T) {
+	t.Parallel()
+
+	view := foldedState(t, "/server")
+
+	if view.Reveal(domain.Path{}) {
+		t.Error("Reveal(root) = true, want false")
+	}
+
+	if view.Reveal(path(domain.KeySegment("other"))) {
+		t.Error("Reveal(an already visible node) = true, want false")
+	}
+
+	want := []string{"/server"}
+	if got := foldsOf(view); !slices.Equal(got, want) {
+		t.Errorf("folded %v, want %v", got, want)
+	}
+}

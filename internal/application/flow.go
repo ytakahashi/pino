@@ -14,6 +14,9 @@ package application
 // asking — a confirmation counts the nodes it would discard — and never
 // writes to it. What an answer does to the document happens where the answer
 // is taken.
+//
+// A flow whose prompt returns PromptText must also implement textFlow. Without
+// it, the flow can put an input box on screen whose text no flow reads.
 type flow interface {
 	// mode is which of the modes this flow puts the session in. Deriving it is
 	// what makes "a confirmation with nothing to confirm" a state nobody can
@@ -28,4 +31,35 @@ type flow interface {
 	// and the keys accepted are written in one place and cannot drift apart.
 	// A key the prompt does not offer does nothing.
 	choose(a *App, key rune) []Effect
+}
+
+// textFlow is a flow whose answer arrives as the whole contents of an input
+// box. The terminal uses the same two Actions for every such box; the flow
+// that put it on screen owns validating and accepting its text.
+type textFlow interface {
+	validate(a *App, text string)
+	submit(a *App, text string)
+}
+
+var (
+	_ textFlow = (*editFlow)(nil)
+	_ textFlow = (*searchFlow)(nil)
+)
+
+func (a *App) validate(text string) {
+	// Text Actions can only come from the input box a textFlow requested.
+	// Ignore direct Actions aimed at another flow instead of letting an
+	// unrelated prompt consume text it did not ask for.
+	if f, ok := a.flow.(textFlow); ok {
+		f.validate(a, text)
+	}
+}
+
+func (a *App) submit(text string) {
+	// Keep the same boundary as validate: terminal input cannot submit text
+	// without a text box, and callers constructing Actions directly must not
+	// route it into a choice or confirmation flow.
+	if f, ok := a.flow.(textFlow); ok {
+		f.submit(a, text)
+	}
 }

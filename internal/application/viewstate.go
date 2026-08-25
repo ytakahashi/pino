@@ -126,6 +126,26 @@ func (v *ViewState) Expand(p domain.Path) bool {
 	return true
 }
 
+// Reveal unfolds every ancestor of p so that p has a row. p itself is left as
+// it was: a folded container still has a row and can be selected without
+// changing how its own contents are viewed.
+func (v *ViewState) Reveal(p domain.Path) bool {
+	if p.IsRoot() {
+		return false
+	}
+
+	changed := false
+	for ancestor := p.Parent(); ; ancestor = ancestor.Parent() {
+		if v.Expand(ancestor) {
+			changed = true
+		}
+
+		if ancestor.IsRoot() {
+			return changed
+		}
+	}
+}
+
 // IsCollapsed reports whether the node at p is folded away.
 func (v *ViewState) IsCollapsed(p domain.Path) bool {
 	_, folded := v.Collapsed[p.String()]

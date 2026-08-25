@@ -88,9 +88,12 @@ func TestStatusDoesNotRender(t *testing.T) {
 	if err := app.Open("a.json"); err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+	app.search = searchState{query: newQuery("a"), hits: []domain.Path{{}}, on: true}
 
 	before := renderer.calls
-	_ = app.Status()
+	if got := app.Status().Search; got == nil || got.Query != "a" || got.At != 1 || got.Total != 1 {
+		t.Errorf("Status().Search = %+v, want a 1/1 search", got)
+	}
 
 	if renderer.calls != before {
 		t.Errorf("Status() rendered %d times, want none", renderer.calls-before)

@@ -125,20 +125,6 @@ func revisionLabel(op operation, p domain.Path) string {
 	return verb + " " + pointerText(p)
 }
 
-// editing is the edit in progress, and false when the session is in another
-// flow or in none.
-//
-// The answers to a prompt are taken through here rather than from the field
-// directly, so that a text answer arriving while a quit is being confirmed is
-// answered by doing nothing. The terminal cannot send one — the prompt on
-// screen is the one the flow described — but an Action driven straight at this
-// layer must not reach into a flow that is not there.
-func (a *App) editing() (*editFlow, bool) {
-	f, ok := a.flow.(*editFlow)
-
-	return f, ok
-}
-
 // selected is the node the cursor is on.
 //
 // It reports false when no document is open as well as when the cursor names
@@ -357,9 +343,8 @@ func (a *App) beginType() {
 // tree, so trying one and throwing the result away costs the depth of the
 // document and needs no second implementation of the rules — and a second one
 // is exactly what could say "ok" to an edit the tree would refuse.
-func (a *App) validate(text string) {
-	f, ok := a.editing()
-	if !ok || f.step != stepText {
+func (f *editFlow) validate(a *App, text string) {
+	if f.step != stepText {
 		return
 	}
 
@@ -385,9 +370,8 @@ func (a *App) validate(text string) {
 // Staying open is what makes a refusal recoverable: the text is still in the
 // widget, and a key that could not be committed is corrected rather than typed
 // again from the start.
-func (a *App) submit(text string) {
-	f, ok := a.editing()
-	if !ok || f.step != stepText {
+func (f *editFlow) submit(a *App, text string) {
+	if f.step != stepText {
 		return
 	}
 
