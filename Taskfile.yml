@@ -9,8 +9,6 @@ vars:
   # `golangci-lint version` prints the number without the leading "v".
   GOLANGCI_SEMVER:
     sh: sed 's/^v//' .golangci-lint-version
-  GO_VERSION:
-    sh: go env GOVERSION
   DPRINT_VERSION:
     sh: cat .dprint-version
 
@@ -30,13 +28,13 @@ tasks:
     status:
       - test -x {{.BIN}}/golangci-lint
       - '{{.BIN}}/golangci-lint version 2>&1 | grep -q {{.GOLANGCI_SEMVER}}'
-      # golangci-lint cannot analyze a newer Go version than the one used to
-      # build it, so rebuild it whenever the active Go toolchain changes.
-      - '{{.BIN}}/golangci-lint version 2>&1 | grep -q "built with {{.GO_VERSION}}"'
     cmds:
-      # Build the pinned version with the active Go toolchain. Release binaries
-      # can lag behind a newly released Go version and fail to load packages.
-      - GOBIN={{.BIN}} go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_VERSION}}
+      # The release binaries are tested by the golangci-lint maintainers and do
+      # not share dependencies with the application module.
+      - >-
+        curl -sSfL
+        https://golangci-lint.run/install.sh
+        | sh -s -- -b {{.BIN}} {{.GOLANGCI_VERSION}}
 
   tools:dprint:
     internal: true
