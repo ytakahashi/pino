@@ -60,6 +60,9 @@ func TestResolveMapsNormalModeKeysToActions(t *testing.T) {
 		{name: "G goes to the end", key: shifted('g', 'G'), want: application.ActionMoveLast{}},
 		{name: "ctrl+d reads on", key: ctrl('d'), want: application.ActionScrollHalfDown{}},
 		{name: "ctrl+u reads back", key: ctrl('u'), want: application.ActionScrollHalfUp{}},
+		{name: "slash starts a search", key: key('/'), want: application.ActionSearch{}},
+		{name: "n goes to the next search match", key: key('n'), want: application.ActionSearchNext{}},
+		{name: "N goes to the previous search match", key: shifted('n', 'N'), want: application.ActionSearchPrev{}},
 
 		{name: "q quits", key: key('q'), want: application.ActionQuit{}},
 		{
@@ -278,7 +281,10 @@ func TestResolveIgnoresNormalModeKeysOutsideNormalMode(t *testing.T) {
 	// file: a key that reaches a prompt or a text box must not save the
 	// document behind it. Ctrl+C is the one exception, and it has a test of
 	// its own.
-	keys := map[string]tea.KeyPressMsg{"q": key('q'), "ctrl+s": ctrl('s')}
+	keys := map[string]tea.KeyPressMsg{
+		"q": key('q'), "ctrl+s": ctrl('s'),
+		"/": key('/'), "n": key('n'), "N": shifted('n', 'N'),
+	}
 
 	for _, mode := range allModes {
 		if mode == application.ModeNormal {

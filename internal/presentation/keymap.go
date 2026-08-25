@@ -138,6 +138,18 @@ var normalBindings = []binding{
 		Keys: []string{"ctrl+u"}, Action: application.ActionScrollHalfUp{},
 		Group: helpJump, HelpKeys: "Ctrl+u", Description: "up",
 	},
+	{
+		Keys: []string{"/"}, Action: application.ActionSearch{},
+		Group: helpSearch, HelpKeys: "/", Description: "search",
+	},
+	{
+		Keys: []string{"n"}, Action: application.ActionSearchNext{},
+		Group: helpSearch, HelpKeys: "n", Description: "next",
+	},
+	{
+		Keys: []string{"N"}, Action: application.ActionSearchPrev{},
+		Group: helpSearch, HelpKeys: "N", Description: "prev",
+	},
 
 	// Editing. What Enter does depends on what is selected, which is why one
 	// key covers six answers: this table says that the document is to be acted

@@ -24,7 +24,9 @@ import (
 func TestHelpReadsInOneOrder(t *testing.T) {
 	t.Parallel()
 
-	want := []string{"Move", "Jump", "Fold", "View", "Edit", "Structure", "History", "Prompt"}
+	want := []string{
+		"Move", "Jump", "Search", "Fold", "View", "Edit", "Structure", "History", "Prompt",
+	}
 
 	got := make([]string, 0, len(want))
 	for _, l := range helpLines() {

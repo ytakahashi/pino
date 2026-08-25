@@ -22,6 +22,7 @@ const (
 	helpNone helpGroup = iota
 	helpMove
 	helpJump
+	helpSearch
 	helpFold
 	helpView
 	helpEdit
@@ -36,6 +37,7 @@ const (
 var helpGroups = []helpGroup{
 	helpMove,
 	helpJump,
+	helpSearch,
 	helpFold,
 	helpView,
 	helpEdit,
@@ -51,6 +53,8 @@ func (g helpGroup) String() string {
 		return "Move"
 	case helpJump:
 		return "Jump"
+	case helpSearch:
+		return "Search"
 	case helpFold:
 		return "Fold"
 	case helpView:

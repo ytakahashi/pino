@@ -1,12 +1,14 @@
 package presentation
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ytakahashi/pino/internal/application"
 	"github.com/ytakahashi/pino/internal/application/documentview"
@@ -27,11 +29,11 @@ func TestViewIsEmptyBeforeTheSizeIsKnown(t *testing.T) {
 }
 
 func TestViewFillsTheScreen(t *testing.T) {
-	m := sized(t, openTestApp(t), 60, 10)
+	m := sized(t, openTestApp(t), minWidth, minHeight)
 
 	got := rows(t, m)
-	if len(got) != 10 {
-		t.Fatalf("View() drew %d rows, want 10", len(got))
+	if len(got) != minHeight {
+		t.Fatalf("View() drew %d rows, want %d", len(got), minHeight)
 	}
 
 	want := []string{
@@ -39,7 +41,7 @@ func TestViewFillsTheScreen(t *testing.T) {
 		`  "host": "localhost",`,
 		`  "port": 8080`,
 		"}",
-		"", "", "", "", "",
+		"", "", "", "", "", "",
 	}
 
 	for i, w := range want {
@@ -51,7 +53,7 @@ func TestViewFillsTheScreen(t *testing.T) {
 	// The bar is anchored to the last row, whatever the document is worth,
 	// with where the selection is at one end and what the document is at the
 	// other.
-	bar := got[9]
+	bar := got[len(got)-1]
 
 	if !strings.HasPrefix(bar, " NORMAL  JSON  config.json  /  object") {
 		t.Errorf("the bar begins %q, want the session and the selection", bar)
@@ -65,11 +67,11 @@ func TestViewFillsTheScreen(t *testing.T) {
 // A document taller than the screen is shown from the top and cut off. It is
 // the whole document that is counted in the bar, not the part on screen.
 func TestViewCutsTheDocumentToTheBodyHeight(t *testing.T) {
-	m := sized(t, openApp(t, longDocument(t)), 60, 10)
+	m := sized(t, openApp(t, longDocument(t)), minWidth, minHeight)
 
 	got := rows(t, m)
-	if len(got) != 10 {
-		t.Fatalf("View() drew %d rows, want 10", len(got))
+	if len(got) != minHeight {
+		t.Fatalf("View() drew %d rows, want %d", len(got), minHeight)
 	}
 
 	if want := "{"; strings.TrimRight(got[0], " ") != want {
@@ -80,8 +82,8 @@ func TestViewCutsTheDocumentToTheBodyHeight(t *testing.T) {
 		t.Errorf("row 1 = %q, want %q", got[1], want)
 	}
 
-	if !strings.Contains(got[9], "32 lines") {
-		t.Errorf("status bar = %q, want the whole document counted", got[9])
+	if !strings.Contains(got[len(got)-1], "32 lines") {
+		t.Errorf("status bar = %q, want the whole document counted", got[len(got)-1])
 	}
 }
 
@@ -90,7 +92,7 @@ func TestViewCutsTheDocumentToTheBodyHeight(t *testing.T) {
 func TestViewClipsRowsToTheWidth(t *testing.T) {
 	const width = minWidth
 
-	m := sized(t, openApp(t, wideDocument(t)), width, 10)
+	m := sized(t, openApp(t, wideDocument(t)), width, minHeight)
 
 	for i, row := range rows(t, m) {
 		if w := lipgloss.Width(row); w > width {
@@ -109,19 +111,19 @@ func TestViewDrawsAnEmptyScreenWithoutADocument(t *testing.T) {
 		TreeView: documentview.NewTreeRenderer(),
 	}, application.Config{})
 
-	got := rows(t, sized(t, app, 60, 10))
-	if len(got) != 10 {
-		t.Fatalf("View() drew %d rows, want 10", len(got))
+	got := rows(t, sized(t, app, minWidth, minHeight))
+	if len(got) != minHeight {
+		t.Fatalf("View() drew %d rows, want %d", len(got), minHeight)
 	}
 
-	for i, row := range got[:9] {
+	for i, row := range got[:len(got)-1] {
 		if strings.TrimRight(row, " ") != "" {
 			t.Errorf("row %d = %q, want it blank", i, row)
 		}
 	}
 
 	// Nothing is selected, so the bar says only what is true of the session.
-	bar := got[9]
+	bar := got[len(got)-1]
 
 	if !strings.HasPrefix(bar, " NORMAL  JSON") {
 		t.Errorf("the bar begins %q, want the mode and the view", bar)
@@ -163,7 +165,7 @@ func TestViewSurvivesATinyTerminal(t *testing.T) {
 
 // The row the cursor is on is the one marked, and moving moves the mark.
 func TestViewMarksTheCursorRow(t *testing.T) {
-	m := sized(t, openTestApp(t), 60, 10)
+	m := sized(t, openTestApp(t), minWidth, minHeight)
 
 	if got := selectedRow(t, m); got != 0 {
 		t.Errorf("row %d is drawn as selected, want the root on row 0", got)
@@ -176,12 +178,81 @@ func TestViewMarksTheCursorRow(t *testing.T) {
 	}
 }
 
+// The frame carries match row numbers independently from its lines. Drawing
+// an accepted search joins the two, including on the row the search moved the
+// cursor to.
+func TestViewMarksTheRowsInTheSearchResult(t *testing.T) {
+	m := sized(t, openTestApp(t), minWidth, minHeight)
+	m = press(t, m,
+		key('/'), key('h'), key('o'), key('s'), key('t'), special(tea.KeyEnter),
+	)
+
+	frame := m.app.Frame()
+	if !slices.Equal(frame.Matches, []int{1}) {
+		t.Fatalf("the accepted search marks rows %v, want [1]", frame.Matches)
+	}
+
+	drawn := strings.Split(m.View().Content, "\n")
+	withoutMatch := m
+	withoutMatch.theme.Match = lipgloss.NewStyle()
+	unmarked := strings.Split(withoutMatch.View().Content, "\n")
+
+	if drawn[1] == unmarked[1] {
+		t.Error("the matching row is drawn exactly like the same row without the match style")
+	}
+
+	if got, want := ansi.Strip(drawn[1]), ansi.Strip(unmarked[1]); got != want {
+		t.Errorf("the matching row reads %q, want %q", got, want)
+	}
+
+	if drawn[0] != unmarked[0] {
+		t.Error("a row outside Frame.Matches gained the match style")
+	}
+}
+
+// Matches index the whole rendered document, while the loop in View indexes
+// only the current window. A scrolled result therefore has to be translated
+// by Frame.Scroll before it can mark a screen row.
+func TestViewMapsASearchResultIntoAScrolledWindow(t *testing.T) {
+	m := sized(t, openApp(t, longDocument(t)), minWidth, minHeight)
+	m = press(t, m,
+		key('/'), key('k'), key('2'), key('9'), special(tea.KeyEnter),
+	)
+
+	frame := m.app.Frame()
+	if frame.Scroll <= 0 {
+		t.Fatal("the search result did not scroll the window")
+	}
+
+	if !slices.Equal(frame.Matches, []int{30}) {
+		t.Fatalf("the accepted search marks rows %v, want [30]", frame.Matches)
+	}
+
+	screenRow := frame.Cursor - frame.Scroll
+	if screenRow < 0 || screenRow >= m.layout().BodyHeight {
+		t.Fatalf("the matching row maps to screen row %d outside the body", screenRow)
+	}
+
+	drawn := strings.Split(m.View().Content, "\n")
+	withoutMatch := m
+	withoutMatch.theme.Match = lipgloss.NewStyle()
+	unmarked := strings.Split(withoutMatch.View().Content, "\n")
+
+	for row := range m.layout().BodyHeight {
+		changed := drawn[row] != unmarked[row]
+		if changed != (row == screenRow) {
+			t.Errorf("screen row %d changed by the match style = %v, want %v",
+				row, changed, row == screenRow)
+		}
+	}
+}
+
 // The band reaches the edge of the screen, so that the row is marked whatever
 // it happens to hold.
 func TestViewFillsTheCursorRow(t *testing.T) {
 	const width = minWidth
 
-	m := sized(t, openTestApp(t), width, 10)
+	m := sized(t, openTestApp(t), width, minHeight)
 
 	row := strings.Split(m.View().Content, "\n")[0]
 
@@ -269,7 +340,7 @@ func TestViewShowsAPendingPrefix(t *testing.T) {
 // The terminal only reports the wheel while it is asked to, and each frame is
 // what asks.
 func TestViewAsksForTheMouse(t *testing.T) {
-	m := sized(t, openTestApp(t), 60, 10)
+	m := sized(t, openTestApp(t), minWidth, minHeight)
 
 	if got := m.View().MouseMode; got != tea.MouseModeCellMotion {
 		t.Errorf("MouseMode = %v, want %v", got, tea.MouseModeCellMotion)
@@ -293,7 +364,7 @@ func TestViewReportsTerminalSelection(t *testing.T) {
 		return drawn[len(drawn)-1]
 	}
 
-	m := sized(t, openTestApp(t), 60, 10)
+	m := sized(t, openTestApp(t), minWidth, minHeight)
 	if got := bar(m); strings.Contains(got, "select:on") {
 		t.Fatalf("the initial bar reads %q, want no terminal selection state", got)
 	}
@@ -349,7 +420,7 @@ func TestViewUsesTheAlternateScreen(t *testing.T) {
 		t.Error("the first frame is not on the alternate screen")
 	}
 
-	if !sized(t, app, 60, 10).View().AltScreen {
+	if !sized(t, app, minWidth, minHeight).View().AltScreen {
 		t.Error("the frame is not on the alternate screen")
 	}
 }
@@ -404,24 +475,24 @@ func TestViewFillsTheCursorRowInTheJSONView(t *testing.T) {
 // where it is: which file is open and whether it has unsaved work in it are
 // true of the session whatever is being read.
 func TestViewShowsHelpInPlaceOfTheDocument(t *testing.T) {
-	m := press(t, sized(t, openTestApp(t), 60, 10), key('?'))
+	m := press(t, sized(t, openTestApp(t), minWidth, minHeight), key('?'))
 
 	got := rows(t, m)
-	if len(got) != 10 {
-		t.Fatalf("View() drew %d rows, want 10", len(got))
+	if len(got) != minHeight {
+		t.Fatalf("View() drew %d rows, want %d", len(got), minHeight)
 	}
 
 	if !strings.HasPrefix(got[0], "pino help") {
 		t.Errorf("the first row is %q, want the help screen", got[0])
 	}
 
-	for i, row := range got[:9] {
+	for i, row := range got[:len(got)-1] {
 		if strings.Contains(row, `"host"`) {
 			t.Errorf("row %d is %q, want the document gone from under the help", i, row)
 		}
 	}
 
-	bar := got[9]
+	bar := got[len(got)-1]
 
 	if !strings.HasPrefix(bar, " HELP  JSON  config.json") {
 		t.Errorf("the bar begins %q, want the mode and the open file", bar)
@@ -436,7 +507,7 @@ func TestViewShowsHelpInPlaceOfTheDocument(t *testing.T) {
 // screen saying what the keys do would leave a reader worse off than one
 // saying how much room pino needs, and every key goes on working either way.
 func TestViewPrefersTheSizeWarningToHelp(t *testing.T) {
-	m := press(t, sized(t, openTestApp(t), 60, 10), key('?'))
+	m := press(t, sized(t, openTestApp(t), minWidth, minHeight), key('?'))
 
 	if got := rows(t, sizedFrom(t, m, 40, 10))[0]; !strings.HasPrefix(got, "terminal too small") {
 		t.Errorf("the first row is %q, want the size pino needs", got)
@@ -454,7 +525,7 @@ func TestClosingHelpDrawsTheScreenItReplaced(t *testing.T) {
 
 	for name, k := range closes {
 		t.Run("closed by "+name, func(t *testing.T) {
-			m := press(t, sized(t, openTestApp(t), 60, 10), key('j'))
+			m := press(t, sized(t, openTestApp(t), minWidth, minHeight), key('j'))
 
 			before := m.View().Content
 
@@ -470,7 +541,7 @@ func TestClosingHelpDrawsTheScreenItReplaced(t *testing.T) {
 // along with it, so closing would come back to a screen the reader never
 // moved.
 func TestHelpIgnoresTheWheel(t *testing.T) {
-	m := press(t, sized(t, openApp(t, longDocument(t)), 60, 10), key('j'))
+	m := press(t, sized(t, openApp(t, longDocument(t)), minWidth, minHeight), key('j'))
 
 	before := m.View().Content
 

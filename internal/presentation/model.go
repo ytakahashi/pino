@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -358,8 +359,10 @@ func (m Model) View() tea.View {
 	window, start := visible(frame, l.BodyHeight)
 
 	for i, line := range window {
-		selected := start+i == frame.Cursor
-		row := clip(m.theme.RenderLine(line, indentFor(info), selected), l.BodyWidth)
+		rowNumber := start + i
+		_, matched := slices.BinarySearch(frame.Matches, rowNumber)
+		marks := rowMarks{Selected: rowNumber == frame.Cursor, Matched: matched}
+		row := clip(m.theme.RenderLine(line, indentFor(info), marks), l.BodyWidth)
 
 		// The band behind the selected row runs to the far side of the
 		// document, not to the far side of the text. Where a row happens to
@@ -367,7 +370,7 @@ func (m Model) View() tea.View {
 		// stopping there reads as ragged rather than as a row being pointed
 		// at. It stops at the document's own edge so that it cannot reach into
 		// the inspector standing beside it.
-		if selected {
+		if marks.Selected {
 			row += m.theme.RenderCursorFill(l.BodyWidth - ansi.StringWidth(row))
 		}
 

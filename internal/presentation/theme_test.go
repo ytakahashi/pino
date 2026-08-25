@@ -39,7 +39,7 @@ func TestRenderLineIndentsByDepth(t *testing.T) {
 				Spans: []documentview.Span{{Text: "null", Role: documentview.RoleNullValue}},
 			}
 
-			if got := (Theme{}).RenderLine(line, tc.indent, false); got != tc.want {
+			if got := (Theme{}).RenderLine(line, tc.indent, rowMarks{}); got != tc.want {
 				t.Errorf("RenderLine() = %q, want %q", got, tc.want)
 			}
 		})
@@ -59,13 +59,13 @@ func TestRenderLineWritesSpansInOrder(t *testing.T) {
 
 	want := `  "host": "localhost",`
 
-	if got := (Theme{}).RenderLine(line, "  ", false); got != want {
+	if got := (Theme{}).RenderLine(line, "  ", rowMarks{}); got != want {
 		t.Errorf("RenderLine() = %q, want %q", got, want)
 	}
 }
 
 func TestRenderLineHandlesEmptySpans(t *testing.T) {
-	if got := (Theme{}).RenderLine(documentview.Line{}, "  ", false); got != "" {
+	if got := (Theme{}).RenderLine(documentview.Line{}, "  ", rowMarks{}); got != "" {
 		t.Errorf("RenderLine() = %q, want %q", got, "")
 	}
 }
@@ -80,7 +80,7 @@ func TestDefaultThemeStylesEveryRoleDistinctly(t *testing.T) {
 
 	for _, role := range allRoles {
 		line := documentview.Line{Spans: []documentview.Span{{Text: "x", Role: role}}}
-		got := theme.RenderLine(line, "", false)
+		got := theme.RenderLine(line, "", rowMarks{})
 
 		if got == "x" {
 			t.Errorf("role %v renders unstyled", role)
@@ -124,8 +124,8 @@ func TestRenderLineMarksTheSelectedRow(t *testing.T) {
 		},
 	}
 
-	plain := theme.RenderLine(line, "  ", false)
-	selected := theme.RenderLine(line, "  ", true)
+	plain := theme.RenderLine(line, "  ", rowMarks{})
+	selected := theme.RenderLine(line, "  ", rowMarks{Selected: true})
 
 	if selected == plain {
 		t.Fatal("the selected row is drawn exactly like an unselected one")
@@ -178,6 +178,54 @@ func TestRenderCursorFillUsesTheCursorBackground(t *testing.T) {
 	}
 }
 
+// A match is marked independently from selection, so moving the cursor onto
+// the row does not make the search result disappear.
+func TestRenderLineMarksAMatchUnderTheCursor(t *testing.T) {
+	theme := DefaultTheme()
+	line := documentview.Line{
+		Depth: 1,
+		Spans: []documentview.Span{
+			{Text: `"host"`, Role: documentview.RoleKey},
+			{Text: ": ", Role: documentview.RolePunct},
+			{Text: `"localhost"`, Role: documentview.RoleStringValue},
+		},
+	}
+
+	plain := theme.RenderLine(line, "  ", rowMarks{})
+	matched := theme.RenderLine(line, "  ", rowMarks{Matched: true})
+	selected := theme.RenderLine(line, "  ", rowMarks{Selected: true, Matched: true})
+
+	if got, want := ansi.Strip(matched), ansi.Strip(plain); got != want {
+		t.Errorf("the matched row reads %q, want %q", got, want)
+	}
+
+	if !strings.Contains(matched, "\x1b[4m") {
+		t.Error("the rendered match carries no underline")
+	}
+
+	if !theme.decorate(lipgloss.NewStyle(), rowMarks{Matched: true}).GetUnderline() {
+		t.Error("the matched row is not underlined")
+	}
+
+	decorated := theme.decorate(lipgloss.NewStyle(), rowMarks{Selected: true, Matched: true})
+	if !decorated.GetUnderline() {
+		t.Error("the selected match lost its underline")
+	}
+
+	if got := decorated.GetBackground(); got != theme.Cursor.GetBackground() {
+		t.Errorf("the selected match background = %v, want the cursor's %v",
+			got, theme.Cursor.GetBackground())
+	}
+
+	if strings.Contains(plain, "\x1b[4m") {
+		t.Error("an unmatched row carries an underline")
+	}
+
+	if got, want := ansi.Strip(selected), ansi.Strip(plain); got != want {
+		t.Errorf("the selected match reads %q, want %q", got, want)
+	}
+}
+
 // A role beyond the ones the theme knows loses its colour, not its text: the
 // document stays readable while the gap in the theme is being noticed.
 func TestRenderLineDrawsUnknownRoleUnstyled(t *testing.T) {
@@ -185,7 +233,7 @@ func TestRenderLineDrawsUnknownRoleUnstyled(t *testing.T) {
 
 	line := documentview.Line{Spans: []documentview.Span{{Text: "x", Role: unknown}}}
 
-	if got := DefaultTheme().RenderLine(line, "", false); got != "x" {
+	if got := DefaultTheme().RenderLine(line, "", rowMarks{}); got != "x" {
 		t.Errorf("RenderLine() = %q, want %q", got, "x")
 	}
 }
@@ -198,7 +246,7 @@ func TestRenderTooSmallUsesTheErrorStyle(t *testing.T) {
 		// The size in the mock of the design: what is needed, and what there is.
 		"the whole message": {
 			width: 34, height: 6,
-			want: []string{"terminal too small", "needs 60x10, has 34x6", "", "", "", ""},
+			want: []string{"terminal too small", "needs 60x11, has 34x6", "", "", "", ""},
 		},
 
 		// Narrower than the message, which is cut like any other row rather

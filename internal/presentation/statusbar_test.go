@@ -142,6 +142,65 @@ func TestRenderStatusBarShowsTheSelection(t *testing.T) {
 	}
 }
 
+func TestRenderStatusBarShowsTheAcceptedSearch(t *testing.T) {
+	base := application.StatusInfo{
+		Mode: application.ModeNormal, ViewMode: application.ViewJSON,
+		Name: "config.json", Indent: "  ",
+	}
+
+	tests := []struct {
+		name   string
+		search application.SearchInfo
+		want   string
+	}{
+		{
+			name:   "cursor on a match",
+			search: application.SearchInfo{Query: "port", At: 3, Total: 12},
+			want:   "/port 3/12",
+		},
+		{
+			name:   "cursor between matches",
+			search: application.SearchInfo{Query: "port", Total: 12},
+			want:   "/port -/12",
+		},
+		{
+			name:   "an edit removed every match",
+			search: application.SearchInfo{Query: "port"},
+			want:   "/port -/0",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			info := base
+			info.Search = &tc.search
+			got := statusText(Theme{}, info, 11, PendingNone, 80)
+
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("RenderStatusBar() = %q, want it to hold %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// Search belongs to the session rather than to one view, and a notice stays
+// last on the expendable end because it is the result still being reported.
+func TestRenderStatusBarPlacesSearchBeforeNoticeInEveryView(t *testing.T) {
+	search := &application.SearchInfo{Query: "port", At: 1, Total: 2}
+
+	for _, view := range []application.ViewMode{application.ViewJSON, application.ViewTree} {
+		info := withNotice(application.StatusInfo{
+			Mode: application.ModeConfirm, ViewMode: view,
+			Name: "config.json", Indent: "  ", Search: search,
+		}, "Could not save.")
+
+		got := statusText(Theme{}, info, 6, PendingNone, 100)
+		if !strings.Contains(got, "/port 1/2  Could not save.") {
+			t.Errorf("RenderStatusBar(%v) = %q, want search before the notice", view, got)
+		}
+	}
+}
+
 // Something that went wrong is said on the bar as well as in the dialog above
 // it, and on the side that is cut: the dialog is what makes sure it was read,
 // so the bar carries it while that dialog is up rather than instead of it.
@@ -271,11 +330,13 @@ func TestRenderStatusBarKeepsTheEndsApart(t *testing.T) {
 // what is unsaved must not be the thing that disappears, and it would be
 // exactly where the pointer is longest that it did.
 func TestRenderStatusBarCutsTheLeftEndFirst(t *testing.T) {
+	search := application.SearchInfo{Query: "a-long-search-term", Total: 12}
 	info := withDirty(withCursor(application.StatusInfo{
 		Mode:     application.ModeNormal,
 		ViewMode: application.ViewJSON,
 		Name:     "config.json",
 		Indent:   "  ",
+		Search:   &search,
 	}, "/a/deeply/nested/pointer/that/goes/on/and/on/and/on", "string"))
 
 	for _, width := range []int{80, 60, 45, 40} {
@@ -353,6 +414,24 @@ func TestRenderStatusBarNeutralisesThePointer(t *testing.T) {
 				t.Errorf("RenderStatusBar() = %q, want it to hold %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRenderStatusBarNeutralisesTheSearchTerm(t *testing.T) {
+	search := application.SearchInfo{Query: "two\n\x1b[31m\tparts", At: 1, Total: 1}
+	info := application.StatusInfo{Indent: "  ", Search: &search}
+
+	got := Theme{}.RenderStatusBar(info, barState{Lines: 1, Mouse: true}, 80)
+	if strings.ContainsAny(got, "\n\t") {
+		t.Errorf("RenderStatusBar() passed a line-breaking search character through: %q", got)
+	}
+
+	if strings.Contains(got, "\x1b[31m") {
+		t.Errorf("RenderStatusBar() passed the search escape sequence through: %q", got)
+	}
+
+	if plain := ansi.Strip(got); !strings.Contains(plain, "/two��[31m�parts 1/1") {
+		t.Errorf("RenderStatusBar() = %q, want the neutralised search term", plain)
 	}
 }
 
