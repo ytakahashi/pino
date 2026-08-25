@@ -18,6 +18,7 @@ const (
 	ModeInsert       // adding a member: key, then type, then value
 	ModeConfirm      // confirming a deletion, a quit or an outside change
 	ModeHelp
+	ModeSearch // typing a search term
 )
 
 // String returns the label shown in the status bar.
@@ -33,6 +34,8 @@ func (m Mode) String() string {
 		return "CONFIRM"
 	case ModeHelp:
 		return "HELP"
+	case ModeSearch:
+		return "SEARCH"
 	default:
 		return "UNKNOWN"
 	}

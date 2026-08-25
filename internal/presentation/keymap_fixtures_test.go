@@ -9,15 +9,16 @@ import (
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
-// allModes is every mode the application defines. Only normal is reachable
-// so far; the rest are listed so that a binding said to work everywhere is
-// checked everywhere rather than only where it happens to be used today.
+// allModes is every mode the application defines, so that a binding said to
+// work everywhere is checked everywhere rather than only in the modes a test
+// happens to enter.
 var allModes = []application.Mode{
 	application.ModeNormal,
 	application.ModeEdit,
 	application.ModeInsert,
 	application.ModeConfirm,
 	application.ModeHelp,
+	application.ModeSearch,
 }
 
 func key(r rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: r, Text: string(r)} }

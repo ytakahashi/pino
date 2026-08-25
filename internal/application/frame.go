@@ -2,6 +2,7 @@ package application
 
 import (
 	"github.com/ytakahashi/pino/internal/application/documentview"
+	"github.com/ytakahashi/pino/internal/domain"
 )
 
 // Frame is one drawable picture of the session: the rows of the document,
@@ -25,4 +26,48 @@ type Frame struct {
 
 	// Scroll is the first row to draw.
 	Scroll int
+
+	// Matches indexes the rows that contain a match or hide one in a folded
+	// subtree. It is sorted and contains no duplicates.
+	Matches []int
+}
+
+// matchingRows maps node matches onto the rows that represent them in this
+// frame. Closing rows share a path with their opening row and cannot take the
+// cursor, so they must not replace the opening row in the lookup.
+func matchingRows(lines []documentview.Line, paths []domain.Path) []int {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	rowByPointer := make(map[string]int, len(lines))
+	for row, line := range lines {
+		if line.Kind != documentview.LineClose {
+			rowByPointer[line.Path.String()] = row
+		}
+	}
+
+	marked := make(map[int]struct{}, len(paths))
+	for _, match := range paths {
+		for visible := match; ; visible = visible.Parent() {
+			if row, ok := rowByPointer[visible.String()]; ok {
+				marked[row] = struct{}{}
+
+				break
+			}
+
+			if visible.IsRoot() {
+				break
+			}
+		}
+	}
+
+	var rows []int
+	for row := range lines {
+		if _, ok := marked[row]; ok {
+			rows = append(rows, row)
+		}
+	}
+
+	return rows
 }

@@ -93,6 +93,18 @@ type ActionToggleView struct{}
 
 func (ActionToggleView) isAction() {}
 
+// ActionSearch asks for a term to search for. ActionSearchNext and
+// ActionSearchPrev move through the matches of the last accepted term.
+type (
+	ActionSearch     struct{}
+	ActionSearchNext struct{}
+	ActionSearchPrev struct{}
+)
+
+func (ActionSearch) isAction()     {}
+func (ActionSearchNext) isAction() {}
+func (ActionSearchPrev) isAction() {}
+
 // ActionEdit asks for the selected node to be edited.
 //
 // What editing one means is decided where the document is, because it depends
@@ -156,8 +168,8 @@ type ActionPromptChoose struct{ Key rune }
 
 func (ActionPromptChoose) isAction() {}
 
-// ActionCancel is Esc: the edit in progress is dropped, however many answers
-// it had gathered.
+// ActionCancel is Esc: the flow in progress is dropped, however much input it
+// had gathered.
 type ActionCancel struct{}
 
 func (ActionCancel) isAction() {}

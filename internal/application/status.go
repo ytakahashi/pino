@@ -2,6 +2,14 @@ package application
 
 import "github.com/ytakahashi/pino/internal/domain"
 
+// SearchInfo describes the accepted search term and the cursor's place in its
+// current result. At is one-based and is zero when the cursor is not a match.
+type SearchInfo struct {
+	Query string
+	At    int
+	Total int
+}
+
 // StatusInfo is what the status bar shows.
 //
 // It deliberately excludes the number of rendered lines: the presentation
@@ -32,6 +40,10 @@ type StatusInfo struct {
 	// shows its summary while the prompt keeps the full cause available.
 	Notice *NoticeInfo
 
+	// Search is nil when no term has been accepted. It remains present with a
+	// zero Total when an edit or reload removes the last match.
+	Search *SearchInfo
+
 	// Pointer locates the selected node, as RFC 6901 spells it: the root is
 	// the empty string. How to show that is left to whoever draws the bar,
 	// where "/" reads better than a blank.
@@ -61,6 +73,14 @@ func (a *App) Status() StatusInfo {
 
 	if f, ok := a.flow.(*noticeFlow); ok {
 		info.Notice = f.info()
+	}
+
+	if !a.search.query.isZero() {
+		search := SearchInfo{Query: a.search.query.text, Total: len(a.search.hits)}
+		if a.search.on {
+			search.At = a.search.passed + 1
+		}
+		info.Search = &search
 	}
 
 	if a.doc != nil {

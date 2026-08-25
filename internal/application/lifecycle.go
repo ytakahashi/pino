@@ -221,7 +221,9 @@ func (a *App) closeHelp() {
 // there is no correspondence to carry them by — an element added to an array
 // outside pino leaves /items/2 naming a different value, and pino's own edits
 // only survive because each one says which paths it moved. What is kept is
-// the session's own: which view is drawing, and how tall the terminal is.
+// the session's own: which view is drawing, how tall the terminal is, and the
+// accepted search term. Its matches are rebuilt once the replacement tree and
+// cursor have settled.
 //
 // A file that cannot be read leaves everything alone. The document is read
 // whole before any of it is installed, so a failure here is a message and

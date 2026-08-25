@@ -308,7 +308,7 @@ func Resolve(
 	case application.ModeHelp:
 		return resolveHelp(k), TerminalNone, PendingNone
 
-	case application.ModeEdit, application.ModeInsert, application.ModeConfirm:
+	case application.ModeEdit, application.ModeInsert, application.ModeConfirm, application.ModeSearch:
 		return nil, TerminalNone, PendingNone
 	}
 
