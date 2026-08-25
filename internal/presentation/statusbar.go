@@ -41,7 +41,8 @@ func (t Theme) RenderStatusBar(info application.StatusInfo, state barState, widt
 }
 
 // leftFields say where the reader is: in which mode, in which view, in which
-// file, and — where nothing else is saying so — at which node, of which type.
+// file, and — where nothing else is saying so — at which node, of which type,
+// and within which accepted search.
 func leftFields(info application.StatusInfo) []string {
 	fields := []string{info.Mode.String(), info.ViewMode.String()}
 
@@ -64,6 +65,16 @@ func leftFields(info application.StatusInfo) []string {
 		// Left off, because the inspector says both a row below and says them
 		// at more length. It is drawn whenever the tree is: the one size that
 		// leaves no room for it leaves none for this bar either.
+	}
+
+	if info.Search != nil {
+		at := "-"
+		if info.Search.At > 0 {
+			at = strconv.Itoa(info.Search.At)
+		}
+
+		fields = append(fields,
+			"/"+printable(info.Search.Query)+" "+at+"/"+strconv.Itoa(info.Search.Total))
 	}
 
 	// Last, and on this side, because this is the end that is cut when the bar

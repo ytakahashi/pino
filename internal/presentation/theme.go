@@ -70,6 +70,12 @@ type Theme struct {
 	HelpGroup lipgloss.Style
 	HelpKey   lipgloss.Style
 
+	// Match marks a row whose node matches the accepted search, or whose
+	// folded subtree hides one. Underlining is independent of the foreground
+	// colours and of the cursor background, so all three remain readable when
+	// they meet on one row.
+	Match lipgloss.Style
+
 	// Cursor is laid over the row the selection is on, keeping each span's own
 	// colour: it says which row, not what is in it.
 	//
@@ -133,6 +139,7 @@ func DefaultTheme() Theme {
 		HelpTitle: lipgloss.NewStyle().Foreground(lipgloss.Color("252")),
 		HelpGroup: lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
 		HelpKey:   lipgloss.NewStyle().Foreground(lipgloss.Color("39")),
+		Match:     lipgloss.NewStyle().Underline(true),
 
 		// The selected row is marked by a band behind it rather than by an
 		// arrow in front of it: an arrow would need a column of its own and
@@ -207,6 +214,14 @@ func (t Theme) style(r documentview.Role) lipgloss.Style {
 	return lipgloss.NewStyle()
 }
 
+// rowMarks are the independent facts overlaid on a rendered document row.
+// Keeping them named avoids positional booleans and leaves the call boundary
+// stable if search highlighting later carries more than a row-level mark.
+type rowMarks struct {
+	Selected bool
+	Matched  bool
+}
+
 // RenderLine draws one row of a document, leading indentation included.
 //
 // The spans of a line hold its content only, so the indentation is built here
@@ -219,39 +234,49 @@ func (t Theme) style(r documentview.Role) lipgloss.Style {
 // document's own, since that whitespace is what will be written back, while
 // the tree view draws with a width of its own choosing because nothing it
 // shows is ever saved. Which of the two applies is settled by the caller, in
-// indentFor. On a row that is not selected the indentation is left unstyled,
-// since styling whitespace only emits escape sequences around nothing.
+// indentFor. On a row with no mark the indentation is left unstyled, since
+// styling whitespace only emits escape sequences around nothing.
 //
-// selected marks the row the cursor is on. The cursor's styling is laid over
+// Selected marks the row the cursor is on. The cursor's styling is laid over
 // each span in turn rather than around the row as a whole: a style wrapping
 // the finished row would end at the first span that reset its own colours,
 // leaving the band broken wherever the document is at its most colourful.
-func (t Theme) RenderLine(l documentview.Line, indent string, selected bool) string {
+// Matched marks a search result with the same per-span rule, so it remains
+// present where selection and syntax colouring meet it.
+func (t Theme) RenderLine(l documentview.Line, indent string, marks rowMarks) string {
 	var b strings.Builder
 
-	if leading := strings.Repeat(indent, l.Depth); selected {
-		b.WriteString(t.Cursor.Render(leading))
+	if leading := strings.Repeat(indent, l.Depth); marks.Selected || marks.Matched {
+		b.WriteString(t.decorate(lipgloss.NewStyle(), marks).Render(leading))
 	} else {
 		b.WriteString(leading)
 	}
 
 	for _, s := range l.Spans {
-		b.WriteString(t.decorate(t.style(s.Role), selected).Render(s.Text))
+		b.WriteString(t.decorate(t.style(s.Role), marks).Render(s.Text))
 	}
 
 	return b.String()
 }
 
-// decorate lays the cursor over a span's own styling on the selected row.
+// decorate lays the search mark and cursor over a span's own styling.
 //
 // Inherit takes only what the span has not settled for itself, which is what
-// keeps each value its own colour while the row gains a background.
-func (t Theme) decorate(s lipgloss.Style, selected bool) lipgloss.Style {
-	if !selected {
-		return s
+// keeps each value its own colour while the row gains an underline, a
+// background, or both.
+func (t Theme) decorate(s lipgloss.Style, marks rowMarks) lipgloss.Style {
+	// Match must set only properties that do not overlap Cursor. Inherit keeps
+	// the first value a property receives, so an overlapping Match property
+	// here would prevent the cursor below from marking a selected result.
+	if marks.Matched {
+		s = s.Inherit(t.Match)
 	}
 
-	return s.Inherit(t.Cursor)
+	if marks.Selected {
+		s = s.Inherit(t.Cursor)
+	}
+
+	return s
 }
 
 // RenderCursorFill is the remainder of the selected row: width columns of the

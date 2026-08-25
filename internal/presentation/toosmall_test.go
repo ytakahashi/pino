@@ -19,7 +19,7 @@ func TestViewSaysWhenTheTerminalIsTooSmall(t *testing.T) {
 		t.Fatalf("View() drew %d rows, want 6", len(got))
 	}
 
-	want := []string{"terminal too small", "needs 60x10, has 34x6", "", "", "", ""}
+	want := []string{"terminal too small", "needs 60x11, has 34x6", "", "", "", ""}
 
 	for i, w := range want {
 		if got[i] != w {

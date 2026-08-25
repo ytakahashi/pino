@@ -26,8 +26,8 @@ func TestLayoutForChoosesAPlacementFromTheAvailableSpace(t *testing.T) {
 		},
 
 		"the JSON view on a narrow terminal": {
-			width: 60, height: 10, view: application.ViewJSON,
-			want: layout{BodyWidth: 60, BodyHeight: 9, Inspector: placeNone},
+			width: 60, height: 11, view: application.ViewJSON,
+			want: layout{BodyWidth: 60, BodyHeight: 10, Inspector: placeNone},
 		},
 
 		// The tree view puts the inspector beside it once there is room, and
@@ -69,9 +69,9 @@ func TestLayoutForChoosesAPlacementFromTheAvailableSpace(t *testing.T) {
 		// The smallest terminal pino draws in still leaves rows for the
 		// document once the bar and the stacked inspector have taken theirs.
 		"the tree view at the smallest size": {
-			width: 60, height: 10, view: application.ViewTree,
+			width: 60, height: 11, view: application.ViewTree,
 			want: layout{
-				BodyWidth: 60, BodyHeight: 3,
+				BodyWidth: 60, BodyHeight: 4,
 				Inspector: placeBelow, InspectorHeight: 6,
 			},
 		},
@@ -85,16 +85,16 @@ func TestLayoutForChoosesAPlacementFromTheAvailableSpace(t *testing.T) {
 		},
 
 		"one row too short": {
-			width: 120, height: 9, view: application.ViewJSON,
-			want: layout{TooSmall: true, BodyWidth: 120, BodyHeight: 8, Inspector: placeNone},
+			width: 120, height: 10, view: application.ViewJSON,
+			want: layout{TooSmall: true, BodyWidth: 120, BodyHeight: 9, Inspector: placeNone},
 		},
 
 		// Wide enough and still too short, which is the case a check on the
 		// width alone would let through.
 		"wide but too short": {
-			width: 120, height: 9, view: application.ViewTree,
+			width: 120, height: 10, view: application.ViewTree,
 			want: layout{
-				TooSmall: true, BodyWidth: 87, BodyHeight: 8,
+				TooSmall: true, BodyWidth: 87, BodyHeight: 9,
 				Inspector: placeSide, InspectorWidth: 32,
 			},
 		},
@@ -205,7 +205,7 @@ func TestLayoutForPrioritizesTheDocumentWhilePrompting(t *testing.T) {
 
 	for _, view := range views {
 		for _, width := range []int{59, 60, 99, 100} {
-			for _, height := range []int{9, 10, 40} {
+			for _, height := range []int{10, 11, 40} {
 				bare := layoutFor(width, height, view, 0)
 				asked := layoutFor(width, height, view, ruleRows+noticeBodyRows)
 
@@ -227,8 +227,8 @@ func TestLayoutForPrioritizesTheDocumentWhilePrompting(t *testing.T) {
 					t.Errorf("layoutFor(%d, %d, Tree) leaves no document rows with a prompt", width, height)
 				}
 
-				if view == application.ViewTree && width == minWidth && height == minHeight && asked.BodyHeight != 5 {
-					t.Errorf("layoutFor(60, 10, Tree) leaves %d body rows with a notice, want 5", asked.BodyHeight)
+				if view == application.ViewTree && width == minWidth && height == minHeight && asked.BodyHeight != 6 {
+					t.Errorf("layoutFor(60, 11, Tree) leaves %d body rows with a notice, want 6", asked.BodyHeight)
 				}
 
 				if view == application.ViewTree && width >= wideWidth && asked.Inspector != placeSide {

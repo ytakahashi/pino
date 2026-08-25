@@ -8,7 +8,7 @@ const (
 	// says so instead, which is a decision for whoever draws rather than for
 	// the arithmetic here.
 	minWidth  = 60
-	minHeight = 10
+	minHeight = 11
 
 	// At this width the inspector fits beside the tree without squeezing it.
 	wideWidth = 100
