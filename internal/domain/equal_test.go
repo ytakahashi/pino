@@ -215,6 +215,23 @@ func TestEqualComparesTheCommentsAroundValues(t *testing.T) {
 	}
 }
 
+func TestEqualComparesCommentsInsideAContainer(t *testing.T) {
+	t.Parallel()
+
+	inside := NewTrivia(nil, nil, []Comment{comment(t, " pending", false, true)})
+	commented := WithTrivia(obj(t), inside)
+	plain := obj(t)
+
+	if Equal(commented, plain) {
+		t.Error("Equal = true for containers differing only in inside comments, want false")
+	}
+
+	elsewhere := WithTrivia(obj(t), inside)
+	if !Equal(commented, elsewhere) {
+		t.Error("Equal = false for containers with the same inside comments, want true")
+	}
+}
+
 // An edit rebuilds the nodes along one path and shares everything else, which
 // is the shape of every tree pino compares: part of it is the very tree it is
 // being compared with.

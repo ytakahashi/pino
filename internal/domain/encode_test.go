@@ -157,6 +157,241 @@ func TestEncodeFollowsTheFormat(t *testing.T) {
 	}
 }
 
+func TestEncodeWritesCommentsAtTheirDocumentPositions(t *testing.T) {
+	t.Parallel()
+
+	line := func(t *testing.T, text string, ownLine bool) Comment {
+		t.Helper()
+
+		return comment(t, text, false, ownLine)
+	}
+	block := func(t *testing.T, text string, ownLine bool) Comment {
+		t.Helper()
+
+		return comment(t, text, true, ownLine)
+	}
+
+	tests := map[string]struct {
+		node func(t *testing.T) Node
+		want string
+	}{
+		"before the root": {
+			node: func(t *testing.T) Node {
+				return WithTrivia(NewNumber("1"), NewTrivia(
+					[]Comment{line(t, " root", true)}, nil, nil,
+				))
+			},
+			want: "// root\n1",
+		},
+		"after the root on the same line": {
+			node: func(t *testing.T) Node {
+				return WithTrivia(NewNumber("1"), NewTrivia(
+					nil, []Comment{block(t, " after ", false)}, nil,
+				))
+			},
+			want: "1 /* after */",
+		},
+		"after the root on its own line": {
+			node: func(t *testing.T) Node {
+				return WithTrivia(NewNumber("1"), NewTrivia(
+					nil, []Comment{line(t, " after", true)}, nil,
+				))
+			},
+			want: "1\n// after\n",
+		},
+		"a line comment opens a line for the comment after it": {
+			node: func(t *testing.T) Node {
+				return WithTrivia(NewNumber("1"), NewTrivia(
+					nil,
+					[]Comment{
+						line(t, " first", false),
+						block(t, " second ", false),
+					},
+					nil,
+				))
+			},
+			want: "1 // first\n/* second */",
+		},
+		"before an object member": {
+			node: func(t *testing.T) Node {
+				return obj(t, Member{
+					Key: "a", Value: NewNumber("1"),
+					Trivia: NewTrivia([]Comment{line(t, " member", true)}, nil, nil),
+				})
+			},
+			want: "{\n  // member\n  \"a\": 1\n}",
+		},
+		"an inline block before a member leaves the member on its own line": {
+			node: func(t *testing.T) Node {
+				return obj(t,
+					Member{
+						Key: "a", Value: NewNumber("1"),
+						Trivia: NewTrivia([]Comment{block(t, " member ", false)}, nil, nil),
+					},
+					Member{Key: "b", Value: NewNumber("2")},
+				)
+			},
+			want: "{ /* member */\n  \"a\": 1,\n  \"b\": 2\n}",
+		},
+		"between a key and its value": {
+			node: func(t *testing.T) Node {
+				value := WithTrivia(NewNumber("1"), NewTrivia(
+					[]Comment{block(t, " why ", false)}, nil, nil,
+				))
+
+				return obj(t, Member{Key: "a", Value: value})
+			},
+			want: "{\n  \"a\": /* why */ 1\n}",
+		},
+		"after a member value and its comma": {
+			node: func(t *testing.T) Node {
+				value := WithTrivia(NewNumber("1"), NewTrivia(
+					nil, []Comment{line(t, " trailing", false)}, nil,
+				))
+
+				return obj(t,
+					Member{Key: "a", Value: value},
+					Member{Key: "b", Value: NewNumber("2")},
+				)
+			},
+			want: "{\n  \"a\": 1, // trailing\n  \"b\": 2\n}",
+		},
+		"after an object member": {
+			node: func(t *testing.T) Node {
+				return obj(t,
+					Member{
+						Key: "a", Value: NewNumber("1"),
+						Trivia: NewTrivia(nil, []Comment{block(t, " pair ", false)}, nil),
+					},
+					Member{Key: "b", Value: NewNumber("2")},
+				)
+			},
+			want: "{\n  \"a\": 1, /* pair */\n  \"b\": 2\n}",
+		},
+		"around array elements": {
+			node: func(t *testing.T) Node {
+				first := WithTrivia(NewNumber("1"), NewTrivia(
+					[]Comment{line(t, " first", true)},
+					[]Comment{line(t, " one", false)},
+					nil,
+				))
+
+				return NewArray([]Node{first, NewNumber("2")})
+			},
+			want: "[\n  // first\n  1, // one\n  2\n]",
+		},
+		"an inline block before an element leaves the element on its own line": {
+			node: func(t *testing.T) Node {
+				first := WithTrivia(NewNumber("1"), NewTrivia(
+					[]Comment{block(t, " first ", false)}, nil, nil,
+				))
+
+				return NewArray([]Node{first, NewNumber("2")})
+			},
+			want: "[ /* first */\n  1,\n  2\n]",
+		},
+		"inside an empty object": {
+			node: func(t *testing.T) Node {
+				return WithTrivia(obj(t), NewTrivia(
+					nil, nil, []Comment{line(t, " pending", true)},
+				))
+			},
+			want: "{\n  // pending\n}",
+		},
+		"inside an empty array on the opening line": {
+			node: func(t *testing.T) Node {
+				return WithTrivia(NewArray(nil), NewTrivia(
+					nil, nil, []Comment{block(t, " empty ", false)},
+				))
+			},
+			want: "[ /* empty */\n]",
+		},
+		"inside a populated container": {
+			node: func(t *testing.T) Node {
+				return WithTrivia(NewArray([]Node{NewNumber("1")}), NewTrivia(
+					nil, nil, []Comment{line(t, " more later", true)},
+				))
+			},
+			want: "[\n  1\n  // more later\n]",
+		},
+		"a multiline block keeps its continuation": {
+			node: func(t *testing.T) Node {
+				return WithTrivia(NewNumber("1"), NewTrivia(
+					[]Comment{block(t, " banner\n * body ", true)}, nil, nil,
+				))
+			},
+			want: "/* banner\n * body */\n1",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := string(Encode(tt.node(t), plainFormat())); got != tt.want {
+				t.Errorf("Encode wrote %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEncodeWritesCommentsWithTheDocumentNewline(t *testing.T) {
+	t.Parallel()
+
+	node := WithTrivia(NewArray([]Node{NewNumber("1")}), NewTrivia(
+		[]Comment{comment(t, " root", false, true)},
+		nil,
+		[]Comment{comment(t, " inside ", true, true)},
+	))
+	format := Format{Indent: "\t", Newline: "\r\n", TrailingNL: true}
+	want := "// root\r\n[\r\n\t1\r\n\t/* inside */\r\n]\r\n"
+
+	if got := string(Encode(node, format)); got != want {
+		t.Errorf("Encode wrote %q, want %q", got, want)
+	}
+}
+
+func TestEncodePanicsWhenInsideCommentsHaveNoContainer(t *testing.T) {
+	t.Parallel()
+
+	inside := NewTrivia(nil, nil, []Comment{comment(t, " impossible", false, true)})
+	tests := map[string]func(t *testing.T) Node{
+		"a scalar": func(*testing.T) Node {
+			return WithTrivia(NewNull(), inside)
+		},
+		"an object member": func(t *testing.T) Node {
+			return obj(t, Member{Key: "a", Value: NewNull(), Trivia: inside})
+		},
+	}
+
+	for name, build := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				if recover() == nil {
+					t.Error("Encode returned normally, want a panic")
+				}
+			}()
+
+			Encode(build(t), plainFormat())
+		})
+	}
+}
+
+func TestEncoderDoesNotIndentTheSameOpenLineTwice(t *testing.T) {
+	t.Parallel()
+
+	e := encoder{format: plainFormat()}
+	e.startLine(1)
+	e.startLine(1)
+	e.writeString("1")
+
+	if got := e.buf.String(); got != "  1" {
+		t.Errorf("encoder wrote %q, want one level of indentation", got)
+	}
+}
+
 // A document with nothing in it still ends where the format says, which is
 // the one case with no line to end before the last one.
 func TestEncodeEndsARootScalarAndAnEmptyDocumentToo(t *testing.T) {

@@ -120,8 +120,17 @@ func detectIndent(src []byte) (string, bool) {
 			continue
 		}
 
+		content := bytes.TrimSuffix(line[width:], []byte("\r"))
+
 		// A line of nothing but whitespace says nothing about indentation.
-		if len(bytes.TrimSuffix(line[width:], []byte("\r"))) == 0 {
+		if len(content) == 0 {
+			continue
+		}
+
+		// Comments keep their own text rather than being re-indented. Treating
+		// their opening, continuation or closing line as a document level would
+		// let a banner change the indentation of every value on save.
+		if content[0] == '/' || content[0] == '*' {
 			continue
 		}
 

@@ -334,12 +334,12 @@ func TestConstructorsCopyTheirInput(t *testing.T) {
 func TestObjectKeepsTriviaOutOfReach(t *testing.T) {
 	t.Parallel()
 
-	comments := []Comment{{Text: "the listening port"}}
+	comments := []Comment{comment(t, "the listening port", false, true)}
 
 	members := []Member{{
 		Key:    "port",
 		Value:  NewNumber("8080"),
-		Trivia: NewTrivia(comments, nil),
+		Trivia: NewTrivia(comments, nil, nil),
 	}}
 
 	obj, err := NewObject(members)
@@ -347,11 +347,11 @@ func TestObjectKeepsTriviaOutOfReach(t *testing.T) {
 		t.Fatalf("NewObject() error = %v", err)
 	}
 
-	comments[0].Text = "hijacked"
+	comments[0] = comment(t, "hijacked", false, true)
 
 	for c := range obj.At(0).Trivia.Before() {
-		if c.Text != "the listening port" {
-			t.Errorf("comment = %q, want %q", c.Text, "the listening port")
+		if c.Text() != "the listening port" {
+			t.Errorf("comment = %q, want %q", c.Text(), "the listening port")
 		}
 	}
 }

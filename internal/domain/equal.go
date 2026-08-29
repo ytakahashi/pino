@@ -131,10 +131,12 @@ func equalArrays(a, b *Array) bool {
 
 // equalTrivia compares the comments two nodes or members carry.
 //
-// A Comment holds a string and a bool, so the slices compare element by
+// A Comment holds a string and bools, so the slices compare element by
 // element with ==. Trivia itself does not, which is why this exists at all:
 // the slices are unexported and copied on construction, and reading them here
 // is what the same package is for.
 func equalTrivia(a, b Trivia) bool {
-	return slices.Equal(a.before, b.before) && slices.Equal(a.after, b.after)
+	return slices.Equal(a.before, b.before) &&
+		slices.Equal(a.after, b.after) &&
+		slices.Equal(a.inside, b.inside)
 }
