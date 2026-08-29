@@ -166,7 +166,12 @@ func rewriteInTurn(maps []PathMap, pointers []string) []string {
 }
 
 func note(text string) Trivia {
-	return NewTrivia([]Comment{{Text: text}}, nil)
+	c, err := NewComment(text, false, true)
+	if err != nil {
+		panic(err)
+	}
+
+	return NewTrivia([]Comment{c}, nil, nil)
 }
 
 // commented is an array whose elements, and the array itself, carry comments,
@@ -189,9 +194,17 @@ func commented(t *testing.T) (root *Object, array *Array) {
 	}
 
 	array = NewArray([]Node{first, second})
-	array.trivia = note(" what the tool can do")
+	array.trivia = NewTrivia(
+		[]Comment{comment(t, " what the tool can do", false, true)},
+		nil,
+		[]Comment{comment(t, " more tools belong here", false, true)},
+	)
 
-	root, err = NewObject([]Member{{Key: "features", Value: array}})
+	root, err = NewObject([]Member{{
+		Key:    "features",
+		Value:  array,
+		Trivia: NewTrivia(nil, []Comment{comment(t, " the feature pair", false, true)}, nil),
+	}})
 	if err != nil {
 		t.Fatalf("NewObject: %v", err)
 	}

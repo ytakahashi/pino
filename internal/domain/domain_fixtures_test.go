@@ -28,6 +28,19 @@ func obj(t *testing.T, members ...Member) *Object {
 	return o
 }
 
+// comment builds a Comment, failing the test if its text breaks the chosen
+// delimiter form.
+func comment(t *testing.T, text string, block, ownLine bool) Comment {
+	t.Helper()
+
+	c, err := NewComment(text, block, ownLine)
+	if err != nil {
+		t.Fatalf("NewComment(%q): %v", text, err)
+	}
+
+	return c
+}
+
 // path builds a Path from segments, the way the renderer walks a tree.
 func path(segs ...Segment) Path {
 	p := Path{}

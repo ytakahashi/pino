@@ -171,6 +171,52 @@ func TestDetectFormatIgnoresEscapesInsideStrings(t *testing.T) {
 	}
 }
 
+func TestDetectFormatDoesNotUseCommentLinesAsIndentation(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		src  string
+		want string
+	}{
+		"a line comment": {
+			src:  "{\n  // note\n    \"host\": \"localhost\"\n}\n",
+			want: "    ",
+		},
+		"a block comment banner": {
+			src: "/* banner\n" +
+				" * pino config\n" +
+				" */\n" +
+				"{\n" +
+				"    \"host\": \"localhost\"\n" +
+				"}\n",
+			want: "    ",
+		},
+		"an indented block comment": {
+			src: "{\n" +
+				"  /* section\n" +
+				"   * details\n" +
+				"   */\n" +
+				"\t\"host\": \"localhost\"\n" +
+				"}\n",
+			want: "\t",
+		},
+		"comments with CRLF": {
+			src:  "{\r\n  // note\r\n\t\"host\": \"localhost\"\r\n}\r\n",
+			want: "\t",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := DetectFormat([]byte(tt.src)).Indent; got != tt.want {
+				t.Errorf("Indent = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // The first indented line decides, so a document that starts deeper than one
 // level reports the wider unit. That changes the layout of a rewrite but not
 // its meaning, and this pins the behaviour so a change to it is deliberate.

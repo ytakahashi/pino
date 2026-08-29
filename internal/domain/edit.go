@@ -153,7 +153,7 @@ func SetValue(root Node, p Path, v Node) (EditResult, error) {
 			removed = []Path{p}
 		}
 
-		return withTrivia(v, old.Trivia()), nil
+		return WithTrivia(v, old.Trivia()), nil
 	})
 	if err != nil {
 		return EditResult{}, err
@@ -390,7 +390,7 @@ func ChangeType(root Node, p Path, k Kind) (EditResult, error) {
 			removed = []Path{p}
 		}
 
-		return withTrivia(converted, old.Trivia()), nil
+		return WithTrivia(converted, old.Trivia()), nil
 	})
 	if err != nil {
 		return EditResult{}, err
@@ -576,7 +576,7 @@ func rebuildArray(from *Array, elements []Node) *Array {
 	return next
 }
 
-// withTrivia is n carrying t.
+// WithTrivia returns n carrying t, leaving n untouched.
 //
 // The comments around a value sit at a place in the document rather than on
 // the value that happens to occupy it, so putting a new value there keeps
@@ -584,15 +584,20 @@ func rebuildArray(from *Array, elements []Node) *Array {
 // array element and for the root there is nowhere else for them to be, which
 // is why this exists.
 //
-// It returns n unchanged when there is nothing to carry, so an edit that is
-// not a change stays recognisable by identity.
+// It returns n unchanged when it already carries t, so an edit that is not a
+// change stays recognisable by identity. Passing empty trivia clears comments
+// already present on n.
 //
 // The copy is shallow, which is safe because every field of a node is fixed
 // once built: the constructors copy what they are given, and nothing writes to
 // a node afterwards. The members, elements and index of the copy may therefore
 // be the ones n holds.
-func withTrivia(n Node, t Trivia) Node {
-	if t.IsEmpty() {
+func WithTrivia(n Node, t Trivia) Node {
+	if isNilNode(n) {
+		panic("domain: cannot attach trivia to a node that is not there")
+	}
+
+	if equalTrivia(n.Trivia(), t) {
 		return n
 	}
 

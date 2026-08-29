@@ -13,3 +13,7 @@ type Dialect struct {
 
 // StrictJSON accepts RFC 8259 JSON only. It is the zero value of Dialect.
 var StrictJSON = Dialect{}
+
+// JSONC accepts comments and trailing commas. It becomes pino's file dialect
+// once every path that preserves comments is enabled.
+var JSONC = Dialect{AllowComments: true, AllowTrailingComma: true}

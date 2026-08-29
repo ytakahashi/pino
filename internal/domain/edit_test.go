@@ -76,10 +76,10 @@ func TestSetValueAtTheRootReplacesTheWholeDocument(t *testing.T) {
 func TestEditingAMemberKeepsTheCommentsAroundIt(t *testing.T) {
 	t.Parallel()
 
-	// Nothing can attach a comment to a node yet, but path copying is where
-	// they would be dropped once something can. The member is rebuilt whole so
-	// that its trivia travels with it.
-	trivia := NewTrivia([]Comment{{Text: " the listening port"}}, nil)
+	// The parser does not attach comments yet, but path copying is where they
+	// would be dropped once it does. The member is rebuilt whole so that its
+	// trivia travels with it.
+	trivia := NewTrivia([]Comment{comment(t, " the listening port", false, true)}, nil, nil)
 	root := obj(t,
 		Member{Key: "port", Value: NewNumber("8080"), Trivia: trivia},
 		Member{Key: "host", Value: str(t, "localhost")},
@@ -1111,9 +1111,8 @@ func TestRenamesMoveEverythingBeneathThePathThatMoved(t *testing.T) {
 	})
 }
 
-// Nodes can carry comments in places no public constructor accepts yet. The
-// fixtures set that state directly so edits cannot silently drop it before a
-// parser can produce the same trees.
+// Path copying must preserve every comment slot before a parser starts
+// producing the same trees from files.
 func TestRebuildingAContainerKeepsTheCommentsAroundIt(t *testing.T) {
 	t.Parallel()
 
@@ -1151,21 +1150,24 @@ func TestRebuildingAContainerKeepsTheCommentsAroundIt(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			root, _ := commented(t)
+			root, array := commented(t)
 
 			res, err := tt.edit(root)
 			if err != nil {
 				t.Fatalf("edit: %v", err)
 			}
 
-			// Both the container that was rebuilt and the root above it.
-			if res.Root.Trivia().IsEmpty() {
-				t.Error("the comments on the root were dropped")
+			if !equalTrivia(res.Root.Trivia(), root.Trivia()) {
+				t.Error("the comments on the root changed")
 			}
 
 			for _, m := range res.Root.(*Object).All() {
-				if m.Value.Trivia().IsEmpty() {
-					t.Errorf("the comments on the array under %q were dropped", m.Key)
+				if !equalTrivia(m.Trivia, root.At(0).Trivia) {
+					t.Errorf("the comments on the member %q changed", m.Key)
+				}
+
+				if !equalTrivia(m.Value.Trivia(), array.Trivia()) {
+					t.Errorf("the comments on the array under %q changed", m.Key)
 				}
 			}
 		})
@@ -1223,7 +1225,7 @@ func TestReplacingAValueKeepsTheCommentsAtThatPlace(t *testing.T) {
 func TestChangingToTheTypeItHasKeepsTheTreeItself(t *testing.T) {
 	t.Parallel()
 
-	// withTrivia builds a new node when it has something to carry, so a change
+	// WithTrivia builds a new node when it has something to carry, so a change
 	// of type that is not a change has to stop before reaching it.
 	root, _ := commented(t)
 	element := path(KeySegment("features"), IndexSegment(0))
@@ -1235,5 +1237,86 @@ func TestChangingToTheTypeItHasKeepsTheTreeItself(t *testing.T) {
 
 	if res.Root != Node(root) {
 		t.Error("a new tree came back from a change to the type already there")
+	}
+}
+
+func TestWithTriviaCopiesEveryKindWithoutChangingTheNode(t *testing.T) {
+	t.Parallel()
+
+	tv := NewTrivia(
+		[]Comment{comment(t, " before", false, true)},
+		[]Comment{comment(t, " after ", true, false)},
+		nil,
+	)
+
+	tests := map[string]func(t *testing.T) Node{
+		"object": func(t *testing.T) Node { return obj(t, Member{Key: "a", Value: NewNull()}) },
+		"array":  func(*testing.T) Node { return NewArray([]Node{NewNull()}) },
+		"string": func(t *testing.T) Node { return str(t, "value") },
+		"number": func(*testing.T) Node { return NewNumber("1") },
+		"bool":   func(*testing.T) Node { return NewBool(true) },
+		"null":   func(*testing.T) Node { return NewNull() },
+	}
+
+	for name, build := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			original := build(t)
+			got := WithTrivia(original, tv)
+
+			if got == original {
+				t.Fatal("WithTrivia returned the original node for different trivia")
+			}
+
+			if !original.Trivia().IsEmpty() {
+				t.Error("WithTrivia changed the original node")
+			}
+
+			if !equalTrivia(got.Trivia(), tv) {
+				t.Error("WithTrivia did not attach the requested trivia")
+			}
+		})
+	}
+}
+
+func TestWithTriviaCanClearTriviaAndPreservesIdentityForTheSameValue(t *testing.T) {
+	t.Parallel()
+
+	tv := NewTrivia([]Comment{comment(t, " note", false, true)}, nil, nil)
+	decorated := WithTrivia(NewNull(), tv)
+
+	if got := WithTrivia(decorated, tv); got != decorated {
+		t.Error("WithTrivia copied a node that already carried the requested trivia")
+	}
+
+	cleared := WithTrivia(decorated, Trivia{})
+	if cleared == decorated {
+		t.Fatal("WithTrivia returned the decorated node when asked to clear it")
+	}
+
+	if !cleared.Trivia().IsEmpty() {
+		t.Error("WithTrivia did not clear the trivia")
+	}
+}
+
+func TestWithTriviaPanicsOnANodeThatIsNotThere(t *testing.T) {
+	t.Parallel()
+
+	nodes := typedNils()
+	nodes["nothing at all"] = nil
+
+	for name, missing := range nodes {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				if recover() == nil {
+					t.Error("WithTrivia returned normally, want a panic")
+				}
+			}()
+
+			WithTrivia(missing, Trivia{})
+		})
 	}
 }
