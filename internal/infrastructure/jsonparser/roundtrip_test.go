@@ -38,6 +38,69 @@ func TestEncodingADocumentAndReadingItBackYieldsTheSameDocument(t *testing.T) {
 	}
 }
 
+func TestEncodingAJSONCDocumentConvergesWithoutLosingComments(t *testing.T) {
+	t.Parallel()
+
+	for name, src := range jsoncRoundTripSources() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			original, err := New().Parse([]byte(src), domain.JSONC)
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+
+			for formatName, format := range roundTripFormats() {
+				t.Run(formatName, func(t *testing.T) {
+					t.Parallel()
+
+					first := domain.Encode(original, format)
+					reparsed, err := New().Parse(first, domain.JSONC)
+					if err != nil {
+						t.Fatalf("Parse encoded document: %v", err)
+					}
+					if !domain.Equal(original, reparsed) {
+						t.Errorf("reading back\n%s\ngave %s, want %s", first, dump(reparsed), dump(original))
+					}
+
+					if second := domain.Encode(reparsed, format); string(second) != string(first) {
+						t.Errorf("second encoding wrote\n%s\nwant\n%s", second, first)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestCommentsAtEveryJSONGapSurviveARoundTrip(t *testing.T) {
+	t.Parallel()
+
+	format := domain.Format{Indent: "  ", Newline: "\n", TrailingNL: true}
+	for name, src := range jsoncGapSweepSources() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			original, err := New().Parse([]byte(src), domain.JSONC)
+			if err != nil {
+				t.Fatalf("Parse(%q): %v", src, err)
+			}
+
+			first := domain.Encode(original, format)
+			reparsed, err := New().Parse(first, domain.JSONC)
+			if err != nil {
+				t.Fatalf("Parse encoded document: %v", err)
+			}
+			if !domain.Equal(original, reparsed) {
+				t.Errorf("reading back\n%s\ngave %s, want %s", first, dump(reparsed), dump(original))
+			}
+
+			if second := domain.Encode(reparsed, format); string(second) != string(first) {
+				t.Errorf("second encoding wrote\n%s\nwant\n%s", second, first)
+			}
+		})
+	}
+}
+
 // The point of following the source's layout is that saving a document
 // nobody reformatted leaves the file alone. Nothing but the bytes can say
 // that: two trees compare equal however the whitespace between them moved.

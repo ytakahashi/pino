@@ -1,6 +1,11 @@
 package jsonparser
 
-import "github.com/ytakahashi/pino/internal/domain"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/ytakahashi/pino/internal/domain"
+)
 
 // The fixtures here are documents to be read, written and read again. They
 // are sources rather than trees: what a round trip has to survive is a file,
@@ -27,6 +32,111 @@ func roundTripSources() map[string]string {
 		"text outside ASCII":     `{"鍵":"値","emoji":"🌲"}`,
 		"a deep document":        `{"a":{"b":{"c":{"d":{"e":[1,{"f":null}]}}}}}`,
 	}
+}
+
+func jsoncRoundTripSources() map[string]string {
+	return map[string]string{
+		"root comments": "// before\n{\n  \"enabled\": true\n}\n// after\n",
+		"members at every gap": `{
+  /* first member */
+  "first" /* key */ : /* value */ 1 /* before comma */, /* after comma */
+  // second member
+  "second": 2 // trailing
+  // inside
+}`,
+		"nested arrays and trailing commas": `[
+  /* first */ {"a": 1,},
+  // second
+  [2, /* after */],
+  // inside
+]`,
+		"empty containers": `{
+  "object": { /* no members */ },
+  "array": [
+    // no elements
+  ],
+}`,
+		"comment before an object comma": `{
+  "a": 1
+  // dangling
+  ,
+}`,
+		"comment before an array comma": `[
+  1
+  // dangling
+  ,
+  2
+]`,
+		"block comment before an array comma": `[
+  1
+  /* dangling */ , 2
+]`,
+		"block comment after a comma on its line": `[
+  1
+  , /* next */ 2
+]`,
+		"line comments around a comma on its line": `[
+  1 // first
+  // second
+  , // third
+  // fourth
+  2
+]`,
+		"comments across a colon preceded by a newline": `{
+  "a" // key
+  : /* value */ 1
+}`,
+	}
+}
+
+func jsoncGapSweepSources() map[string]string {
+	templates := map[string]string{
+		"object":                 `{@"a"@:@1@,@"b"@:@2@}`,
+		"array":                  `[@1@,@2@]`,
+		"nested array in object": `{@"a"@:@[@1@,@2@]@}`,
+		"nested object in array": `[@{@"a"@:@1@}@]`,
+		"empty object":           `{@}`,
+		"empty array":            `[@]`,
+		"array trailing comma":   `[@1@,@]`,
+		"object trailing comma":  `{@"a"@:@1@,@}`,
+	}
+	comments := map[string]string{
+		"empty":                   "",
+		"space":                   " ",
+		"newline":                 "\n",
+		"inline block":            " /* block */ ",
+		"own-line block":          "\n/* block */\n",
+		"block then newline":      " /* block */\n",
+		"newline then block":      "\n/* block */ ",
+		"inline line":             " // line\n",
+		"own-line line":           "\n// line\n",
+		"two line comments":       " // first\n // second\n",
+		"block then line comment": "\n/* block */ // line\n",
+	}
+
+	sources := make(map[string]string)
+	for templateName, template := range templates {
+		parts := strings.Split(template, "@")
+		for gap := range len(parts) - 1 {
+			for commentName, comment := range comments {
+				var src strings.Builder
+				src.WriteString(parts[0])
+				for i := range len(parts) - 1 {
+					if i == gap {
+						src.WriteString(comment)
+					} else {
+						src.WriteByte(' ')
+					}
+					src.WriteString(parts[i+1])
+				}
+
+				name := fmt.Sprintf("%s/gap %d/%s", templateName, gap, commentName)
+				sources[name] = src.String()
+			}
+		}
+	}
+
+	return sources
 }
 
 // roundTripFormats are the layouts a document is written back in. A round

@@ -33,7 +33,7 @@ func checkDialect(v *hujson.Value, d domain.Dialect, src []byte) error {
 func checkValue(v *hujson.Value, d domain.Dialect, src []byte) error {
 	// The extra before a value ends where the value starts, which is what
 	// gives it an offset: the library exposes no position of its own for it.
-	if err := checkExtra(v.BeforeExtra, v.StartOffset-len(v.BeforeExtra), d, src); err != nil {
+	if err := checkExtra(v.BeforeExtra, beforeExtraOffset(v), d, src); err != nil {
 		return err
 	}
 
@@ -50,6 +50,10 @@ func checkValue(v *hujson.Value, d domain.Dialect, src []byte) error {
 	}
 
 	return checkExtra(v.AfterExtra, v.EndOffset, d, src)
+}
+
+func beforeExtraOffset(v *hujson.Value) int {
+	return v.StartOffset - len(v.BeforeExtra)
 }
 
 func checkObject(v *hujson.Value, obj *hujson.Object, d domain.Dialect, src []byte) error {
@@ -101,19 +105,24 @@ func checkClose(v, last *hujson.Value, after hujson.Extra, d domain.Dialect, src
 		return errorAt(src, last.EndOffset+len(last.AfterExtra), "trailing commas are not supported yet", nil)
 	}
 
-	// The composite's own extra begins after whatever punctuation precedes
-	// it: the trailing comma when there is one, the last element when there
-	// is not, and the opening brace or bracket when there is no element.
-	offset := v.StartOffset + 1
+	return checkExtra(after, closeExtraOffset(v, last), d, src)
+}
 
-	if last != nil {
-		offset = last.EndOffset + len(last.AfterExtra)
-		if trailingComma {
-			offset++
-		}
+// closeExtraOffset reports where a composite's AfterExtra starts. hujson
+// places it after the final comma when one exists, so this calculation is
+// shared by dialect validation and Trivia conversion.
+func closeExtraOffset(v, last *hujson.Value) int {
+	offset := v.StartOffset + 1
+	if last == nil {
+		return offset
 	}
 
-	return checkExtra(after, offset, d, src)
+	offset = last.EndOffset + len(last.AfterExtra)
+	if last.AfterExtra != nil {
+		offset++
+	}
+
+	return offset
 }
 
 // checkExtra refuses a comment within the run of whitespace starting at base.
