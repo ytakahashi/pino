@@ -1,8 +1,97 @@
 package documentview
 
 import (
+	"slices"
 	"testing"
+
+	"github.com/ytakahashi/pino/internal/domain"
 )
+
+func TestLineKindSelectsOnlyNodeRows(t *testing.T) {
+	t.Parallel()
+
+	tests := map[LineKind]bool{
+		LineSingle:  true,
+		LineOpen:    true,
+		LineClose:   false,
+		LineComment: false,
+	}
+
+	for kind, want := range tests {
+		if got := kind.Selectable(); got != want {
+			t.Errorf("%s.Selectable() = %t, want %t", kind, got, want)
+		}
+	}
+}
+
+func TestBlockCommentsBecomePhysicalRows(t *testing.T) {
+	t.Parallel()
+
+	comment, err := domain.NewComment(" first\r\n second\r third\n", true, true)
+	if err != nil {
+		t.Fatalf("NewComment: %v", err)
+	}
+
+	lines := appendComments(nil, func(yield func(domain.Comment) bool) { yield(comment) }, domain.Path{}, 2)
+	want := []string{"/* first", " second", " third", "*/"}
+	if len(lines) != len(want) {
+		t.Fatalf("comment row count = %d, want %d", len(lines), len(want))
+	}
+
+	if got := []string{lines[0].Text(), lines[1].Text(), lines[2].Text(), lines[3].Text()}; !slices.Equal(got, want) {
+		t.Errorf("comment rows = %q, want %q", got, want)
+	}
+	if got := []int{lines[0].Depth, lines[1].Depth, lines[2].Depth, lines[3].Depth}; !slices.Equal(got, []int{2, 0, 0, 0}) {
+		t.Errorf("comment depths = %v, want [2 0 0 0]", got)
+	}
+}
+
+func TestCommentsBeforeANodeKeepTheirOrder(t *testing.T) {
+	t.Parallel()
+
+	inline := commentForRenderTest(t, " first ", true, false)
+	ownLine := commentForRenderTest(t, " second", false, true)
+	lastInline := commentForRenderTest(t, " third ", true, false)
+
+	rows, spans := commentsBefore(
+		func(yield func(domain.Comment) bool) {
+			yield(inline)
+			yield(ownLine)
+			yield(lastInline)
+		},
+		domain.Path{}, 1,
+	)
+	if len(rows) != 2 {
+		t.Fatalf("comment row count = %d, want 2", len(rows))
+	}
+
+	if got, want := []string{rows[0].Text(), rows[1].Text()}, []string{"/* first */", "// second"}; !slices.Equal(got, want) {
+		t.Errorf("comment rows = %q, want %q", got, want)
+	}
+	if got, want := spanText(spans), "/* third */ "; got != want {
+		t.Errorf("inline spans = %q, want %q", got, want)
+	}
+}
+
+func commentForRenderTest(t *testing.T, text string, block, ownLine bool) domain.Comment {
+	t.Helper()
+
+	comment, err := domain.NewComment(text, block, ownLine)
+	if err != nil {
+		t.Fatalf("NewComment: %v", err)
+	}
+
+	return comment
+}
+
+func spanText(spans []Span) string {
+	var text string
+	for _, span := range spans {
+		text += span.Text
+	}
+
+	return text
+}
 
 func TestStringSpanShortensAndEscapesAValue(t *testing.T) {
 	t.Parallel()

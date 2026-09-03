@@ -253,7 +253,8 @@ func (v *ViewState) ExpandAll() {
 
 // collapsibleUnder yields the pointer of every container below root that has
 // something in it. The root is not among them, and neither are containers with
-// no members: folding either says nothing that leaving it open does not.
+// no children or inside comments: folding either says nothing that leaving it
+// open does not.
 //
 // The tree is walked rather than the rows, because folding a container hides
 // what is inside it: a single pass over what is drawn would only ever reach
@@ -270,7 +271,7 @@ func collapsibleUnder(root domain.Node) iter.Seq[string] {
 			switch n.Kind() {
 			case domain.KindObject:
 				o := n.(*domain.Object)
-				if o.Len() == 0 {
+				if o.Len() == 0 && !o.Trivia().HasInside() {
 					return true
 				}
 
@@ -286,7 +287,7 @@ func collapsibleUnder(root domain.Node) iter.Seq[string] {
 
 			case domain.KindArray:
 				a := n.(*domain.Array)
-				if a.Len() == 0 {
+				if a.Len() == 0 && !a.Trivia().HasInside() {
 					return true
 				}
 

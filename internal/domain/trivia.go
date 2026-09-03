@@ -123,7 +123,11 @@ func (t Trivia) Inside() iter.Seq[Comment] {
 	}
 }
 
+// HasInside reports whether comments appear before a container's closing
+// delimiter.
+func (t Trivia) HasInside() bool { return len(t.inside) > 0 }
+
 // IsEmpty reports whether there is no comment to render or to preserve.
 func (t Trivia) IsEmpty() bool {
-	return len(t.before) == 0 && len(t.after) == 0 && len(t.inside) == 0
+	return len(t.before) == 0 && len(t.after) == 0 && !t.HasInside()
 }

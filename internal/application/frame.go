@@ -33,8 +33,8 @@ type Frame struct {
 }
 
 // matchingRows maps node matches onto the rows that represent them in this
-// frame. Closing rows share a path with their opening row and cannot take the
-// cursor, so they must not replace the opening row in the lookup.
+// frame. Closing and comment rows share paths with nodes and cannot take the
+// cursor, so they must not replace a node row in the lookup.
 func matchingRows(lines []documentview.Line, paths []domain.Path) []int {
 	if len(paths) == 0 {
 		return nil
@@ -42,7 +42,7 @@ func matchingRows(lines []documentview.Line, paths []domain.Path) []int {
 
 	rowByPointer := make(map[string]int, len(lines))
 	for row, line := range lines {
-		if line.Kind != documentview.LineClose {
+		if line.Kind.Selectable() {
 			rowByPointer[line.Path.String()] = row
 		}
 	}

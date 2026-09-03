@@ -18,6 +18,7 @@ var allRoles = []documentview.Role{
 	documentview.RoleNullValue,
 	documentview.RolePunct,
 	documentview.RoleTreeGuide,
+	documentview.RoleComment,
 }
 
 // cursorBackground is the escape sequence parameter the cursor's styling sets.

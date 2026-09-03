@@ -31,6 +31,45 @@ type Document struct {
 // that helper's test.
 func Documents() map[string]Document {
 	return map[string]Document{
+		// Comments at every rendering boundary: around the root, around an
+		// object member and its value, around an array element, and inside both
+		// populated and otherwise empty containers.
+		"comments": {Root: WithTrivia(Object(
+			MemberWithTrivia(
+				"enabled",
+				WithTrivia(domain.NewBool(true), Trivia(
+					[]domain.Comment{Comment(" value ", true, false)}, nil, nil,
+				)),
+				Trivia(
+					[]domain.Comment{Comment(" member", false, true)},
+					[]domain.Comment{Comment(" trailing", false, false)}, nil,
+				),
+			),
+			MemberWithTrivia("items", WithTrivia(domain.NewArray([]domain.Node{
+				WithTrivia(Text("first"), Trivia(
+					[]domain.Comment{Comment(" first item ", true, false)},
+					[]domain.Comment{Comment(" item note ", true, false)}, nil,
+				)),
+				WithTrivia(Text("second"), Trivia(
+					[]domain.Comment{Comment(" second item", false, true)}, nil, nil,
+				)),
+			}), Trivia(nil, nil, []domain.Comment{Comment(" more items", false, true)})), Trivia(
+				nil, []domain.Comment{Comment(" items complete ", true, false)}, nil,
+			)),
+			MemberWithTrivia("nested", Object(
+				Member("leaf", domain.NewNull()),
+			), Trivia(nil, []domain.Comment{Comment(" nested complete ", true, false)}, nil)),
+			Member("empty-object", WithTrivia(Object(), Trivia(
+				nil, nil, []domain.Comment{Comment(" banner\n * kept as written ", true, true)},
+			))),
+			Member("empty-array", WithTrivia(domain.NewArray(nil), Trivia(
+				nil, nil, []domain.Comment{Comment(" empty", false, true)},
+			))),
+		), Trivia(
+			[]domain.Comment{Comment(" document", false, true)},
+			[]domain.Comment{Comment(" end", false, true)}, nil,
+		))},
+
 		// Containers within containers, down to an array of strings.
 		"nested": {Root: Object(
 			Member("server", Object(
@@ -211,6 +250,32 @@ func Object(members ...domain.Member) domain.Node {
 // Member names a value within an object.
 func Member(key string, value domain.Node) domain.Member {
 	return domain.Member{Key: key, Value: value}
+}
+
+// MemberWithTrivia names a value and attaches comments to the member itself.
+func MemberWithTrivia(key string, value domain.Node, trivia domain.Trivia) domain.Member {
+	return domain.Member{Key: key, Value: value, Trivia: trivia}
+}
+
+// WithTrivia attaches comments to a fixture node.
+func WithTrivia(node domain.Node, trivia domain.Trivia) domain.Node {
+	return domain.WithTrivia(node, trivia)
+}
+
+// Trivia builds the three comment positions in their document order.
+func Trivia(before, after, inside []domain.Comment) domain.Trivia {
+	return domain.NewTrivia(before, after, inside)
+}
+
+// Comment builds validated fixture text. Invalid text is a broken fixture,
+// not a condition a test using it can recover from.
+func Comment(text string, block, ownLine bool) domain.Comment {
+	comment, err := domain.NewComment(text, block, ownLine)
+	if err != nil {
+		panic("testdocs: " + err.Error())
+	}
+
+	return comment
 }
 
 // Text is a JSON string holding v.

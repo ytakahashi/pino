@@ -11,7 +11,7 @@ import (
 // It is what lets the layers above treat a rendered document as a flat list
 // while still respecting the tree: a row that can be opened is a LineOpen, a
 // row that is folded away is a LineSingle carrying the flag, and the cursor
-// skips LineClose.
+// skips closing and comment rows.
 //
 // A close row always closes the nearest open row still waiting for one, and
 // carries the same path. The converse does not hold: an open row need not have
@@ -23,15 +23,19 @@ import (
 // have to emit close rows holding nothing, which are blank lines on screen, or
 // a Line would have to record which renderer made it. Nothing wants either:
 // folding is the renderer declining to draw a subtree rather than anything
-// counting rows in pairs, cursor movement only ever skips a close row, and an
+// counting rows in pairs, cursor movement only reads selectable rows, and an
 // edit takes the extent of a subtree from the tree itself.
 type LineKind uint8
 
 const (
-	LineSingle LineKind = iota // "port": 8080
-	LineOpen                   // "server": {
-	LineClose                  // }, which the cursor never lands on
+	LineSingle  LineKind = iota // "port": 8080
+	LineOpen                    // "server": {
+	LineClose                   // }, which the cursor never lands on
+	LineComment                 // // note, which describes a node but is not one
 )
+
+// Selectable reports whether a row represents a node the cursor can act on.
+func (k LineKind) Selectable() bool { return k == LineSingle || k == LineOpen }
 
 func (k LineKind) String() string {
 	switch k {
@@ -41,6 +45,8 @@ func (k LineKind) String() string {
 		return "open"
 	case LineClose:
 		return "close"
+	case LineComment:
+		return "comment"
 	default:
 		return "unknown"
 	}
@@ -62,6 +68,7 @@ const (
 	RoleNullValue
 	RolePunct
 	RoleTreeGuide // the arrows and rules drawn by the tree view
+	RoleComment
 )
 
 func (r Role) String() string {
@@ -80,6 +87,8 @@ func (r Role) String() string {
 		return "punct"
 	case RoleTreeGuide:
 		return "guide"
+	case RoleComment:
+		return "comment"
 	default:
 		return "unknown"
 	}

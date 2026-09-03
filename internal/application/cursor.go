@@ -22,7 +22,7 @@ import (
 // finds the row a renderer built from a tree.
 func indexOf(lines []documentview.Line, cursor domain.Path) int {
 	for i, l := range lines {
-		if l.Path.Equal(cursor) {
+		if l.Kind.Selectable() && l.Path.Equal(cursor) {
 			return i
 		}
 	}
@@ -55,22 +55,18 @@ func visibleRow(lines []documentview.Line, cursor domain.Path) int {
 // firstRow is the row of the whole document, which is the root and always
 // takes the cursor.
 func firstRow(lines []documentview.Line) int {
-	if len(lines) == 0 {
-		return -1
-	}
-
-	return 0
+	return scanRow(lines, 0, 1)
 }
 
 // nextRow is the row below from that the cursor can land on, or -1 at the end
 // of the document.
 //
-// Closing rows are stepped over: a "}" is not a node, and stopping on one
-// would make moving down through a nested document pause on punctuation. This
-// is what turns a flat list of rows back into a walk over the tree.
+// Non-selectable rows are stepped over: neither a "}" nor a comment is a node,
+// and stopping on one would leave the cursor with nothing to act on. This is
+// what turns a flat list of rows back into a walk over the tree.
 func nextRow(lines []documentview.Line, from int) int {
 	for i := from + 1; i < len(lines); i++ {
-		if lines[i].Kind != documentview.LineClose {
+		if lines[i].Kind.Selectable() {
 			return i
 		}
 	}
@@ -81,7 +77,7 @@ func nextRow(lines []documentview.Line, from int) int {
 // prevRow is the row above from that the cursor can land on, or -1 at the top.
 func prevRow(lines []documentview.Line, from int) int {
 	for i := from - 1; i >= 0; i-- {
-		if lines[i].Kind != documentview.LineClose {
+		if lines[i].Kind.Selectable() {
 			return i
 		}
 	}
@@ -105,7 +101,7 @@ func parentRow(lines []documentview.Line, from int) int {
 	}
 
 	for i := from - 1; i >= 0; i-- {
-		if lines[i].Depth < lines[from].Depth {
+		if lines[i].Kind.Selectable() && lines[i].Depth < lines[from].Depth {
 			return i
 		}
 	}
@@ -116,25 +112,26 @@ func parentRow(lines []documentview.Line, from int) int {
 // firstChildRow is the row of the first child of the node at from, or -1 when
 // it has none on screen.
 //
-// Only an open container has children drawn below it, and its first child
-// begins on the very next row. A folded container answers -1 here: it is
-// unfolded first, and moving into it is a second keystroke.
+// Only an open container has children drawn below it. Comments may sit between
+// the container and its first child, so the next selectable row must also be
+// deeper. A comment-only container therefore has no child to select.
 func firstChildRow(lines []documentview.Line, from int) int {
 	if from < 0 || from >= len(lines) || lines[from].Kind != documentview.LineOpen {
 		return -1
 	}
 
-	if from+1 >= len(lines) {
+	child := scanRow(lines, from+1, 1)
+	if child < 0 || lines[child].Depth <= lines[from].Depth {
 		return -1
 	}
 
-	return from + 1
+	return child
 }
 
 // lastRow is the final row the cursor can land on, or -1 when there is none.
 //
-// It is not the final row: a document ends in the closing rows of everything
-// still open, and the end of a document means its last node.
+// It is not necessarily the final row: closing rows and comments may follow,
+// while the end of a document for movement means its last node.
 func lastRow(lines []documentview.Line) int {
 	return nearestRow(lines, len(lines)-1, -1)
 }
@@ -170,7 +167,7 @@ func nearestRow(lines []documentview.Line, from, dir int) int {
 // the cursor can land on.
 func scanRow(lines []documentview.Line, from, step int) int {
 	for i := from; i >= 0 && i < len(lines); i += step {
-		if lines[i].Kind != documentview.LineClose {
+		if lines[i].Kind.Selectable() {
 			return i
 		}
 	}

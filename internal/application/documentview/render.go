@@ -1,7 +1,10 @@
 package documentview
 
 import (
+	"iter"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/ytakahashi/pino/internal/domain"
 )
@@ -115,6 +118,160 @@ func truncateRunes(s string, n int) (string, bool) {
 	}
 
 	return s, false
+}
+
+// commentsBefore separates comments that need rows of their own from inline
+// block comments that can sit between a label and its value. A line comment
+// cannot be kept on that row because everything after // would be comment text.
+func commentsBefore(comments iter.Seq[domain.Comment], p domain.Path, depth int) ([]Line, []Span) {
+	all := slices.Collect(comments)
+	inlineAt := len(all)
+	for inlineAt > 0 {
+		c := all[inlineAt-1]
+		if c.OwnLine() || !c.Block() || len(commentParts(c)) != 1 {
+			break
+		}
+		inlineAt--
+	}
+
+	var lines []Line
+	var inline []Span
+	for i, c := range all {
+		parts := commentParts(c)
+		if i >= inlineAt {
+			inline = appendCommentSpan(inline, parts[0])
+			continue
+		}
+
+		lines = append(lines, commentLines(c, parts, p, depth)...)
+	}
+	if len(inline) > 0 {
+		inline = append(inline, punct(" "))
+	}
+
+	return lines, inline
+}
+
+// appendComments places comments after content already drawn. Inline comments
+// extend its final physical row regardless of that row's owner; own-line
+// comments add non-selectable rows. Extending the final row is correct for
+// inside trivia because the encoder places inline inside trivia there too,
+// while parsed populated containers only receive own-line inside trivia. Tree
+// view uses appendOwnedComments for after trivia because it has no closing row
+// belonging to an expanded container.
+func appendComments(lines []Line, comments iter.Seq[domain.Comment], p domain.Path, depth int) []Line {
+	return appendCommentsTo(lines, comments, p, depth, func(Line) bool { return true })
+}
+
+// appendOwnedComments only extends a row when it belongs to p. Tree view has
+// no closing row, so an expanded container's trailing comment must not be
+// appended to the last descendant merely because that is the final row.
+func appendOwnedComments(lines []Line, comments iter.Seq[domain.Comment], p domain.Path, depth int) []Line {
+	return appendCommentsTo(lines, comments, p, depth, func(line Line) bool {
+		return line.Kind.Selectable() && line.Path.Equal(p)
+	})
+}
+
+func appendCommentsTo(
+	lines []Line,
+	comments iter.Seq[domain.Comment],
+	p domain.Path,
+	depth int,
+	mayExtend func(Line) bool,
+) []Line {
+	for c := range comments {
+		parts := commentParts(c)
+		canExtend := len(lines) > 0 && mayExtend(lines[len(lines)-1]) && !endsInLineComment(lines[len(lines)-1])
+		if c.OwnLine() || !canExtend {
+			lines = append(lines, commentLines(c, parts, p, depth)...)
+			continue
+		}
+
+		last := len(lines) - 1
+		lines[last].Spans = appendCommentSpan(lines[last].Spans, parts[0])
+		for _, part := range parts[1:] {
+			lines = append(lines, Line{
+				Path: p, Kind: LineComment, Depth: 0,
+				Spans: []Span{{Text: part, Role: RoleComment}},
+			})
+		}
+	}
+
+	return lines
+}
+
+func appendCommentSpan(spans []Span, text string) []Span {
+	if len(spans) > 0 {
+		last := spans[len(spans)-1].Text
+		if last == "" || (!strings.HasSuffix(last, " ") && !strings.HasSuffix(last, "\t")) {
+			spans = append(spans, punct(" "))
+		}
+	}
+
+	return append(spans, Span{Text: text, Role: RoleComment})
+}
+
+func commentLines(c domain.Comment, parts []string, p domain.Path, depth int) []Line {
+	lines := make([]Line, 0, len(parts))
+	for i, part := range parts {
+		lineDepth := depth
+		if i > 0 {
+			// The encoder preserves indentation inside block comment text, so
+			// adding document indentation here would display different bytes.
+			lineDepth = 0
+		}
+
+		lines = append(lines, Line{
+			Path: p, Kind: LineComment, Depth: lineDepth,
+			Spans: []Span{{Text: part, Role: RoleComment}},
+		})
+	}
+
+	return lines
+}
+
+func commentParts(c domain.Comment) []string {
+	if !c.Block() {
+		return []string{"//" + c.Text()}
+	}
+
+	parts := splitPhysicalLines(c.Text())
+	parts[0] = "/*" + parts[0]
+	parts[len(parts)-1] += "*/"
+
+	return parts
+}
+
+// splitPhysicalLines treats every newline accepted in block comment text as a
+// row boundary and keeps empty rows. No carriage return may reach a terminal.
+func splitPhysicalLines(s string) []string {
+	var lines []string
+	start := 0
+
+	for i := 0; i < len(s); {
+		if s[i] != '\r' && s[i] != '\n' {
+			i++
+			continue
+		}
+
+		lines = append(lines, s[start:i])
+		if s[i] == '\r' && i+1 < len(s) && s[i+1] == '\n' {
+			i++
+		}
+		i++
+		start = i
+	}
+
+	return append(lines, s[start:])
+}
+
+func endsInLineComment(line Line) bool {
+	if len(line.Spans) == 0 {
+		return false
+	}
+
+	last := line.Spans[len(line.Spans)-1]
+	return last.Role == RoleComment && strings.HasPrefix(last.Text, "//")
 }
 
 func punct(text string) Span { return Span{Text: text, Role: RolePunct} }

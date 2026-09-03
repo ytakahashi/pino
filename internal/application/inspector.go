@@ -50,6 +50,9 @@ type InspectorInfo struct {
 	Value     documentview.Span
 	Children  int
 	Container bool
+	// Foldable is separate from Children because a container can have rows to
+	// hide even when the only thing inside it is a comment.
+	Foldable bool
 
 	// Label is the name the node has within its parent, and Naming says what
 	// kind of name that is. Label is empty for the root, and empty as well for
@@ -101,9 +104,11 @@ func (a *App) Inspector() InspectorInfo {
 	switch n.Kind() {
 	case domain.KindObject:
 		info.Container, info.Children = true, n.(*domain.Object).Len()
+		info.Foldable = info.Children > 0 || n.Trivia().HasInside()
 
 	case domain.KindArray:
 		info.Container, info.Children = true, n.(*domain.Array).Len()
+		info.Foldable = info.Children > 0 || n.Trivia().HasInside()
 
 	case domain.KindString, domain.KindNumber, domain.KindBool, domain.KindNull:
 		// In full, with no limit passed: a value shortened in the document is

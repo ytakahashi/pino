@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ytakahashi/pino/internal/application/documentview"
+	"github.com/ytakahashi/pino/internal/domain"
 )
 
 func TestInspectorDescribesTheNodeAtTheCursor(t *testing.T) {
@@ -19,7 +20,7 @@ func TestInspectorDescribesTheNodeAtTheCursor(t *testing.T) {
 		"the root": {
 			pointer: "",
 			want: InspectorInfo{
-				Pointer: "", Type: "object", Container: true, Children: 10, Naming: NamedNone,
+				Pointer: "", Type: "object", Container: true, Children: 10, Foldable: true, Naming: NamedNone,
 			},
 		},
 
@@ -69,7 +70,7 @@ func TestInspectorDescribesTheNodeAtTheCursor(t *testing.T) {
 		"an object": {
 			pointer: "/obj",
 			want: InspectorInfo{
-				Pointer: "/obj", Type: "object", Container: true, Children: 2,
+				Pointer: "/obj", Type: "object", Container: true, Children: 2, Foldable: true,
 				Label: "obj", Naming: NamedKey,
 			},
 		},
@@ -77,7 +78,7 @@ func TestInspectorDescribesTheNodeAtTheCursor(t *testing.T) {
 		"an array": {
 			pointer: "/arr",
 			want: InspectorInfo{
-				Pointer: "/arr", Type: "array", Container: true, Children: 2,
+				Pointer: "/arr", Type: "array", Container: true, Children: 2, Foldable: true,
 				Label: "arr", Naming: NamedKey,
 			},
 		},
@@ -177,6 +178,25 @@ func TestInspectorShowsLongValuesInFull(t *testing.T) {
 
 	if want := `"` + long + `"`; got.Value.Text != want {
 		t.Errorf("Value = %q, want the whole value", got.Value.Text)
+	}
+}
+
+func TestInspectorSeparatesFoldableCommentsFromChildren(t *testing.T) {
+	t.Parallel()
+
+	comment, err := domain.NewComment(" inside", false, true)
+	if err != nil {
+		t.Fatalf("NewComment: %v", err)
+	}
+	empty := domain.WithTrivia(object(t), domain.NewTrivia(nil, nil, []domain.Comment{comment}))
+	root := object(t, member("empty", empty))
+
+	got := inspected(t, root, "/empty")
+	if got.Children != 0 {
+		t.Errorf("Children = %d, want 0", got.Children)
+	}
+	if !got.Foldable {
+		t.Error("Foldable = false, want true")
 	}
 }
 

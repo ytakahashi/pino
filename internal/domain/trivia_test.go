@@ -141,8 +141,15 @@ func TestNewTriviaCopiesItsInput(t *testing.T) {
 	if tv.IsEmpty() {
 		t.Error("IsEmpty() = true for a Trivia holding comments")
 	}
+	if !tv.HasInside() {
+		t.Error("HasInside() = false for a Trivia holding an inside comment")
+	}
 
-	if !NewTrivia(nil, nil, nil).IsEmpty() {
+	empty := NewTrivia(nil, nil, nil)
+	if !empty.IsEmpty() {
 		t.Error("IsEmpty() = false for a Trivia with no comments")
+	}
+	if empty.HasInside() {
+		t.Error("HasInside() = true for a Trivia with no inside comments")
 	}
 }

@@ -22,18 +22,16 @@ type cursorRow struct {
 }
 
 func (r cursorRow) String() string {
-	return fmt.Sprintf("%-6s %d %-24s %t", r.Kind, r.Depth, r.Pointer, r.Collapsed)
+	return fmt.Sprintf("%-7s %d %-24s %t", r.Kind, r.Depth, r.Pointer, r.Collapsed)
 }
 
-// cursorRows is the rows a view offers the cursor, in order.
-//
-// A close row is left out because it is the one row the cursor never lands on,
-// and the one row the tree view has no use for.
+// cursorRows is every selectable row, in order. The two views may place comment
+// rows differently because tree view has no closing row for a container.
 func cursorRows(lines []Line) []cursorRow {
 	rows := make([]cursorRow, 0, len(lines))
 
 	for _, l := range lines {
-		if l.Kind == LineClose {
+		if !l.Kind.Selectable() {
 			continue
 		}
 
@@ -134,6 +132,70 @@ func equalRows(a, b []cursorRow) bool {
 	}
 
 	return true
+}
+
+// ownedComments groups rendered comment spans by the selectable row whose
+// path owns them. The physical row may differ between views: JSON can append
+// a container comment to its closing row, while tree view has no such row.
+type ownedComments struct {
+	Pointer  string
+	Comments []string
+}
+
+func commentsByCursorRow(lines []Line) []ownedComments {
+	var comments []ownedComments
+	owner := make(map[string]int)
+
+	for _, line := range lines {
+		if !line.Kind.Selectable() {
+			continue
+		}
+
+		pointer := line.Path.String()
+		owner[pointer] = len(comments)
+		comments = append(comments, ownedComments{Pointer: pointer})
+	}
+
+	for _, line := range lines {
+		pointer := line.Path.String()
+		i, ok := owner[pointer]
+		if !ok {
+			// There should be no rendered comment without a selectable owner.
+			// Keeping one in the result makes that invariant observable instead
+			// of silently dropping a bad Path from this comparison.
+			i = len(comments)
+			owner[pointer] = i
+			comments = append(comments, ownedComments{Pointer: pointer})
+		}
+
+		for _, span := range line.Spans {
+			if span.Role == RoleComment {
+				comments[i].Comments = append(comments[i].Comments, span.Text)
+			}
+		}
+	}
+
+	return comments
+}
+
+func equalComments(a, b []ownedComments) bool {
+	return slices.EqualFunc(a, b, func(a, b ownedComments) bool {
+		return a.Pointer == b.Pointer && slices.Equal(a.Comments, b.Comments)
+	})
+}
+
+func formatComments(comments []ownedComments) string {
+	var b strings.Builder
+
+	for i, entry := range comments {
+		pointer := entry.Pointer
+		if pointer == "" {
+			pointer = "/"
+		}
+		fmt.Fprintf(&b, "%2d  %-24s %q\n", i, pointer, entry.Comments)
+	}
+
+	return b.String()
 }
 
 // describe names a folded set in a failure message. The pointers are sorted so
