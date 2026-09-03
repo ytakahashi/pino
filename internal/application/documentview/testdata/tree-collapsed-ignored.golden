@@ -1,4 +1,4 @@
- 0  open    0  /                          guide[▼ ] key[/] punct[ {3}]
- 1  single  1  /obj                       key[obj] punct[ {}]
- 2  single  1  /arr                       key[arr] punct[ []]
- 3  single  1  /num                       key[num] punct[: ] number[1]
+ 0  open     0  /                          guide[▼ ] key[/] punct[ {3}]
+ 1  single   1  /obj                       key[obj] punct[ {}]
+ 2  single   1  /arr                       key[arr] punct[ []]
+ 3  single   1  /num                       key[num] punct[: ] number[1]

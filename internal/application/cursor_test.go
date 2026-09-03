@@ -52,6 +52,63 @@ func TestIndexOfPrefersTheOpeningRow(t *testing.T) {
 	}
 }
 
+func TestCursorArithmeticSkipsCommentRows(t *testing.T) {
+	t.Parallel()
+
+	root := domain.Path{}
+	child := path(domain.KeySegment("child"))
+	lines := []documentview.Line{
+		{Path: root, Kind: documentview.LineComment, Depth: 0},
+		{Path: root, Kind: documentview.LineOpen, Depth: 0},
+		// A continuation of a multiline block comment carries no document
+		// indentation even when it belongs to the deeper child.
+		{Path: child, Kind: documentview.LineComment, Depth: 0},
+		{Path: child, Kind: documentview.LineSingle, Depth: 1},
+		{Path: root, Kind: documentview.LineComment, Depth: 1},
+		{Path: root, Kind: documentview.LineClose, Depth: 0},
+	}
+
+	if got := indexOf(lines, root); got != 1 {
+		t.Errorf("indexOf(root) = %d, want 1", got)
+	}
+	if got := firstRow(lines); got != 1 {
+		t.Errorf("firstRow() = %d, want 1", got)
+	}
+	if got := nextRow(lines, 1); got != 3 {
+		t.Errorf("nextRow(root) = %d, want 3", got)
+	}
+	if got := prevRow(lines, 5); got != 3 {
+		t.Errorf("prevRow(close) = %d, want 3", got)
+	}
+	if got := firstChildRow(lines, 1); got != 3 {
+		t.Errorf("firstChildRow(root) = %d, want 3", got)
+	}
+	if got := parentRow(lines, 3); got != 1 {
+		t.Errorf("parentRow(child) = %d, want 1", got)
+	}
+	if got := nearestRow(lines, 4, -1); got != 3 {
+		t.Errorf("nearestRow(comment) = %d, want 3", got)
+	}
+}
+
+func TestCommentOnlyContainerHasNoSelectableChild(t *testing.T) {
+	t.Parallel()
+
+	container := path(domain.KeySegment("empty"))
+	sibling := path(domain.KeySegment("next"))
+	lines := []documentview.Line{
+		{Kind: documentview.LineOpen},
+		{Path: container, Kind: documentview.LineOpen, Depth: 1},
+		{Path: container, Kind: documentview.LineComment, Depth: 2},
+		{Path: sibling, Kind: documentview.LineSingle, Depth: 1},
+		{Kind: documentview.LineClose},
+	}
+
+	if got := firstChildRow(lines, 1); got != -1 {
+		t.Errorf("firstChildRow(comment-only container) = %d, want -1", got)
+	}
+}
+
 func TestVisibleRowFindsTheNearestVisibleAncestor(t *testing.T) {
 	t.Parallel()
 

@@ -131,10 +131,19 @@ func everyRelationshipDocument(t *testing.T) domain.Node {
 
 	inner := newObject(t, []domain.Member{{Key: "value", Value: domain.NewNumber("1")}})
 	empty := newObject(t, nil)
+	comment, err := domain.NewComment(" pending", false, true)
+	if err != nil {
+		t.Fatalf("NewComment: %v", err)
+	}
+	commentOnly := domain.WithTrivia(
+		newObject(t, nil),
+		domain.NewTrivia(nil, nil, []domain.Comment{comment}),
+	)
 
 	return newObject(t, []domain.Member{
 		{Key: "object", Value: inner},
 		{Key: "array", Value: domain.NewArray([]domain.Node{text, empty})},
+		{Key: "comment-only", Value: commentOnly},
 		{Key: "number", Value: domain.NewNumber("2")},
 	})
 }

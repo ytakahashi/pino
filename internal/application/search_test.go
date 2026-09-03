@@ -133,7 +133,7 @@ func TestHitsFollowExpandedDrawingOrder(t *testing.T) {
 
 					var want []string
 					for _, line := range renderer.Render(root, documentview.Options{}) {
-						if line.Kind == documentview.LineClose {
+						if !line.Kind.Selectable() {
 							continue
 						}
 

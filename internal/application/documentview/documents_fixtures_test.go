@@ -83,7 +83,7 @@ func dumpLines(lines []Line) string {
 			collapsed = "[C]"
 		}
 
-		fmt.Fprintf(&b, "%2d  %-6s  %d  %-20s  %-3s  %s\n",
+		fmt.Fprintf(&b, "%2d  %-7s  %d  %-20s  %-3s  %s\n",
 			i, l.Kind, l.Depth, pointer, collapsed, strings.Join(spans, " "))
 	}
 

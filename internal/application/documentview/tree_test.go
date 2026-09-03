@@ -1,10 +1,39 @@
 package documentview
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ytakahashi/pino/internal/domain"
 )
+
+func TestRenderersHideCommentsInsideAFoldedContainer(t *testing.T) {
+	t.Parallel()
+
+	doc := documents(t)["comments"]
+	opt := Options{Collapsed: map[string]struct{}{"/empty-object": {}}}
+
+	for name, renderer := range map[string]Renderer{
+		"JSON": NewJSONRenderer(),
+		"tree": NewTreeRenderer(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			lines := renderer.Render(doc.root, opt)
+			for _, line := range lines {
+				if strings.Contains(line.Text(), "banner") || strings.Contains(line.Text(), "kept as written") {
+					t.Errorf("folded comment is still visible on %q", line.Text())
+				}
+			}
+
+			if !slices.ContainsFunc(lines, func(line Line) bool {
+				return line.Path.String() == "/empty-object" && line.Collapsed
+			}) {
+				t.Error("the comment-only container is not drawn folded")
+			}
+		})
+	}
+}
 
 // The tree goldens sit beside the JSON goldens of the same documents, so that
 // the two can be read side by side: the rows the cursor can land on are the
@@ -29,6 +58,51 @@ func TestTreeRenderReturnsNoLinesWithoutADocument(t *testing.T) {
 	}
 }
 
+func TestTreeRenderPromotesAnExpandedMemberTrailingComment(t *testing.T) {
+	t.Parallel()
+
+	lines := NewTreeRenderer().Render(documents(t)["comments"].root, Options{})
+	for _, line := range lines {
+		if !strings.Contains(line.Text(), "nested complete") {
+			continue
+		}
+
+		if line.Kind != LineComment || line.Path.String() != "/nested" || line.Depth != 1 {
+			t.Errorf("trailing container comment = (%s, %q, depth %d), want (comment, %q, depth 1)",
+				line.Kind, line.Path.String(), line.Depth, "/nested")
+		}
+		return
+	}
+
+	t.Error("trailing container comment was not rendered")
+}
+
+func TestTreeRenderPromotesAnExpandedElementTrailingComment(t *testing.T) {
+	t.Parallel()
+
+	object, err := domain.NewObject([]domain.Member{{Key: "leaf", Value: domain.NewNull()}})
+	if err != nil {
+		t.Fatalf("NewObject: %v", err)
+	}
+	comment := commentForRenderTest(t, " element complete ", true, false)
+	commented := domain.WithTrivia(object, domain.NewTrivia(nil, []domain.Comment{comment}, nil))
+
+	lines := NewTreeRenderer().Render(domain.NewArray([]domain.Node{commented}), Options{})
+	for _, line := range lines {
+		if !strings.Contains(line.Text(), "element complete") {
+			continue
+		}
+
+		if line.Kind != LineComment || line.Path.String() != "/0" || line.Depth != 1 {
+			t.Errorf("trailing container comment = (%s, %q, depth %d), want (comment, %q, depth 1)",
+				line.Kind, line.Path.String(), line.Depth, "/0")
+		}
+		return
+	}
+
+	t.Error("trailing container comment was not rendered")
+}
+
 // TestViewsAgreeOnRows fixes the property the whole two-view design rests on.
 //
 // Both renderers decide what to draw from the document and the folded set
@@ -43,7 +117,9 @@ func TestTreeRenderReturnsNoLinesWithoutADocument(t *testing.T) {
 // views mean the same thing by those keys only if they agree here too, and
 // Depth is what the indentation of every row is worked out from.
 //
-// A renderer that grew a row of its own, or dropped one, or folded on a rule
+// Comment and closing rows are not compared: the views use different
+// structures for those, while cursor movement depends only on selectable
+// rows. A renderer that grew or dropped a selectable row, or folded on a rule
 // slightly its own, fails here rather than in the view switch it would break.
 func TestViewsAgreeOnRows(t *testing.T) {
 	t.Parallel()
@@ -61,6 +137,31 @@ func TestViewsAgreeOnRows(t *testing.T) {
 				if !equalRows(jsonRows, treeRows) {
 					t.Errorf("the views disagree with %s folded\n json view:\n%s\n tree view:\n%s",
 						describe(set), formatRows(jsonRows), formatRows(treeRows))
+				}
+			}
+		})
+	}
+}
+
+// The renderers may put a comment on different physical rows, but changing
+// view must not change which node owns it, its text, or its order among the
+// other comments owned by that node.
+func TestViewsAgreeOnCommentsByOwner(t *testing.T) {
+	t.Parallel()
+
+	for name, doc := range documents(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, set := range foldings(t, doc) {
+				opt := Options{Collapsed: set, MaxStrLen: doc.opt.MaxStrLen}
+
+				jsonComments := commentsByCursorRow(NewJSONRenderer().Render(doc.root, opt))
+				treeComments := commentsByCursorRow(NewTreeRenderer().Render(doc.root, opt))
+
+				if !equalComments(jsonComments, treeComments) {
+					t.Errorf("the views assign comments differently with %s folded\n json view:\n%s\n tree view:\n%s",
+						describe(set), formatComments(jsonComments), formatComments(treeComments))
 				}
 			}
 		})
@@ -130,7 +231,7 @@ func TestJSONRenderClosesWhatItOpens(t *testing.T) {
 								i, l.Path.String(), last.String(), describe(set))
 						}
 
-					case LineSingle:
+					case LineSingle, LineComment:
 					}
 				}
 

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ytakahashi/pino/internal/application/documentview"
+	"github.com/ytakahashi/pino/internal/domain"
 )
 
 func TestSearchOpensATextPromptWithoutMovingTheCursor(t *testing.T) {
@@ -360,5 +361,19 @@ func TestFrameMarksAContainerOpeningRowRatherThanItsClosingRow(t *testing.T) {
 	line := frame.Lines[frame.Matches[0]]
 	if line.Path.String() != "/server" || line.Kind != documentview.LineOpen {
 		t.Errorf("matched line = path %q kind %v, want /server open", line.Path, line.Kind)
+	}
+}
+
+func TestMatchingRowsMarksTheNodeRatherThanItsComment(t *testing.T) {
+	t.Parallel()
+
+	p := path(domain.KeySegment("value"))
+	lines := []documentview.Line{
+		{Path: p, Kind: documentview.LineComment},
+		{Path: p, Kind: documentview.LineSingle},
+	}
+
+	if got, want := matchingRows(lines, []domain.Path{p}), []int{1}; !slices.Equal(got, want) {
+		t.Errorf("matchingRows() = %v, want %v", got, want)
 	}
 }

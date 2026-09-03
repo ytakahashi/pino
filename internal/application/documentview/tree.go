@@ -45,7 +45,9 @@ func (treeRenderer) Render(root domain.Node, opt Options) []Line {
 		return nil
 	}
 
-	return treeRenderer{opt: opt}.node(root, domain.Path{}, 0, rootLabel)
+	r := treeRenderer{opt: opt}
+	lines := appendComments(nil, root.Trivia().Before(), domain.Path{}, 0)
+	return append(lines, r.node(root, domain.Path{}, 0, rootLabel, false)...)
 }
 
 // node returns the rows for the subtree at n.
@@ -58,7 +60,14 @@ func (treeRenderer) Render(root domain.Node, opt Options) []Line {
 // whether n is the last of its siblings, because a tree has no commas between
 // its rows. label is the name drawn at the head of the row — the key of an
 // object member, the position of an array element, or the root's own name.
-func (r treeRenderer) node(n domain.Node, p domain.Path, depth int, label string) []Line {
+func (r treeRenderer) node(n domain.Node, p domain.Path, depth int, label string, drawBefore bool) []Line {
+	var before []Line
+	var inline []Span
+	if drawBefore {
+		before, inline = commentsBefore(n.Trivia().Before(), p, depth)
+	}
+	var lines []Line
+
 	// The switch is on Kind rather than on the concrete type so that a kind
 	// added later is reported here by the exhaustive linter instead of
 	// silently falling through to the scalar branch. domain sets the two
@@ -67,54 +76,66 @@ func (r treeRenderer) node(n domain.Node, p domain.Path, depth int, label string
 	case domain.KindObject:
 		o := n.(*domain.Object)
 
-		head, expanded := r.head(p, depth, label, "{", "}", o.Len())
+		head, expanded := r.head(p, depth, label, "{", "}", o.Len(), o.Trivia().HasInside(), inline)
 		if !expanded {
-			return []Line{head}
+			lines = []Line{head}
+			break
 		}
 
 		// One row for each member at least, plus the head.
-		lines := make([]Line, 0, o.Len()+1)
+		lines = make([]Line, 0, o.Len()+1)
 		lines = append(lines, head)
 
 		for _, m := range o.All() {
-			lines = append(lines, r.node(m.Value, p.Child(domain.KeySegment(m.Key)), depth+1, m.Key)...)
+			childPath := p.Child(domain.KeySegment(m.Key))
+			lines = appendComments(lines, m.Trivia.Before(), childPath, depth+1)
+			lines = append(lines, r.node(m.Value, childPath, depth+1, m.Key, true)...)
+			lines = appendOwnedComments(lines, m.Trivia.After(), childPath, depth+1)
 		}
 
-		return lines
+		lines = appendComments(lines, o.Trivia().Inside(), p, depth+1)
 
 	case domain.KindArray:
 		a := n.(*domain.Array)
 
-		head, expanded := r.head(p, depth, label, "[", "]", a.Len())
+		head, expanded := r.head(p, depth, label, "[", "]", a.Len(), a.Trivia().HasInside(), inline)
 		if !expanded {
-			return []Line{head}
+			lines = []Line{head}
+			break
 		}
 
-		lines := make([]Line, 0, a.Len()+1)
+		lines = make([]Line, 0, a.Len()+1)
 		lines = append(lines, head)
 
 		for i, e := range a.All() {
 			// An element is named by its position. That reads as a key would,
 			// which is why the badge on this row says the container is an
 			// array: without it "0: ..." would not say which of the two it is.
-			lines = append(lines, r.node(e, p.Child(domain.IndexSegment(i)), depth+1, strconv.Itoa(i))...)
+			childPath := p.Child(domain.IndexSegment(i))
+			lines = appendComments(lines, e.Trivia().Before(), childPath, depth+1)
+			lines = append(lines, r.node(e, childPath, depth+1, strconv.Itoa(i), false)...)
 		}
 
-		return lines
+		lines = appendComments(lines, a.Trivia().Inside(), p, depth+1)
 
 	case domain.KindString, domain.KindNumber, domain.KindBool, domain.KindNull:
 		// The colon is what separates a row holding a value from a row to be
 		// opened: those carry a badge in its place.
-		return []Line{{
+		spans := []Span{treeName(label), punct(": ")}
+		spans = append(spans, inline...)
+		lines = []Line{{
 			Path:  p,
 			Kind:  LineSingle,
 			Depth: depth,
-			Spans: []Span{treeName(label), punct(": "), ScalarSpan(n, r.opt.MaxStrLen)},
+			Spans: append(spans, ScalarSpan(n, r.opt.MaxStrLen)),
 		}}
 
 	default:
 		panic("documentview: cannot render node of kind " + n.Kind().String())
 	}
+
+	lines = append(before, lines...)
+	return appendOwnedComments(lines, n.Trivia().After(), p, depth)
 }
 
 // head is the row a container is drawn on, and whether its children follow it.
@@ -129,14 +150,20 @@ func (r treeRenderer) node(n domain.Node, p domain.Path, depth int, label string
 //
 // Keeping that agreement is what lets h and l mean the same thing in both
 // views: they read Kind and Collapsed, and never ask which renderer drew.
-func (r treeRenderer) head(p domain.Path, depth int, label, left, right string, n int) (Line, bool) {
-	if n == 0 {
+func (r treeRenderer) head(
+	p domain.Path, depth int, label, left, right string, n int, inside bool, inline []Span,
+) (Line, bool) {
+	spans := []Span{treeName(label)}
+	spans = append(spans, inline...)
+	spans = append(spans, badge(left, right, n))
+
+	if n == 0 && !inside {
 		// No marker: a row that offers to open would be offering nothing.
 		return Line{
 			Path:  p,
 			Kind:  LineSingle,
 			Depth: depth,
-			Spans: []Span{treeName(label), badge(left, right, n)},
+			Spans: spans,
 		}, false
 	}
 
@@ -145,7 +172,7 @@ func (r treeRenderer) head(p domain.Path, depth int, label, left, right string, 
 			Path:      p,
 			Kind:      LineSingle,
 			Depth:     depth,
-			Spans:     []Span{guide(markerFolded), treeName(label), badge(left, right, n)},
+			Spans:     append([]Span{guide(markerFolded)}, spans...),
 			Collapsed: true,
 		}, false
 	}
@@ -154,7 +181,7 @@ func (r treeRenderer) head(p domain.Path, depth int, label, left, right string, 
 		Path:  p,
 		Kind:  LineOpen,
 		Depth: depth,
-		Spans: []Span{guide(markerExpanded), treeName(label), badge(left, right, n)},
+		Spans: append([]Span{guide(markerExpanded)}, spans...),
 	}, true
 }
 

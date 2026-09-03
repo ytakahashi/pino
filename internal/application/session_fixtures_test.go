@@ -68,7 +68,7 @@ func pointersOf(a *App) []string {
 
 	got := make([]string, 0, len(frame.Lines))
 	for _, l := range frame.Lines {
-		if l.Kind != documentview.LineClose {
+		if l.Kind.Selectable() {
 			got = append(got, l.Path.String())
 		}
 	}

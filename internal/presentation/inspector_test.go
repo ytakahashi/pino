@@ -48,6 +48,17 @@ func TestInspectorFieldsDescribeEveryValue(t *testing.T) {
 			},
 		},
 
+		"a container holding only comments": {
+			info: application.InspectorInfo{
+				Pointer: "/pending", Type: "object", Container: true, Children: 0, Foldable: true,
+				Label: "pending", Naming: application.NamedKey,
+			},
+			want: []string{
+				"Path=/pending", "Type=object", "Children=0", "Key=pending",
+				"Press=Enter t a A d r",
+			},
+		},
+
 		// The name of the last field is the answer to a question a pointer
 		// cannot settle on its own.
 		"an element of an array": {

@@ -34,6 +34,7 @@ type Theme struct {
 	NullValue   lipgloss.Style
 	Punct       lipgloss.Style
 	TreeGuide   lipgloss.Style
+	Comment     lipgloss.Style
 
 	// StatusBar is the strip along the bottom of the screen. It is not a
 	// Role: no renderer produces it, and it is drawn around the document
@@ -107,6 +108,7 @@ func DefaultTheme() Theme {
 		NullValue:   lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
 		Punct:       lipgloss.NewStyle().Foreground(lipgloss.Color("244")),
 		TreeGuide:   lipgloss.NewStyle().Foreground(lipgloss.Color("240")),
+		Comment:     lipgloss.NewStyle().Foreground(lipgloss.Color("242")),
 
 		// The bar is set apart by a filled background rather than by a rule
 		// above it, which would cost one of the rows the document is drawn in.
@@ -209,6 +211,8 @@ func (t Theme) style(r documentview.Role) lipgloss.Style {
 		return t.Punct
 	case documentview.RoleTreeGuide:
 		return t.TreeGuide
+	case documentview.RoleComment:
+		return t.Comment
 	}
 
 	return lipgloss.NewStyle()

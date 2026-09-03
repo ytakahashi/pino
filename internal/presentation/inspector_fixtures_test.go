@@ -48,6 +48,7 @@ func containerInfo() application.InspectorInfo {
 		Type:      "object",
 		Container: true,
 		Children:  3,
+		Foldable:  true,
 		Label:     "server",
 		Naming:    application.NamedKey,
 	}

@@ -444,7 +444,7 @@ func available(info application.InspectorInfo) []application.Action {
 	// container is drawn as neither open nor folded. A scalar at the root is
 	// not one of these — it is typed over like any other — so what is asked
 	// first is whether this is a container at all.
-	if !info.Container || (info.Naming != application.NamedNone && info.Children > 0) {
+	if !info.Container || (info.Naming != application.NamedNone && info.Foldable) {
 		acts = append(acts, application.ActionEdit{})
 	}
 

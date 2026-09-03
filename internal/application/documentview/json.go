@@ -27,7 +27,9 @@ func (jsonRenderer) Render(root domain.Node, opt Options) []Line {
 
 	// The root has no key in front of it and no sibling to be separated
 	// from, which is what a nil label and a final position mean.
-	return jsonRenderer{opt: opt}.node(root, domain.Path{}, 0, nil, true)
+	r := jsonRenderer{opt: opt}
+	lines := appendComments(nil, root.Trivia().Before(), domain.Path{}, 0)
+	return append(lines, r.node(root, domain.Path{}, 0, nil, true, false)...)
 }
 
 // node returns the rows for the subtree at n.
@@ -40,20 +42,31 @@ func (jsonRenderer) Render(root domain.Node, opt Options) []Line {
 // label is drawn before the value on the first row: the key of an object
 // member, or nothing for an array element or the root. last says whether n is
 // the final child of its parent, which decides the separating comma.
-func (r jsonRenderer) node(n domain.Node, p domain.Path, depth int, label []Span, last bool) []Line {
+func (r jsonRenderer) node(
+	n domain.Node, p domain.Path, depth int, label []Span, last, drawBefore bool,
+) []Line {
+	var before []Line
+	var inline []Span
+	if drawBefore {
+		before, inline = commentsBefore(n.Trivia().Before(), p, depth)
+	}
+	label = append(spansOf(label), inline...)
+
+	var lines []Line
+
 	// The switch is on Kind rather than on the concrete type so that a kind
 	// added later is reported here by the exhaustive linter instead of
 	// silently falling through to the scalar branch. domain sets the two
 	// together, so the assertions below cannot fail.
 	switch n.Kind() {
 	case domain.KindObject:
-		return r.object(n.(*domain.Object), p, depth, label, last)
+		lines = r.object(n.(*domain.Object), p, depth, label, last)
 
 	case domain.KindArray:
-		return r.array(n.(*domain.Array), p, depth, label, last)
+		lines = r.array(n.(*domain.Array), p, depth, label, last)
 
 	case domain.KindString, domain.KindNumber, domain.KindBool, domain.KindNull:
-		return []Line{{
+		lines = []Line{{
 			Path:  p,
 			Kind:  LineSingle,
 			Depth: depth,
@@ -63,6 +76,9 @@ func (r jsonRenderer) node(n domain.Node, p domain.Path, depth int, label []Span
 	default:
 		panic("documentview: cannot render node of kind " + n.Kind().String())
 	}
+
+	lines = append(before, lines...)
+	return appendComments(lines, n.Trivia().After(), p, depth)
 }
 
 // object returns the rows for o, opening and closing braces included.
@@ -78,7 +94,7 @@ func (r jsonRenderer) node(n domain.Node, p domain.Path, depth int, label []Span
 // since there is nothing to hide and a row that offers to unfold into nothing
 // is a worse answer than the braces themselves.
 func (r jsonRenderer) object(o *domain.Object, p domain.Path, depth int, label []Span, last bool) []Line {
-	if o.Len() == 0 {
+	if o.Len() == 0 && !o.Trivia().HasInside() {
 		return []Line{{
 			Path:  p,
 			Kind:  LineSingle,
@@ -107,14 +123,20 @@ func (r jsonRenderer) object(o *domain.Object, p domain.Path, depth int, label [
 	})
 
 	for i, m := range o.All() {
+		childPath := p.Child(domain.KeySegment(m.Key))
+		lines = appendComments(lines, m.Trivia.Before(), childPath, depth+1)
 		lines = append(lines, r.node(
 			m.Value,
-			p.Child(domain.KeySegment(m.Key)),
+			childPath,
 			depth+1,
 			memberLabel(m.Key),
 			i == o.Len()-1,
+			true,
 		)...)
+		lines = appendComments(lines, m.Trivia.After(), childPath, depth+1)
 	}
+
+	lines = appendComments(lines, o.Trivia().Inside(), p, depth+1)
 
 	// The closing row carries the path of the node it closes, so that folding
 	// can find it and so that a cursor on the node knows where its rows end.
@@ -129,7 +151,7 @@ func (r jsonRenderer) object(o *domain.Object, p domain.Path, depth int, label [
 // array returns the rows for a, brackets included. An empty array is drawn on
 // a single row, and so is a folded one, both for the reasons given on object.
 func (r jsonRenderer) array(a *domain.Array, p domain.Path, depth int, label []Span, last bool) []Line {
-	if a.Len() == 0 {
+	if a.Len() == 0 && !a.Trivia().HasInside() {
 		return []Line{{
 			Path:  p,
 			Kind:  LineSingle,
@@ -157,14 +179,19 @@ func (r jsonRenderer) array(a *domain.Array, p domain.Path, depth int, label []S
 	})
 
 	for i, e := range a.All() {
+		childPath := p.Child(domain.IndexSegment(i))
+		lines = appendComments(lines, e.Trivia().Before(), childPath, depth+1)
 		lines = append(lines, r.node(
 			e,
-			p.Child(domain.IndexSegment(i)),
+			childPath,
 			depth+1,
 			nil,
 			i == a.Len()-1,
+			false,
 		)...)
 	}
+
+	lines = appendComments(lines, a.Trivia().Inside(), p, depth+1)
 
 	return append(lines, Line{
 		Path:  p,

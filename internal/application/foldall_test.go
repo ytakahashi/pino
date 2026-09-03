@@ -70,9 +70,18 @@ func TestCollapseAllFoldsNestedContainers(t *testing.T) {
 func TestCollapseAllLeavesEmptyContainers(t *testing.T) {
 	t.Parallel()
 
+	inside, err := domain.NewComment(" preserved", false, true)
+	if err != nil {
+		t.Fatalf("NewComment: %v", err)
+	}
+	commentedObject := domain.WithTrivia(object(t), domain.NewTrivia(nil, nil, []domain.Comment{inside}))
+	commentedArray := domain.WithTrivia(domain.NewArray(nil), domain.NewTrivia(nil, nil, []domain.Comment{inside}))
+
 	app := session(t, object(t,
 		member("opts", object(t)),
 		member("tags", domain.NewArray(nil)),
+		member("commented-object", commentedObject),
+		member("commented-array", commentedArray),
 		member("server", object(t, member("host", text(t, "localhost")))),
 	))
 
@@ -86,6 +95,12 @@ func TestCollapseAllLeavesEmptyContainers(t *testing.T) {
 
 	if !app.view.IsCollapsed(path(domain.KeySegment("server"))) {
 		t.Error("/server has members but was left open")
+	}
+
+	for _, key := range []string{"commented-object", "commented-array"} {
+		if !app.view.IsCollapsed(path(domain.KeySegment(key))) {
+			t.Errorf("/%s has an inside comment but was left open", key)
+		}
 	}
 }
 
