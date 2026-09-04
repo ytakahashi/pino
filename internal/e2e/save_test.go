@@ -58,6 +58,37 @@ func TestTheProgramSavesAnEditedDocument(t *testing.T) {
 	}
 }
 
+// JSONC crosses the same complete path as standard JSON: parsing, rendering,
+// editing, encoding, validation and replacement of the real file. The source
+// keeps its .json extension because dialect selection is content-independent.
+func TestTheProgramPreservesCommentsWhenSavingJSONC(t *testing.T) {
+	t.Parallel()
+
+	tm, waiter, path := startAt(t, writeJSONCConfig(t), "Address used by clients")
+
+	// Comment rows are not cursor stops: two moves from the root reach port.
+	tm.Type("jj")
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tm.Type("1")
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	waiter.wait(t, func(screen []string) bool {
+		return strings.Contains(statusRow(screen), "modified")
+	})
+
+	tm.Send(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+
+	waiter.wait(t, func(screen []string) bool {
+		return !strings.Contains(statusRow(screen), "modified")
+	})
+
+	if got := readFile(t, path); got != savedJSONCConfig {
+		t.Errorf("the JSONC file holds:\n%s\nwant:\n%s", got, savedJSONCConfig)
+	}
+
+	finalScreen(t, tm)
+}
+
 // Leaving with unsaved changes asks, and the answer that throws them away
 // leaves the file exactly as it was.
 func TestTheProgramLeavesTheFileAloneWhenChangesAreDiscarded(t *testing.T) {

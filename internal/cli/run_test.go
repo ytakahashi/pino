@@ -321,16 +321,6 @@ func TestRunReportsADocumentThatCannotBeOpened(t *testing.T) {
 			want:     "2:10: invalid character '\"' after object name",
 		},
 		{
-			name:     "comment",
-			contents: "{\n  // a note\n  \"host\": \"localhost\"\n}\n",
-			want:     "2:3: comments are not supported yet",
-		},
-		{
-			name:     "trailing comma",
-			contents: "[\n  1,\n]\n",
-			want:     "2:4: trailing commas are not supported yet",
-		},
-		{
 			name:     "duplicate key",
 			contents: "{\n  \"a\": 1,\n  \"a\": 2\n}\n",
 			want:     "3:3:",
@@ -339,6 +329,11 @@ func TestRunReportsADocumentThatCannotBeOpened(t *testing.T) {
 			name:     "invalid UTF-8",
 			contents: "{\n  \"a\": \"x\xffy\"\n}\n",
 			want:     "2:10: invalid UTF-8 in string",
+		},
+		{
+			name:     "invalid UTF-8 in a comment",
+			contents: "{\n  // note \xff\n  \"a\": 1\n}\n",
+			want:     "2:11: invalid UTF-8 in comment",
 		},
 		{
 			name:     "unpaired surrogate",

@@ -19,6 +19,10 @@ func TestSaveWritesTheDocumentAndMarksItSaved(t *testing.T) {
 
 	press(app, ActionSave{})
 
+	if got := parserOf(t, app).gotDialect; got != domain.JSONC {
+		t.Errorf("encoding validation used dialect %+v, want JSONC", got)
+	}
+
 	if len(files.writes) != 1 {
 		t.Fatalf("the store was asked to write %d times, want once", len(files.writes))
 	}

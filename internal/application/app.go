@@ -196,7 +196,7 @@ func (a *App) read(path string, allowNew bool) (document, error) {
 		return document{}, err
 	}
 
-	root, err := a.deps.Parser.Parse(raw, domain.StrictJSON)
+	root, err := a.deps.Parser.Parse(raw, domain.JSONC)
 	if err != nil {
 		return document{}, err
 	}

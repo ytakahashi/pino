@@ -36,6 +36,26 @@ const config = `{
 }
 `
 
+// jsoncConfig is deliberately named .json when written. Pino selects the
+// dialect for every document rather than inferring it from the extension.
+// Members use four spaces while comments use two, proving format detection
+// skips comment lines. The trailing comma makes normalization visible too.
+const jsoncConfig = `{
+  // Address used by clients.
+    "host": "localhost",
+  /* Port exposed by the service. */
+    "port": 8080,
+}
+`
+
+const savedJSONCConfig = `{
+    // Address used by clients.
+    "host": "localhost",
+    /* Port exposed by the service. */
+    "port": 80801
+}
+`
+
 // writeConfig puts the document on disk and answers the path to it.
 //
 // The name matters: it is what the bar shows, so a scenario that reads it back
@@ -46,6 +66,18 @@ func writeConfig(t *testing.T) string {
 	path := filepath.Join(t.TempDir(), "config.json")
 
 	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
+		t.Fatalf("WriteFile() = %v", err)
+	}
+
+	return path
+}
+
+func writeJSONCConfig(t *testing.T) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	if err := os.WriteFile(path, []byte(jsoncConfig), 0o600); err != nil {
 		t.Fatalf("WriteFile() = %v", err)
 	}
 
