@@ -127,7 +127,7 @@ func (a *App) saveTarget() (FileSource, bool) {
 func (a *App) validateEncoding() ([]byte, error) {
 	encoded := domain.Encode(a.doc.Root(), a.format)
 
-	parsed, err := a.deps.Parser.Parse(encoded, domain.StrictJSON)
+	parsed, err := a.deps.Parser.Parse(encoded, domain.JSONC)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errEncodingUnreadable, err)
 	}

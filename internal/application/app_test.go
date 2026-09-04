@@ -32,8 +32,8 @@ func TestOpenLoadsAndInitialisesADocument(t *testing.T) {
 		t.Errorf("parser saw %q, want the bytes the store returned", got)
 	}
 
-	if parser.gotDialect != domain.StrictJSON {
-		t.Errorf("parser saw dialect %+v, want StrictJSON", parser.gotDialect)
+	if parser.gotDialect != domain.JSONC {
+		t.Errorf("parser saw dialect %+v, want JSONC", parser.gotDialect)
 	}
 
 	if app.doc == nil || app.doc.Root() != root {

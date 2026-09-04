@@ -14,6 +14,8 @@ An interactive terminal editor for JSON files.
 - Search keys and scalar values across the whole document, including folded
   subtrees.
 - Add, delete, rename, and change the type of values, with undo and redo.
+- Preserve comments in JSON documents regardless of file extension. Trailing
+  commas are accepted and removed when saving.
 - Preserve the detected indentation and newline style when saving.
 
 ### Views
