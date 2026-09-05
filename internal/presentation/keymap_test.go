@@ -42,6 +42,7 @@ func TestResolveMapsNormalModeKeysToActions(t *testing.T) {
 		// means is decided where the document is.
 		{name: "enter edits", key: special(tea.KeyEnter), want: application.ActionEdit{}},
 		{name: "r renames a key", key: key('r'), want: application.ActionRenameKey{}},
+		{name: "R reloads the file", key: shifted('r', 'R'), want: application.ActionReload{}},
 		{name: "a adds a child", key: key('a'), want: application.ActionAddChild{}},
 		{name: "A adds a sibling", key: shifted('a', 'A'), want: application.ActionAddSibling{}},
 		{name: "d deletes", key: key('d'), want: application.ActionDelete{}},

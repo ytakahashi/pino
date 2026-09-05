@@ -206,6 +206,13 @@ var normalBindings = []binding{
 		Keys: []string{"q"}, Action: application.ActionQuit{},
 		Group: helpHistory, HelpKeys: "q/Ctrl+c", Description: "quit",
 	},
+
+	// Uppercase R is a complete normal-mode key. Lowercase r keeps renaming
+	// keys, while R after the z prefix remains a separate folding command.
+	{
+		Keys: []string{"R"}, Action: application.ActionReload{},
+		Group: helpFile, HelpKeys: "R", Description: "reload",
+	},
 }
 
 // terminalBinding is one row of the keys that change how pino uses the
