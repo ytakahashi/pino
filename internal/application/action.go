@@ -183,6 +183,15 @@ type ActionSave struct{}
 
 func (ActionSave) isAction() {}
 
+// ActionReload asks for the open document to be read from its file again.
+//
+// It is separate from the reload choice offered after a save conflict: that
+// choice has already asked which document should win, while this request may
+// still have unsaved work to protect.
+type ActionReload struct{}
+
+func (ActionReload) isAction() {}
+
 // ActionUndo and ActionRedo ask for the version of the document before the
 // last change, and for the one after it.
 //

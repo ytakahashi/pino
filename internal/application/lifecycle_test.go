@@ -490,6 +490,238 @@ func TestOverwritingWritesTheDocumentAsItStands(t *testing.T) {
 	}
 }
 
+// A reload requested with no unsaved work can take the file immediately.
+func TestRequestingReloadOfACleanDocumentReadsItAtOnce(t *testing.T) {
+	t.Parallel()
+
+	app, files := saving(t, sample(t))
+	outside := testdocsOutside(t)
+	reloadTo(t, app, outside)
+
+	reads := len(files.reads)
+	press(app, ActionReload{})
+
+	if len(files.reads) != reads+1 {
+		t.Errorf("the store was read %d times after requesting reload, want once", len(files.reads)-reads)
+	}
+
+	if app.doc.Root() != outside {
+		t.Error("the document is not the one the file now holds")
+	}
+
+	if app.Mode() != ModeNormal {
+		t.Errorf("mode = %v after reloading a clean document, want no question", app.Mode())
+	}
+}
+
+// Unsaved work is not thrown away until the reader chooses the discard
+// answer shown on the prompt. The file is not read while that answer is
+// pending, because even observing it is unnecessary if the reader cancels.
+func TestRequestingReloadOfADirtyDocumentAsksBeforeReading(t *testing.T) {
+	t.Parallel()
+
+	app, files := saving(t, sample(t))
+	editValue(t, app, "/server/ports/0", "8081")
+
+	before, reads := app.doc.Root(), len(files.reads)
+	press(app, ActionReload{})
+
+	info := app.Prompt()
+	if info.Kind != PromptChoice || info.Title != "Reloading will discard your unsaved changes." {
+		t.Errorf("the prompt = %+v, want the reload warning", info)
+	}
+
+	want := []Choice{
+		{Key: 'd', Label: "Discard changes and reload"},
+		{Key: 'c', Label: "Cancel"},
+	}
+	if len(info.Choices) != len(want) {
+		t.Fatalf("the prompt offers %+v, want %+v", info.Choices, want)
+	}
+	for i, choice := range info.Choices {
+		if choice != want[i] {
+			t.Errorf("choice %d = %+v, want %+v", i, choice, want[i])
+		}
+	}
+
+	if app.doc.Root() != before || !app.doc.IsDirty() {
+		t.Error("asking to reload changed or marked the document saved")
+	}
+
+	if len(files.reads) != reads {
+		t.Error("asking to reload read the file before the reader chose to discard")
+	}
+}
+
+// Discarding gives the file the same path through reload as the choice on a
+// save conflict, so the replacement starts as a clean document with no old
+// versions behind it.
+func TestDiscardingChangesReloadsTheDocument(t *testing.T) {
+	t.Parallel()
+
+	app, _ := saving(t, sample(t))
+	editValue(t, app, "/server/ports/0", "8081")
+
+	outside := testdocsOutside(t)
+	reloadTo(t, app, outside)
+
+	press(app, ActionReload{}, ActionPromptChoose{Key: 'd'})
+
+	if app.doc.Root() != outside {
+		t.Error("discarding did not show what the file now holds")
+	}
+
+	if app.doc.IsDirty() {
+		t.Error("the freshly reloaded document is dirty")
+	}
+
+	if got := len(app.history.entries); got != 1 {
+		t.Errorf("history holds %d versions after reloading, want 1", got)
+	}
+
+	if app.Mode() != ModeNormal {
+		t.Errorf("mode = %v after reloading, want the document on screen", app.Mode())
+	}
+}
+
+// Cancelling a requested reload leaves both the document and its view alone,
+// and never consults the file that the reader chose not to take.
+func TestCancellingRequestedReloadLeavesTheSessionAsItWas(t *testing.T) {
+	t.Parallel()
+
+	for _, cancel := range []Action{ActionPromptChoose{Key: 'c'}, ActionCancel{}} {
+		t.Run(describeAction(cancel), func(t *testing.T) {
+			t.Parallel()
+
+			app, files := saving(t, sample(t))
+			editValue(t, app, "/server/ports/0", "8081")
+			app.view.Collapse(pointer(t, "/server/ports"))
+
+			before := struct {
+				root     domain.Node
+				versions int
+				cursor   string
+				scroll   int
+				format   domain.Format
+				meta     Meta
+				reads    int
+			}{
+				root:     app.doc.Root(),
+				versions: len(app.history.entries),
+				cursor:   cursorOf(app),
+				scroll:   app.view.Scroll,
+				format:   app.format,
+				meta:     app.meta,
+				reads:    len(files.reads),
+			}
+
+			press(app, ActionReload{}, cancel)
+
+			if app.Mode() != ModeNormal {
+				t.Errorf("mode = %v, want the question gone", app.Mode())
+			}
+
+			if app.doc.Root() != before.root || len(app.history.entries) != before.versions {
+				t.Error("cancelling changed the document or its history")
+			}
+
+			if cursorOf(app) != before.cursor || app.view.Scroll != before.scroll ||
+				!app.view.IsCollapsed(pointer(t, "/server/ports")) {
+				t.Error("cancelling changed how the document is being viewed")
+			}
+
+			if app.format != before.format || app.meta != before.meta {
+				t.Error("cancelling changed the layout or the Meta")
+			}
+
+			if len(files.reads) != before.reads {
+				t.Error("cancelling read the file")
+			}
+		})
+	}
+}
+
+// A separately parsed tree can describe the same document. Reload still
+// installs it to refresh file-derived state, but there is no changed content
+// for which the reader's position or folds need to be discarded.
+func TestReloadingAnEqualDocumentKeepsHowItIsViewed(t *testing.T) {
+	t.Parallel()
+
+	app, files := saving(t, sample(t))
+	press(app, ActionResize{Height: 4}, ActionToggleView{})
+	acceptSearch(t, app, "pino")
+	app.view.Collapse(pointer(t, "/server/ports"))
+	standOn(t, app, "/debug")
+
+	before := struct {
+		root      domain.Node
+		cursor    string
+		scroll    int
+		view      ViewMode
+		height    int
+		maxStrLen int
+		search    SearchInfo
+	}{
+		root:      app.doc.Root(),
+		cursor:    cursorOf(app),
+		scroll:    app.view.Scroll,
+		view:      app.view.ViewMode,
+		height:    app.height,
+		maxStrLen: app.view.MaxStrLen,
+		search:    *app.Status().Search,
+	}
+
+	equal := sample(t)
+	if equal == before.root || !domain.Equal(equal, before.root) {
+		t.Fatal("the reload fixture is not a distinct, equal tree")
+	}
+
+	raw := []byte("{\r\n\t\"layout\": true\r\n}\r\n")
+	files.data[savePath] = raw
+	files.meta = writtenMeta
+	reloadTo(t, app, equal)
+
+	press(app, ActionReload{})
+
+	if app.doc.Root() != equal {
+		t.Error("reload did not install the separately parsed tree")
+	}
+
+	if app.format != domain.DetectFormat(raw) || app.meta != Meta(writtenMeta) {
+		t.Error("reload did not install the file's layout or Meta")
+	}
+
+	if cursorOf(app) != before.cursor || app.view.Scroll != before.scroll ||
+		app.view.ViewMode != before.view || app.height != before.height ||
+		app.view.MaxStrLen != before.maxStrLen || !app.view.IsCollapsed(pointer(t, "/server/ports")) {
+		t.Error("reloading an equal document changed how it is being viewed")
+	}
+
+	if got := app.Status().Search; got == nil || *got != before.search {
+		t.Errorf("search after reload = %+v, want %+v", got, before.search)
+	}
+
+	if got := len(app.history.entries); got != 1 {
+		t.Errorf("history holds %d versions after reloading, want 1", got)
+	}
+}
+
+// With no file-backed document there is nothing a reload request can read or
+// ask about.
+func TestRequestingReloadWithoutADocumentDoesNothing(t *testing.T) {
+	t.Parallel()
+
+	app := New(Deps{}, Config{})
+
+	if effects := app.Do(ActionReload{}); effects != nil {
+		t.Errorf("reload without a document returned effects %v", effects)
+	}
+
+	if app.Mode() != ModeNormal {
+		t.Errorf("mode = %v after reload without a document, want normal", app.Mode())
+	}
+}
+
 // Reloading is the other document winning. Everything the session knew about
 // the old one goes, including the versions of it.
 func TestReloadingShowsWhatTheFileNowHolds(t *testing.T) {

@@ -408,6 +408,9 @@ func (a *App) Do(act Action) []Effect {
 	case ActionSave:
 		return a.save(false, false)
 
+	case ActionReload:
+		a.requestReload()
+
 	case ActionCancel:
 		a.cancel()
 

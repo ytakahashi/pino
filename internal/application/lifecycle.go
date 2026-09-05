@@ -1,5 +1,7 @@
 package application
 
+import "github.com/ytakahashi/pino/internal/domain"
+
 // The flows here are about the document's life rather than its contents: what
 // to do when the file has changed underneath the session, and what to do when
 // something pino was asked to do could not be done. Neither gathers an answer
@@ -127,6 +129,64 @@ func (a *App) quit() []Effect {
 	return nil
 }
 
+// reloadFlow is the question asked before reloading would throw work away.
+//
+// It holds nothing because the document being discarded belongs to the
+// session. Saving is deliberately not an answer: it would overwrite the file
+// whose contents the reader asked to reload.
+type reloadFlow struct{}
+
+func (*reloadFlow) mode() Mode { return ModeConfirm }
+
+func (*reloadFlow) prompt(*App) PromptInfo {
+	return PromptInfo{
+		Kind:  PromptChoice,
+		Title: "Reloading will discard your unsaved changes.",
+		Choices: []Choice{
+			{Key: 'd', Label: "Discard changes and reload"},
+			{Key: 'c', Label: "Cancel"},
+		},
+	}
+}
+
+func (*reloadFlow) choose(a *App, key rune) []Effect {
+	switch key {
+	case 'd':
+		a.reload()
+
+	case 'c':
+		a.flow = nil
+	}
+
+	return nil
+}
+
+// requestReload handles a reload initiated by the reader.
+//
+// A conflict prompt calls reload directly because the reader has already
+// chosen which document wins. This entry point asks only when reloading would
+// discard unsaved work.
+func (a *App) requestReload() {
+	if a.doc == nil {
+		return
+	}
+
+	if _, ok := a.source.(FileSource); !ok {
+		return
+	}
+
+	if a.doc.IsDirty() {
+		// The terminal only sends this request in normal mode. A direct caller
+		// may reach it during another flow; the reload question then becomes the
+		// only answer pending against the document that may be discarded.
+		a.flow = &reloadFlow{}
+
+		return
+	}
+
+	a.reload()
+}
+
 // noticeFlow is a runtime result waiting to be acknowledged.
 //
 // It is a flow rather than a field beside one because that is what it is: the
@@ -216,14 +276,15 @@ func (a *App) closeHelp() {
 
 // reload reads the file again and shows what it now holds.
 //
-// Everything about the document goes: the tree, the versions of it, and where
-// the reader was standing in it. Positions are not carried across, because
-// there is no correspondence to carry them by — an element added to an array
-// outside pino leaves /items/2 naming a different value, and pino's own edits
-// only survive because each one says which paths it moved. What is kept is
-// the session's own: which view is drawing, how tall the terminal is, and the
-// accepted search term. Its matches are rebuilt once the replacement tree and
-// cursor have settled.
+// The tree and its versions are always replaced so that layout and file
+// metadata come from the bytes just read. When the tree still compares equal,
+// how it is being viewed stays untouched. Otherwise positions are not carried
+// across, because there is no correspondence to carry them by — an element
+// added to an array outside pino leaves /items/2 naming a different value, and
+// pino's own edits only survive because each one says which paths it moved.
+// Which view is drawing, how tall the terminal is, and the accepted search
+// term belong to the session and stay in either case. Search matches are
+// rebuilt once the replacement tree and cursor have settled.
 //
 // A file that cannot be read leaves everything alone. The document is read
 // whole before any of it is installed, so a failure here is a message and
@@ -242,12 +303,15 @@ func (a *App) reload() {
 		return
 	}
 
+	same := a.doc != nil && domain.Equal(a.doc.Root(), read.root)
 	view := a.view.ViewMode
 
 	a.install(read, src.Path)
 
-	a.view = NewViewState()
-	a.view.ViewMode = view
+	if !same {
+		a.view = NewViewState()
+		a.view.ViewMode = view
+	}
 
 	a.settle(a.render())
 }
