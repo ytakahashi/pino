@@ -246,7 +246,7 @@ func TestRenderTooSmallUsesTheErrorStyle(t *testing.T) {
 		// The size in the mock of the design: what is needed, and what there is.
 		"the whole message": {
 			width: 34, height: 6,
-			want: []string{"terminal too small", "needs 60x11, has 34x6", "", "", "", ""},
+			want: []string{"terminal too small", "needs 60x12, has 34x6", "", "", "", ""},
 		},
 
 		// Narrower than the message, which is cut like any other row rather

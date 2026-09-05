@@ -67,20 +67,21 @@ available keys.
 Search uses partial matching for keys and scalar values. A lowercase search term
 ignores case; a term containing an uppercase letter is case-sensitive.
 
-| Key            | Action                          |
-| -------------- | ------------------------------- |
-| `j` / `↓`      | Move to the next node           |
-| `k` / `↑`      | Move to the previous node       |
-| `h` / `←`      | Move out to the parent          |
-| `l` / `→`      | Move into a container           |
-| `/`            | Search for a key or value       |
-| `n`            | Move to the next search match   |
-| `N`            | Move to the previous match      |
-| `Enter`        | Edit a value or fold a node     |
-| `Tab`          | Switch between views            |
-| `Ctrl+s`       | Save                            |
-| `q` / `Ctrl+c` | Quit                            |
-| `?`            | Show the complete key reference |
+| Key            | Action                            |
+| -------------- | --------------------------------- |
+| `j` / `↓`      | Move to the next node             |
+| `k` / `↑`      | Move to the previous node         |
+| `h` / `←`      | Move out to the parent            |
+| `l` / `→`      | Move into a container             |
+| `/`            | Search for a key or value         |
+| `n`            | Move to the next search match     |
+| `N`            | Move to the previous match        |
+| `Enter`        | Edit a value or fold a node       |
+| `Tab`          | Switch between views              |
+| `Ctrl+s`       | Save                              |
+| `R`            | Reload the file (asks if unsaved) |
+| `q` / `Ctrl+c` | Quit                              |
+| `?`            | Show the complete key reference   |
 
 ## Options
 

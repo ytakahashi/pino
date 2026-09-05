@@ -25,7 +25,7 @@ func TestHelpReadsInOneOrder(t *testing.T) {
 	t.Parallel()
 
 	want := []string{
-		"Move", "Jump", "Search", "Fold", "View", "Edit", "Structure", "History", "Prompt",
+		"Move", "Jump", "Search", "Fold", "View", "Edit", "Structure", "History", "File", "Prompt",
 	}
 
 	got := make([]string, 0, len(want))

@@ -28,12 +28,14 @@ const (
 	helpEdit
 	helpStructure
 	helpHistory
+	helpFile
 	helpPrompt
 )
 
 // helpGroups is the order the headings are read in: getting about the
 // document, then looking at it, then changing it, then what becomes of the
-// changes, and last the keys that exist only while a question is up.
+// changes, then operations on its file, and last the keys that exist only
+// while a question is up.
 var helpGroups = []helpGroup{
 	helpMove,
 	helpJump,
@@ -43,6 +45,7 @@ var helpGroups = []helpGroup{
 	helpEdit,
 	helpStructure,
 	helpHistory,
+	helpFile,
 	helpPrompt,
 }
 
@@ -65,6 +68,8 @@ func (g helpGroup) String() string {
 		return "Structure"
 	case helpHistory:
 		return "History"
+	case helpFile:
+		return "File"
 	case helpPrompt:
 		return "Prompt"
 	case helpNone:
