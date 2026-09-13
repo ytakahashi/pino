@@ -39,14 +39,13 @@ type Model struct {
 	// it changes; what it keeps is why the answer cannot be taken yet.
 	editor editor
 
-	// reported is the last body height the session was told about.
+	// reported is the last body size the session was told about.
 	//
 	// It is here rather than asked of the session because what matters is that
-	// the number is sent when it changes, not when a particular message
-	// arrives. A resized terminal is one cause of a change; a view that
-	// brought an inspector with it is another, and that one comes of a key
-	// press.
-	reported int
+	// the size is sent when it changes, not when a particular message arrives.
+	// A resized terminal is one cause of a change; a view that brought an
+	// inspector with it is another, and that one comes of a key press.
+	reported bodySize
 
 	// mouse is whether the terminal is asked to report the wheel.
 	//
@@ -85,7 +84,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.editor = m.editor.SetWidth(inputWidth(m.app.Prompt(), m.width))
 
-		return m.syncHeight(nil)
+		return m.syncSize(nil)
 
 	case tea.KeyPressMsg:
 		return m.key(msg)
@@ -219,36 +218,49 @@ func (m Model) act(a application.Action) (tea.Model, tea.Cmd) {
 		m.editor = editor{}
 	}
 
-	return m.syncHeight(cmd)
+	return m.syncSize(cmd)
 }
 
-// syncHeight tells the session how much room the document has, whenever that
+// bodySize is the room the document has, in columns and rows.
+type bodySize struct {
+	width  int
+	height int
+}
+
+// syncSize tells the session how much room the document has, whenever that
 // changes, and carries cmd along with whatever saying so produced.
 //
 // The application follows the cursor with the window, so it has to be told how
 // big that window is. What it is told is the room left for the document rather
-// than the height of the terminal: taking off the status bar, the inspector
-// standing under the tree and the band a question is being asked in is a
-// decision about laying out a screen and stays on this side of the boundary.
+// than the size of the terminal: taking off the status bar, the inspector
+// standing beside or under the tree and the band a question is being asked in
+// is a decision about laying out a screen and stays on this side of the
+// boundary.
+//
+// Width and height are compared together. An inspector moving beside the tree
+// costs the document columns and not rows, and a report sent only when the
+// height moved would miss it.
 //
 // Every branch of Update ends here, including the ones that cannot change the
-// height today. What may change it is what the session is allowed to do, and
+// size today. What may change it is what the session is allowed to do, and
 // that grows; a branch that reported only because someone remembered to add it
 // would be the one to go quiet later.
 //
 // The report is an ActionResize whatever brought it about. To the session this
-// says "the document has this many rows now", and why is not its business —
-// the same generalisation that made Height the room for the document rather
-// than the height of the terminal.
-func (m Model) syncHeight(cmd tea.Cmd) (tea.Model, tea.Cmd) {
-	h := m.layout().BodyHeight
-	if h == m.reported {
+// says "the document has this much room now", and why is not its business —
+// the same generalisation that made the size the room for the document rather
+// than the size of the terminal.
+func (m Model) syncSize(cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	l := m.layout()
+
+	size := bodySize{width: l.BodyWidth, height: l.BodyHeight}
+	if size == m.reported {
 		return m, cmd
 	}
 
-	m.reported = h
+	m.reported = size
 
-	m, resized := m.dispatch(m.app.Do(application.ActionResize{Height: h}))
+	m, resized := m.dispatch(m.app.Do(application.ActionResize{Width: size.width, Height: size.height}))
 
 	return m, tea.Batch(cmd, resized)
 }

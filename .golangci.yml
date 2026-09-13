@@ -100,6 +100,18 @@ linters:
             - pkg: github.com/ytakahashi/pino/internal/presentation
             - pkg: github.com/tailscale/hujson
               desc: filestore does not know the bytes are JSON
+        # textwrap measures text for the application. It may use x/ansi,
+        # which is published under github.com/charmbracelet, but draws
+        # nothing, so the UI libraries under charm.land stay out.
+        textwrap:
+          files:
+            - '**/internal/infrastructure/textwrap/**'
+          deny:
+            - pkg: github.com/ytakahashi/pino/internal/infrastructure/filestore
+            - pkg: github.com/ytakahashi/pino/internal/infrastructure/jsonparser
+            - pkg: github.com/ytakahashi/pino/internal/presentation
+            - pkg: charm.land
+              desc: textwrap measures text; it draws nothing
         presentation:
           files:
             - '**/internal/presentation/**'

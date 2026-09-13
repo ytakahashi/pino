@@ -15,6 +15,7 @@ func TestLineKindSelectsOnlyNodeRows(t *testing.T) {
 		LineOpen:    true,
 		LineClose:   false,
 		LineComment: false,
+		LineWrap:    false,
 	}
 
 	for kind, want := range tests {

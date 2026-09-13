@@ -305,7 +305,7 @@ func TestUpdateReportsTheHeightOnAViewSwitch(t *testing.T) {
 
 	m := sized(t, openApp(t, tallDocument(t)), width, height)
 
-	if got, want := m.reported, height-statusBarRows; got != want {
+	if got, want := m.reported.height, height-statusBarRows; got != want {
 		t.Fatalf("the session was told %d rows, want %d", got, want)
 	}
 
@@ -316,36 +316,91 @@ func TestUpdateReportsTheHeightOnAViewSwitch(t *testing.T) {
 		t.Fatalf("the inspector is placed %v on a %d column terminal, want below", l.Inspector, width)
 	}
 
-	if got, want := m.reported, height-statusBarRows-l.InspectorHeight; got != want {
+	if got, want := m.reported.height, height-statusBarRows-l.InspectorHeight; got != want {
 		t.Errorf("the session was told %d rows after Tab, want %d", got, want)
 	}
 
 	// The document is drawn in the rows it was told about, and the cursor is
 	// among them.
-	if row := selectedRow(t, m); row < 0 || row >= m.reported {
-		t.Errorf("the selected row is %d, outside the %d rows the document has", row, m.reported)
+	if row := selectedRow(t, m); row < 0 || row >= m.reported.height {
+		t.Errorf("the selected row is %d, outside the %d rows the document has", row, m.reported.height)
 	}
 
 	// And back, which restores what the JSON view had.
 	m = press(t, m, tabKey)
 
-	if got, want := m.reported, height-statusBarRows; got != want {
+	if got, want := m.reported.height, height-statusBarRows; got != want {
 		t.Errorf("the session was told %d rows after switching back, want %d", got, want)
 	}
 }
 
-// Nothing is reported when the number has not moved. Saying it again would
+// The session is told the columns a row of the document has, which is what
+// the layout leaves once an inspector beside the tree has taken its own.
+func TestUpdateReportsTheBodyWidth(t *testing.T) {
+	tests := map[string]struct {
+		width     int
+		tree      bool
+		inspector placement
+	}{
+		"json view":                  {width: minWidth, inspector: placeNone},
+		"wide json view":             {width: 140, inspector: placeNone},
+		"tree with inspector below":  {width: 80, tree: true, inspector: placeBelow},
+		"tree with inspector beside": {width: 120, tree: true, inspector: placeSide},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			m := sized(t, openApp(t, tallDocument(t)), tt.width, 20)
+			if tt.tree {
+				m = press(t, m, tabKey)
+			}
+
+			l := m.layout()
+			if l.Inspector != tt.inspector {
+				t.Fatalf("the inspector is placed %v, want %v", l.Inspector, tt.inspector)
+			}
+
+			if got, want := m.reported.width, l.BodyWidth; got != want {
+				t.Errorf("the session was told %d columns, want %d", got, want)
+			}
+		})
+	}
+}
+
+// An inspector moving beside the tree costs the document columns and no rows,
+// and the session is still told.
+func TestUpdateReportsTheWidthWhenOnlyItChanges(t *testing.T) {
+	const width, height = 120, 20
+
+	m := sized(t, openApp(t, tallDocument(t)), width, height)
+	before := m.reported
+
+	m = press(t, m, tabKey)
+
+	l := m.layout()
+	if l.Inspector != placeSide {
+		t.Fatalf("the inspector is placed %v on a %d column terminal, want beside", l.Inspector, width)
+	}
+
+	if m.reported.height != before.height {
+		t.Fatalf("the session was told %d rows after Tab, want the %d it already had", m.reported.height, before.height)
+	}
+
+	if got, want := m.reported.width, l.BodyWidth; got != want || got == before.width {
+		t.Errorf("the session was told %d columns after Tab, want %d (it had %d)", got, want, before.width)
+	}
+}
+
+// Nothing is reported when the size has not moved. Saying it again would
 // settle the session a second time for no reason on every key press.
-func TestUpdateDoesNotRepeatTheHeight(t *testing.T) {
-	// Wide enough that the inspector stands beside the tree, where it costs
-	// columns rather than rows.
+func TestUpdateDoesNotRepeatTheSize(t *testing.T) {
 	m := sized(t, openApp(t, tallDocument(t)), 120, 20)
 
 	before := m.reported
 
-	next, cmd := m.Update(tabKey)
+	next, cmd := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	if cmd != nil {
-		t.Errorf("Update(tab) = %v, want no command; the height did not change", cmd)
+		t.Errorf("Update(j) = %v, want no command; the size did not change", cmd)
 	}
 
 	after, ok := next.(Model)
@@ -354,10 +409,6 @@ func TestUpdateDoesNotRepeatTheHeight(t *testing.T) {
 	}
 
 	if after.reported != before {
-		t.Errorf("the session was told %d rows, want the %d it already had", after.reported, before)
-	}
-
-	if after.layout().Inspector != placeSide {
-		t.Errorf("the inspector is placed %v, want beside", after.layout().Inspector)
+		t.Errorf("the session was told %+v, want the %+v it already had", after.reported, before)
 	}
 }

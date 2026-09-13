@@ -12,8 +12,9 @@ import (
 // builds the adapters and passes them in; nothing below this layer knows
 // which implementations they are.
 type Deps struct {
-	Parser Parser
-	Files  FileStore
+	Parser  Parser
+	Files   FileStore
+	Wrapper TextWrap
 
 	// The two ways a document is drawn. Both are built by the caller, as the
 	// ports are, so that a test can feed the session rows of its own choosing.
@@ -105,13 +106,14 @@ type App struct {
 	// back before writing. Its contents are never read here.
 	meta Meta
 
-	// height is how many rows the document has to itself, as reported by
-	// whoever is drawing it.
+	// width and height are how many columns and rows the document has to
+	// itself, as reported by whoever is drawing it.
 	//
-	// It is not part of the view state, which describes the document being
-	// looked at and is discarded when another is opened. How tall the terminal
-	// is outlives any document, so keeping it here saves the view state from
+	// They are not part of the view state, which describes the document being
+	// looked at and is discarded when another is opened. How big the terminal
+	// is outlives any document, so keeping them here saves the view state from
 	// growing an exception to that rule.
+	width  int
 	height int
 }
 
@@ -422,7 +424,8 @@ func (a *App) Do(act Action) []Effect {
 
 	case ActionResize:
 		// A window of no rows is not a window; asking for one is answered by
-		// scrolling nowhere rather than by arithmetic on a negative height.
+		// scrolling nowhere rather than by arithmetic on a negative size.
+		a.width = max(act.Width, 0)
 		a.height = max(act.Height, 0)
 		a.settle(a.render())
 	}

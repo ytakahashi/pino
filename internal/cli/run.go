@@ -18,6 +18,7 @@ import (
 	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/infrastructure/filestore"
 	"github.com/ytakahashi/pino/internal/infrastructure/jsonparser"
+	"github.com/ytakahashi/pino/internal/infrastructure/textwrap"
 	"github.com/ytakahashi/pino/internal/presentation"
 )
 
@@ -127,6 +128,7 @@ func NewProgramModel(path string, cfg ProgramConfig) (tea.Model, error) {
 	app := application.New(application.Deps{
 		Parser:   jsonparser.New(),
 		Files:    filestore.New(),
+		Wrapper:  textwrap.New(),
 		JSONView: documentview.NewJSONRenderer(),
 		TreeView: documentview.NewTreeRenderer(),
 	}, cfg.Application)

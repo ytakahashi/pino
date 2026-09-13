@@ -299,8 +299,9 @@ func TestResizeFollowsTheCursor(t *testing.T) {
 		t.Errorf("Scroll = %d once the document fits, want 0", got)
 	}
 
-	// A window of no rows scrolls nowhere rather than doing arithmetic on it.
-	app.Do(ActionResize{Height: -5})
+	// A window of no rows or columns scrolls nowhere rather than doing
+	// arithmetic on it.
+	app.Do(ActionResize{Width: -5, Height: -5})
 
 	if got := app.Frame().Scroll; got != 0 {
 		t.Errorf("Scroll = %d with no window, want 0", got)

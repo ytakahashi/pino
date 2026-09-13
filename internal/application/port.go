@@ -56,6 +56,29 @@ type FileStore interface {
 	HasChangedSince(path string, expected Meta) (ChangeStatus, error)
 }
 
+// TextWrap cuts one logical line into rows no wider than a number of terminal
+// columns.
+//
+// How many columns a character takes is knowledge from outside this layer:
+// counting runes would let a row of wide characters run past the edge of the
+// screen, where it is clipped and its characters lost. It is borrowed through a
+// port for the same reason parsing is, so that no terminal library reaches in.
+//
+// text must not contain control characters below U+0020, which is what
+// escaping a value for display already guarantees; what WrapLine returns for
+// such text is unspecified. A line feed would split a row where no cut was
+// made, so joining the rows would lose it. A tab, a carriage return or an
+// escape is counted as no columns yet moves the terminal's cursor, so a row
+// that measures as fitting would still be clipped when drawn.
+//
+// For any other text WrapLine promises two things of what it returns. Every
+// row fits in width columns, and joining the rows gives text back unchanged,
+// so nothing is dropped where a row was cut. A width below 2 cannot hold every
+// character and is answered with text as a single row.
+type TextWrap interface {
+	WrapLine(text string, width int) []string
+}
+
 // WriteOutcome says how far a write got.
 //
 // A write is not one step. The bytes go to a temporary file which is then
