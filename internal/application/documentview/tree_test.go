@@ -231,7 +231,7 @@ func TestJSONRenderClosesWhatItOpens(t *testing.T) {
 								i, l.Path.String(), last.String(), describe(set))
 						}
 
-					case LineSingle, LineComment:
+					case LineSingle, LineComment, LineWrap:
 					}
 				}
 

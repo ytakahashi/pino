@@ -236,8 +236,8 @@ func TestTheBandTakesItsRowsFromTheDocument(t *testing.T) {
 	}
 
 	// And the session is told, since it follows the cursor with the window.
-	if m.reported != l.BodyHeight {
-		t.Errorf("the session was told %d rows, want %d", m.reported, l.BodyHeight)
+	if m.reported.height != l.BodyHeight {
+		t.Errorf("the session was told %d rows, want %d", m.reported.height, l.BodyHeight)
 	}
 
 	m = press(t, m, escapeKey)
@@ -246,8 +246,8 @@ func TestTheBandTakesItsRowsFromTheDocument(t *testing.T) {
 		t.Errorf("the document has %d rows once the band has gone, want the %d it had", got, before)
 	}
 
-	if m.reported != before {
-		t.Errorf("the session was told %d rows, want %d", m.reported, before)
+	if m.reported.height != before {
+		t.Errorf("the session was told %d rows, want %d", m.reported.height, before)
 	}
 }
 
@@ -271,8 +271,8 @@ func TestABoxThatGrowsTakesAnotherRow(t *testing.T) {
 			got, before.BodyHeight)
 	}
 
-	if m.reported != m.layout().BodyHeight {
-		t.Errorf("the session was told %d rows, want %d", m.reported, m.layout().BodyHeight)
+	if m.reported.height != m.layout().BodyHeight {
+		t.Errorf("the session was told %d rows, want %d", m.reported.height, m.layout().BodyHeight)
 	}
 }
 
@@ -460,8 +460,8 @@ func TestPastingIntoTheBoxInsertsClipboardText(t *testing.T) {
 			got.PromptHeight, before.PromptHeight)
 	}
 
-	if m.reported != m.layout().BodyHeight {
-		t.Errorf("the session was told %d rows, want %d", m.reported, m.layout().BodyHeight)
+	if m.reported.height != m.layout().BodyHeight {
+		t.Errorf("the session was told %d rows, want %d", m.reported.height, m.layout().BodyHeight)
 	}
 }
 

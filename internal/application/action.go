@@ -221,15 +221,19 @@ type (
 func (ActionShowHelp) isAction()  {}
 func (ActionCloseHelp) isAction() {}
 
-// ActionResize reports how many rows the document can be drawn in.
+// ActionResize reports how many columns and rows the document can be drawn in.
 //
 // It is the one Action that does not come from a key. Resizing a window is
 // still something the person did, and the layer that owns the terminal is
 // still the one translating it, so it arrives the same way everything else
-// does. Height is the room left for the document, not the height of the
-// terminal: subtracting the status bar, and later an inspector, is a decision
-// that belongs to whoever lays the screen out.
-type ActionResize struct{ Height int }
+// does. Width and Height are the room left for the document, not the size of
+// the terminal: subtracting the status bar, an inspector beside or below the
+// document and a prompt is a decision that belongs to whoever lays the screen
+// out.
+//
+// Width counts the columns of a row with no indentation. Indentation is drawn
+// by the presentation layer from a row's depth, so it is not taken off here.
+type ActionResize struct{ Width, Height int }
 
 func (ActionResize) isAction() {}
 

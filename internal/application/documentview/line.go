@@ -11,7 +11,7 @@ import (
 // It is what lets the layers above treat a rendered document as a flat list
 // while still respecting the tree: a row that can be opened is a LineOpen, a
 // row that is folded away is a LineSingle carrying the flag, and the cursor
-// skips closing and comment rows.
+// skips closing, comment and wrap rows.
 //
 // A close row always closes the nearest open row still waiting for one, and
 // carries the same path. The converse does not hold: an open row need not have
@@ -32,6 +32,12 @@ const (
 	LineOpen                    // "server": {
 	LineClose                   // }, which the cursor never lands on
 	LineComment                 // // note, which describes a node but is not one
+
+	// LineWrap continues the value of the row above it, cut to the width of the
+	// screen. No renderer produces one: how wide the screen is and which node is
+	// selected are not inputs to rendering, so these rows are inserted by the
+	// session afterwards, and the cursor never lands on them.
+	LineWrap
 )
 
 // Selectable reports whether a row represents a node the cursor can act on.
@@ -47,6 +53,8 @@ func (k LineKind) String() string {
 		return "close"
 	case LineComment:
 		return "comment"
+	case LineWrap:
+		return "wrap"
 	default:
 		return "unknown"
 	}
