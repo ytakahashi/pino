@@ -234,7 +234,7 @@ func (a *App) install(read document, path string) {
 // would hide the fact that something had left it broken. Correcting is what
 // settle does, once per action.
 func (a *App) Frame() Frame {
-	lines := a.render()
+	lines := a.expandSelected(a.render())
 
 	return Frame{
 		Lines:   lines,
@@ -255,6 +255,13 @@ func (a *App) Frame() Frame {
 // message it receives, so this will want memoising on the root and the render
 // options; until it measurably hurts, rendering afresh keeps the rows
 // impossible to get out of step with the document.
+//
+// The rows are the renderer's alone, without the block writing the selected
+// value out in full. Which rows exist here does not depend on where the cursor
+// is, and every action leans on that: it takes the rows once, moves the cursor
+// over them and hands the same rows to settle. The block follows the cursor, so
+// it is laid in afterwards, by settle and by Frame, against the cursor as it
+// ends up.
 func (a *App) render() []documentview.Line {
 	if a.doc == nil {
 		return nil
@@ -359,6 +366,10 @@ func (a *App) Do(act Action) []Effect {
 
 	case ActionToggleView:
 		a.toggleView()
+
+	case ActionToggleFullValue:
+		a.view.ToggleFullValue()
+		a.settle(a.render())
 
 	case ActionSearch:
 		return a.beginSearch()
@@ -505,6 +516,13 @@ func (a *App) settle(lines []documentview.Line) {
 		a.view.Cursor = lines[row].Path
 	}
 
+	// The window is fitted to the rows as they will be drawn, the block under
+	// the selection included. That block follows the cursor, so it can only be
+	// laid in once the cursor has been put right: the rows handed over were
+	// taken before the action moved it.
+	shown := a.expandSelected(lines)
+	row = indexOf(shown, a.view.Cursor)
+
 	scroll := a.view.Scroll
 
 	// The rows closing whatever is still open come after the last node, and
@@ -512,11 +530,19 @@ func (a *App) settle(lines []documentview.Line) {
 	// rows just off the bottom looks exactly like standing in the middle of a
 	// document, so the end of one is shown whole rather than to the least
 	// extent the cursor requires.
-	if row >= 0 && row == lastRow(lines) {
-		scroll = max(scroll, len(lines)-a.height)
+	if row >= 0 && row == lastRow(shown) {
+		scroll = max(scroll, len(shown)-a.height)
 	}
 
-	a.view.Scroll = clampScroll(scroll, row, a.height, len(lines))
+	// The block beneath the selection is shown whole, for the same reason:
+	// scrolling only as far as the selected row would leave most of what was
+	// asked for below the screen. A block is never taller than the window less
+	// one row, so this cannot push the selection off the top.
+	if end := blockEnd(shown, row); end > row {
+		scroll = max(scroll, end-a.height+1)
+	}
+
+	a.view.Scroll = clampScroll(scroll, row, a.height, len(shown))
 
 	var root domain.Node
 	if a.doc != nil {
@@ -575,9 +601,16 @@ func (a *App) moveTo(pick func(lines []documentview.Line) int) {
 // the cursor would drift down the screen over several presses; counting rows
 // keeps it where it was. Landing on a row it cannot occupy is answered by the
 // nearest one it can.
+//
+// The rows counted are the ones on screen, the block under the selection
+// included, since half a screen is what the reader sees go by. settle is still
+// handed the renderer's rows, and lays the block in again under wherever the
+// cursor lands.
 func (a *App) scrollHalf(dir int) {
 	lines := a.render()
-	if len(lines) == 0 {
+	shown := a.expandSelected(lines)
+
+	if len(shown) == 0 {
 		a.settle(lines)
 
 		return
@@ -588,16 +621,16 @@ func (a *App) scrollHalf(dir int) {
 	// no reason to refuse.
 	step := max(a.height/2, 1) * dir
 
-	if from := visibleRow(lines, a.view.Cursor); from >= 0 {
-		if to := nearestRow(lines, from+step, dir); to >= 0 {
-			a.view.Cursor = lines[to].Path
+	if from := visibleRow(shown, a.view.Cursor); from >= 0 {
+		if to := nearestRow(shown, from+step, dir); to >= 0 {
+			a.view.Cursor = shown[to].Path
 		}
 	}
 
 	// Bounding the window without regard to the cursor, which settle then
 	// takes into account: passing no cursor row is how this asks for the
 	// offset to be brought into range and nothing more.
-	a.view.Scroll = clampScroll(a.view.Scroll+step, -1, a.height, len(lines))
+	a.view.Scroll = clampScroll(a.view.Scroll+step, -1, a.height, len(shown))
 
 	a.settle(lines)
 }
@@ -609,12 +642,16 @@ func (a *App) scrollHalf(dir int) {
 // selection, which is what turning a wheel asks for. The selection is still
 // not left behind: the status bar names the node it is on, and naming one
 // nobody can see says less than nudging the selection does.
+//
+// The window is moved over the rows on screen, the block under the selection
+// included, for the reason half a screen is.
 func (a *App) scrollBy(rows int) {
 	lines := a.render()
+	shown := a.expandSelected(lines)
 
 	// Without a window there is nothing to scroll and no edge to be pushed
 	// over, so the selection is left exactly where it is.
-	if len(lines) == 0 || a.height <= 0 {
+	if len(shown) == 0 || a.height <= 0 {
 		a.settle(lines)
 
 		return
@@ -622,12 +659,12 @@ func (a *App) scrollBy(rows int) {
 
 	// No cursor row is passed: this is asking for the offset to be brought
 	// into range and nothing more, the same way half a screen does.
-	scroll := clampScroll(a.view.Scroll+rows, -1, a.height, len(lines))
+	scroll := clampScroll(a.view.Scroll+rows, -1, a.height, len(shown))
 	a.view.Scroll = scroll
 
-	if from := visibleRow(lines, a.view.Cursor); from >= 0 {
-		if to := intoWindow(lines, from, scroll, a.height); to >= 0 {
-			a.view.Cursor = lines[to].Path
+	if from := visibleRow(shown, a.view.Cursor); from >= 0 {
+		if to := intoWindow(shown, from, scroll, a.height); to >= 0 {
+			a.view.Cursor = shown[to].Path
 		}
 	}
 

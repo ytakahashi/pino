@@ -648,7 +648,7 @@ func TestReloadingAnEqualDocumentKeepsHowItIsViewed(t *testing.T) {
 	t.Parallel()
 
 	app, files := saving(t, sample(t))
-	press(app, ActionResize{Height: 4}, ActionToggleView{})
+	press(app, ActionResize{Height: 4}, ActionToggleView{}, ActionToggleFullValue{})
 	acceptSearch(t, app, "pino")
 	app.view.Collapse(pointer(t, "/server/ports"))
 	standOn(t, app, "/debug")
@@ -693,7 +693,8 @@ func TestReloadingAnEqualDocumentKeepsHowItIsViewed(t *testing.T) {
 
 	if cursorOf(app) != before.cursor || app.view.Scroll != before.scroll ||
 		app.view.ViewMode != before.view || app.height != before.height ||
-		app.view.MaxStrLen != before.maxStrLen || !app.view.IsCollapsed(pointer(t, "/server/ports")) {
+		app.view.MaxStrLen != before.maxStrLen || !app.view.FullValue ||
+		!app.view.IsCollapsed(pointer(t, "/server/ports")) {
 		t.Error("reloading an equal document changed how it is being viewed")
 	}
 
@@ -773,7 +774,7 @@ func TestReloadingKeepsTheViewAndForgetsThePosition(t *testing.T) {
 	app, _ := conflicted(t, ChangeModified)
 
 	press(app, ActionResize{Height: 4})
-	press(app, ActionToggleView{})
+	press(app, ActionToggleView{}, ActionToggleFullValue{})
 	standOn(t, app, "/server/ports/1")
 	press(app, ActionMoveOut{})
 	press(app, ActionScrollHalfDown{})
@@ -785,6 +786,10 @@ func TestReloadingKeepsTheViewAndForgetsThePosition(t *testing.T) {
 
 	if app.view.ViewMode != view {
 		t.Errorf("the view changed to %v, want the %v the reader chose", app.view.ViewMode, view)
+	}
+
+	if !app.view.FullValue {
+		t.Error("values stopped being shown in full, which the reader chose")
 	}
 
 	if app.height != height {

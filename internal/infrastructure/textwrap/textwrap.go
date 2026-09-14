@@ -5,33 +5,56 @@
 // measurement through a port rather than importing a terminal library itself.
 package textwrap
 
-import (
-	"strings"
-
-	"github.com/charmbracelet/x/ansi"
-)
+import "github.com/charmbracelet/x/ansi"
 
 // Wrapper wraps a logical line by display width.
 type Wrapper struct{}
 
 func New() *Wrapper { return &Wrapper{} }
 
-// WrapLine cuts one logical line into rows of at most width columns.
+// WrapLine cuts one logical line into at most maxRows rows of at most width
+// columns. It reports truncation as soon as another row would be needed, so
+// work and allocation are bounded by what the caller can display.
 //
 // The line must not contain control characters below U+0020, as the port
 // requires: they are measured as no columns, so neither the cut nor a check of
 // the result would notice one overrunning the screen.
 //
-// Spaces at a cut are kept rather than dropped, so that joining the rows gives
-// the line back. The inspector wraps with the same function, which is what
-// keeps the two measuring alike.
-func (*Wrapper) WrapLine(text string, width int) []string {
-	// A wide character takes two columns. Below that, Hardwrap would either
-	// leave text whole (width < 1) or open with an empty row and still overrun
-	// (width 1), so both are answered with the text whole.
-	if width < 2 {
-		return []string{text}
+// Spaces at a cut are kept rather than dropped. The same grapheme measurement
+// as ansi.Hardwrap is used, which keeps this adapter aligned with the inspector
+// and with the presentation layer that clips rows.
+func (*Wrapper) WrapLine(text string, width, maxRows int) ([]string, bool) {
+	if maxRows < 1 {
+		return nil, text != ""
 	}
 
-	return strings.Split(ansi.Hardwrap(text, width, true), "\n")
+	// A wide character takes two columns. In a narrower row the loop below
+	// could never fit one: it would cut an empty row in front of it and still
+	// overrun with it, so such a width is answered with the text whole.
+	if width < 2 {
+		return []string{text}, false
+	}
+
+	// A byte cannot occupy more than one row, so text length keeps an
+	// accidentally enormous terminal height from becoming an enormous
+	// allocation before any text has been examined.
+	rows := make([]string, 0, min(maxRows, len(text)+1))
+	start, at, rowWidth := 0, 0, 0
+
+	for at < len(text) {
+		cluster, clusterWidth := ansi.FirstGraphemeCluster(text[at:], ansi.GraphemeWidth)
+		if rowWidth+clusterWidth > width {
+			rows = append(rows, text[start:at])
+			if len(rows) == maxRows {
+				return rows, true
+			}
+
+			start, rowWidth = at, 0
+		}
+
+		at += len(cluster)
+		rowWidth += clusterWidth
+	}
+
+	return append(rows, text[start:]), false
 }

@@ -104,6 +104,14 @@ func rightFields(info application.StatusInfo, state barState) []string {
 		fields = append(fields, "modified")
 	}
 
+	// Named only while it is on, as a state someone asked for. Pressing S on a
+	// value with nothing more to show changes nothing else on screen, and this
+	// is what says the key was taken. It is how the document is shown, so it
+	// comes before the state of the terminal.
+	if info.FullValue {
+		fields = append(fields, "value:full")
+	}
+
 	// Mouse reporting captures clicks and drags at the cost of the terminal's
 	// own text selection. The default stays quiet; only the state that gives
 	// those inputs back to the terminal needs naming.

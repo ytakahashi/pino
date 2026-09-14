@@ -58,6 +58,8 @@ func TestResolveMapsNormalModeKeysToActions(t *testing.T) {
 			want: nil,
 		},
 
+		{name: "S writes the selected value out in full", key: shifted('s', 'S'), want: application.ActionToggleFullValue{}},
+
 		{name: "G goes to the end", key: shifted('g', 'G'), want: application.ActionMoveLast{}},
 		{name: "ctrl+d reads on", key: ctrl('d'), want: application.ActionScrollHalfDown{}},
 		{name: "ctrl+u reads back", key: ctrl('u'), want: application.ActionScrollHalfUp{}},

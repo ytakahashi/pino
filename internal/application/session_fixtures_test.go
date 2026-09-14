@@ -29,6 +29,7 @@ func sessionIn(t *testing.T, root domain.Node, view ViewMode) *App {
 	app := New(Deps{
 		Parser:   &fakeParser{root: root},
 		Files:    &fakeFileStore{data: map[string][]byte{"a.json": []byte(testSource)}},
+		Wrapper:  fakeTextWrap{},
 		JSONView: documentview.NewJSONRenderer(),
 		TreeView: documentview.NewTreeRenderer(),
 	}, Config{})

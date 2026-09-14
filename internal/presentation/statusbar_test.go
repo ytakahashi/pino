@@ -300,6 +300,31 @@ func TestRenderStatusBarKeepsTheTerminalSelectionBeforeThePendingPrefix(t *testi
 	}
 }
 
+// Values shown in full are named only while they are, with the state of the
+// document and before the state of the terminal and a pending prefix.
+func TestRenderStatusBarNamesValuesShownInFull(t *testing.T) {
+	const width = 80
+
+	info := withDirty(application.StatusInfo{
+		Mode:     application.ModeNormal,
+		ViewMode: application.ViewJSON,
+		Name:     "config.json",
+		Indent:   "  ",
+	})
+	state := barState{Lines: 11, Pending: PendingG}
+
+	if bar := ansi.Strip(Theme{}.RenderStatusBar(info, state, width)); strings.Contains(bar, "value:full") {
+		t.Errorf("the bar reads %q with values shortened, want no value:full", bar)
+	}
+
+	info.FullValue = true
+	bar := ansi.Strip(Theme{}.RenderStatusBar(info, state, width))
+
+	if want := "indent:2  modified  value:full  select:on  g "; !strings.HasSuffix(bar, want) {
+		t.Errorf("the bar ends %q, want %q", bar, want)
+	}
+}
+
 // The two ends are drawn at the two edges of the screen.
 func TestRenderStatusBarKeepsTheEndsApart(t *testing.T) {
 	const width = 80
