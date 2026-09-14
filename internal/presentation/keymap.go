@@ -126,6 +126,13 @@ var normalBindings = []binding{
 		Group: helpView, HelpKeys: "?", Description: "help",
 	},
 
+	// Writing the selected value out in full changes how the document is shown
+	// and not what it holds, so it sits with the views. s alone stays free.
+	{
+		Keys: []string{"S"}, Action: application.ActionToggleFullValue{},
+		Group: helpView, HelpKeys: "S", Description: "full",
+	},
+
 	{
 		Keys: []string{"G"}, Action: application.ActionMoveLast{},
 		Group: helpJump, HelpKeys: "G", Description: "last",

@@ -304,13 +304,17 @@ func (a *App) reload() {
 	}
 
 	same := a.doc != nil && domain.Equal(a.doc.Root(), read.root)
-	view := a.view.ViewMode
+	// Which view draws and whether values are written out in full are how the
+	// reader chose to look at this file, not positions in what it held, so
+	// both outlive the rest of the view state.
+	view, full := a.view.ViewMode, a.view.FullValue
 
 	a.install(read, src.Path)
 
 	if !same {
 		a.view = NewViewState()
 		a.view.ViewMode = view
+		a.view.FullValue = full
 	}
 
 	a.settle(a.render())

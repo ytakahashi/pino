@@ -102,6 +102,40 @@ func (p *fakeParser) Parse(src []byte, d domain.Dialect) (domain.Node, error) {
 	return p.root, nil
 }
 
+// fakeTextWrap cuts by runes, as though every character took one column.
+//
+// What a session test checks is where the rows of a value go and how many of
+// them there are. How wide a character is drawn is the adapter's to get right,
+// and its own tests hold it to that.
+type fakeTextWrap struct{}
+
+func (fakeTextWrap) WrapLine(text string, width, maxRows int) ([]string, bool) {
+	if maxRows < 1 {
+		return nil, text != ""
+	}
+
+	if width < 2 {
+		return []string{text}, false
+	}
+
+	rows := make([]string, 0, min(maxRows, len(text)+1))
+	start, count := 0, 0
+	for at := range text {
+		if count == width {
+			rows = append(rows, text[start:at])
+			if len(rows) == maxRows {
+				return rows, true
+			}
+
+			start, count = at, 0
+		}
+
+		count++
+	}
+
+	return append(rows, text[start:]), false
+}
+
 // fakeRenderer records renderer delegation. Tests of rendered content use the
 // real renderers instead.
 type fakeRenderer struct {

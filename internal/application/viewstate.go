@@ -64,6 +64,12 @@ type ViewState struct {
 
 	// MaxStrLen is how much of a long string value is shown, in runes.
 	MaxStrLen int
+
+	// FullValue is whether the selected value, when its row shows it
+	// shortened, is written out in full on the rows beneath. It follows the
+	// cursor rather than naming a node, so an edit or an undo has nothing in
+	// it to carry forward, and MaxStrLen is left alone for whatever chose it.
+	FullValue bool
 }
 
 // defaultMaxStrLen is how much of a string value is shown before the rest is
@@ -95,6 +101,11 @@ func NewViewState() ViewState {
 // rendering happens on every redraw.
 func (v ViewState) RenderOptions() documentview.Options {
 	return documentview.Options{Collapsed: v.Collapsed, MaxStrLen: v.MaxStrLen}
+}
+
+// ToggleFullValue starts or stops writing the selected value out in full.
+func (v *ViewState) ToggleFullValue() {
+	v.FullValue = !v.FullValue
 }
 
 // Collapse folds the node at p away. It reports whether anything changed, so

@@ -93,6 +93,16 @@ type ActionToggleView struct{}
 
 func (ActionToggleView) isAction() {}
 
+// ActionToggleFullValue asks for the selected value to be written out in full
+// beneath its row whenever that row shows it shortened, or for that to stop.
+//
+// It toggles rather than naming a state because one key both starts and stops
+// it, and what it changes is how the document is shown rather than anything a
+// stray request could lose.
+type ActionToggleFullValue struct{}
+
+func (ActionToggleFullValue) isAction() {}
+
 // ActionSearch asks for a term to search for. ActionSearchNext and
 // ActionSearchPrev move through the matches of the last accepted term.
 type (

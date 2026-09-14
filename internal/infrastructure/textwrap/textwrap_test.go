@@ -27,7 +27,10 @@ func TestWrapLineFitsEveryRowAndLosesNothing(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			rows := New().WrapLine(tt.text, tt.width)
+			rows, truncated := New().WrapLine(tt.text, tt.width, len(tt.text)+1)
+			if truncated {
+				t.Fatal("WrapLine reports truncating an unbounded result")
+			}
 
 			for i, row := range rows {
 				if w := ansi.StringWidth(row); w > tt.width {
@@ -58,7 +61,8 @@ func TestWrapLineKeepsTextThatFitsOnOneRow(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if got, want := New().WrapLine(tt.text, tt.width), []string{tt.text}; !slices.Equal(got, want) {
+			got, truncated := New().WrapLine(tt.text, tt.width, 1)
+			if want := []string{tt.text}; !slices.Equal(got, want) || truncated {
 				t.Errorf("WrapLine(%q, %d) = %q, want %q", tt.text, tt.width, got, want)
 			}
 		})
@@ -71,8 +75,77 @@ func TestWrapLineLeavesTextWholeBelowTwoColumns(t *testing.T) {
 	const text = "日本語 text"
 
 	for _, width := range []int{-1, 0, 1} {
-		if got, want := New().WrapLine(text, width), []string{text}; !slices.Equal(got, want) {
+		got, truncated := New().WrapLine(text, width, 1)
+		if want := []string{text}; !slices.Equal(got, want) || truncated {
 			t.Errorf("WrapLine(%q, %d) = %q, want %q", text, width, got, want)
+		}
+	}
+}
+
+// Truncation is reported exactly when another row would be needed: text that
+// fills the last allowed row to its end is whole, and one character more is
+// not. What is returned either way fits the width and begins the text.
+func TestWrapLineStopsAtTheRowLimit(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		text           string
+		width, maxRows int
+		want           []string
+		truncated      bool
+	}{
+		"far beyond the limit": {
+			text: strings.Repeat("0123456789", 10_000), width: 10, maxRows: 2,
+			want: []string{"0123456789", "0123456789"}, truncated: true,
+		},
+		"one character over": {
+			text: "01234567890", width: 5, maxRows: 2,
+			want: []string{"01234", "56789"}, truncated: true,
+		},
+		"exactly the limit": {
+			text: "0123456789", width: 5, maxRows: 2,
+			want: []string{"01234", "56789"}, truncated: false,
+		},
+		"wide characters over": {
+			text: "日本語日本語日本語", width: 5, maxRows: 2,
+			want: []string{"日本", "語日"}, truncated: true,
+		},
+		"wide characters exactly": {
+			text: "日本日本", width: 4, maxRows: 2,
+			want: []string{"日本", "日本"}, truncated: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rows, truncated := New().WrapLine(tt.text, tt.width, tt.maxRows)
+
+			if !slices.Equal(rows, tt.want) || truncated != tt.truncated {
+				t.Errorf("WrapLine() = %q, %t, want %q, %t", rows, truncated, tt.want, tt.truncated)
+			}
+
+			for i, row := range rows {
+				if w := ansi.StringWidth(row); w > tt.width {
+					t.Errorf("row %d %q is %d columns, want at most %d", i, row, w, tt.width)
+				}
+			}
+
+			if joined := strings.Join(rows, ""); !strings.HasPrefix(tt.text, joined) || (joined == tt.text) == truncated {
+				t.Errorf("joined rows = %q with truncated %t, want the whole text exactly when not truncated", joined, truncated)
+			}
+		})
+	}
+}
+
+func TestWrapLineWithNoRowsReportsTextLeftOut(t *testing.T) {
+	t.Parallel()
+
+	for _, text := range []string{"", "value"} {
+		rows, truncated := New().WrapLine(text, 10, 0)
+		if len(rows) != 0 || truncated != (text != "") {
+			t.Errorf("WrapLine(%q, 10, 0) = %q, %t", text, rows, truncated)
 		}
 	}
 }

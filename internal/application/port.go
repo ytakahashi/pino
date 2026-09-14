@@ -71,12 +71,20 @@ type FileStore interface {
 // escape is counted as no columns yet moves the terminal's cursor, so a row
 // that measures as fitting would still be clipped when drawn.
 //
-// For any other text WrapLine promises two things of what it returns. Every
-// row fits in width columns, and joining the rows gives text back unchanged,
-// so nothing is dropped where a row was cut. A width below 2 cannot hold every
-// character and is answered with text as a single row.
+// For any other text WrapLine promises that every returned row fits in width
+// columns and that their count does not exceed maxRows. When truncated is
+// false, joining the rows gives text back unchanged. When it is true, joining
+// them gives a prefix of text and says that another row would have been needed.
+// This bound is part of the port rather than applied by its caller so a value
+// much longer than the screen is not first expanded into rows nobody can see.
+//
+// A maxRows below 1 returns no rows and reports whether text was left out. Any
+// larger maxRows returns at least one row, an empty one for empty text, so a
+// caller asking for a single row can take it without checking. A width below
+// 2 cannot hold every character and is answered with text as a single row
+// when one is allowed.
 type TextWrap interface {
-	WrapLine(text string, width int) []string
+	WrapLine(text string, width, maxRows int) (rows []string, truncated bool)
 }
 
 // WriteOutcome says how far a write got.

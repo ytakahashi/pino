@@ -78,6 +78,7 @@ ignores case; a term containing an uppercase letter is case-sensitive.
 | `N`            | Move to the previous match        |
 | `Enter`        | Edit a value or fold a node       |
 | `Tab`          | Switch between views              |
+| `S`            | Show the selected value in full   |
 | `Ctrl+s`       | Save                              |
 | `R`            | Reload the file (asks if unsaved) |
 | `q` / `Ctrl+c` | Quit                              |

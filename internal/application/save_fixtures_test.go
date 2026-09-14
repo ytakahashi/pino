@@ -68,6 +68,7 @@ func openWith(t *testing.T, files *fakeFileStore, root domain.Node, path string)
 	app := New(Deps{
 		Parser:   parser,
 		Files:    files,
+		Wrapper:  fakeTextWrap{},
 		JSONView: documentview.NewJSONRenderer(),
 		TreeView: documentview.NewTreeRenderer(),
 	}, Config{})

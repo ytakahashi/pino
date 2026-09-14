@@ -36,6 +36,11 @@ type StatusInfo struct {
 	// save, which clears them together.
 	New bool
 
+	// FullValue reports that the selected value is written out in full beneath
+	// its row whenever that row shows it shortened. On a value with nothing
+	// more to show nothing else on screen says so.
+	FullValue bool
+
 	// Notice is the runtime result still waiting to be acknowledged. The bar
 	// shows its summary while the prompt keeps the full cause available.
 	Notice *NoticeInfo
@@ -58,9 +63,10 @@ type StatusInfo struct {
 // Status describes the session for the status bar.
 func (a *App) Status() StatusInfo {
 	info := StatusInfo{
-		Mode:     a.Mode(),
-		ViewMode: a.view.ViewMode,
-		Indent:   a.format.Indent,
+		Mode:      a.Mode(),
+		ViewMode:  a.view.ViewMode,
+		Indent:    a.format.Indent,
+		FullValue: a.view.FullValue,
 	}
 
 	if a.source != nil {
