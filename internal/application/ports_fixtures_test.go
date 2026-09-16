@@ -36,6 +36,7 @@ type fakeFileStore struct {
 	// What the session asked for, in order.
 	reads   []string
 	checks  []string
+	checked []Meta
 	writes  []string
 	written [][]byte
 }
@@ -62,8 +63,9 @@ func (f *fakeFileStore) Write(path string, data []byte) (WriteOutcome, error) {
 	return f.outcome, f.writeErr
 }
 
-func (f *fakeFileStore) HasChangedSince(path string, _ Meta) (ChangeStatus, error) {
+func (f *fakeFileStore) HasChangedSince(path string, expected Meta) (ChangeStatus, error) {
 	f.checks = append(f.checks, path)
+	f.checked = append(f.checked, expected)
 
 	return f.status, f.statusErr
 }

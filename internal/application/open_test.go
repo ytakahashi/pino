@@ -1,12 +1,123 @@
 package application
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 
 	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
+
+func TestOpeningStandardInputLoadsAnUnownedDocument(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte("{\r\n    \"a\": 1\r\n}")
+	root := testTree(t)
+	files := &fakeFileStore{data: map[string][]byte{}}
+	parser := &fakeParser{root: root}
+	app := New(Deps{
+		Parser:   parser,
+		Files:    files,
+		Wrapper:  fakeTextWrap{},
+		JSONView: documentview.NewJSONRenderer(),
+		TreeView: documentview.NewTreeRenderer(),
+	}, Config{})
+
+	if err := app.OpenStdin(raw, "out.json"); err != nil {
+		t.Fatalf("OpenStdin: %v", err)
+	}
+
+	if !bytes.Equal(parser.gotSrc, raw) || parser.gotDialect != domain.JSONC {
+		t.Errorf("parser got %q in %v, want the stdin bytes in JSONC", parser.gotSrc, parser.gotDialect)
+	}
+
+	if len(files.reads) != 0 {
+		t.Errorf("opening stdin read paths %v, want none", files.reads)
+	}
+
+	status := app.Status()
+	if status.Name != "stdin" || status.New || status.Dirty {
+		t.Errorf("status = %+v, want a clean stdin document that is not a new file", status)
+	}
+
+	if got, want := app.format, (domain.Format{Indent: "    ", Newline: "\r\n", TrailingNL: true}); got != want {
+		t.Errorf("format = %#v, want %#v", got, want)
+	}
+
+	if src, ok := app.source.(StdinSource); !ok || src.Out != "out.json" {
+		t.Errorf("source = %#v, want stdin with out.json", app.source)
+	}
+
+	if len(app.Frame().Lines) == 0 {
+		t.Error("the stdin document has no rendered lines")
+	}
+}
+
+func TestOpeningStandardInputHonoursAnIndentOverride(t *testing.T) {
+	t.Parallel()
+
+	app := New(Deps{
+		Parser:   &fakeParser{root: testTree(t)},
+		Files:    &fakeFileStore{},
+		JSONView: &fakeRenderer{},
+		TreeView: &fakeRenderer{},
+	}, Config{IndentOverride: "\t", OverrideIndent: true})
+
+	if err := app.OpenStdin([]byte(testSource), ""); err != nil {
+		t.Fatalf("OpenStdin: %v", err)
+	}
+
+	if got := app.Status().Indent; got != "\t" {
+		t.Errorf("indent = %q, want a tab", got)
+	}
+}
+
+func TestOpeningBrokenStandardInputLeavesTheSessionAlone(t *testing.T) {
+	t.Parallel()
+
+	app, _ := openingStdin(t, sample(t), "first.json")
+	before := struct {
+		root   domain.Node
+		source Source
+		format domain.Format
+	}{app.doc.Root(), app.source, app.format}
+	want := errors.New("unexpected end of JSON input")
+	parserOf(t, app).parse = func([]byte, domain.Dialect) (domain.Node, error) { return nil, want }
+
+	if err := app.OpenStdin(nil, "second.json"); !errors.Is(err, want) {
+		t.Fatalf("OpenStdin error = %v, want %v", err, want)
+	}
+
+	if app.doc.Root() != before.root || app.source != before.source || app.format != before.format {
+		t.Error("a failed stdin open changed the current document")
+	}
+}
+
+func TestOpeningBrokenStandardInputLeavesANewSessionEmpty(t *testing.T) {
+	t.Parallel()
+
+	want := errors.New("unexpected end of JSON input")
+	parser := &fakeParser{err: want}
+	app := New(Deps{
+		Parser:   parser,
+		Files:    &fakeFileStore{},
+		JSONView: &fakeRenderer{},
+		TreeView: &fakeRenderer{},
+	}, Config{})
+
+	if err := app.OpenStdin([]byte{}, "out.json"); !errors.Is(err, want) {
+		t.Fatalf("OpenStdin error = %v, want %v", err, want)
+	}
+
+	if parser.calls != 1 || len(parser.gotSrc) != 0 {
+		t.Errorf("parser saw %d calls with %q, want one call with empty input", parser.calls, parser.gotSrc)
+	}
+
+	if app.doc != nil || app.source != nil || len(app.Frame().Lines) != 0 {
+		t.Error("a document exists after opening empty stdin failed")
+	}
+}
 
 // A path holding nothing is where a document begins rather than a failure to
 // report. Nothing is written until the reader saves, so opening one must ask

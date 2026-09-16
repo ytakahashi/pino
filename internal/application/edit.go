@@ -370,9 +370,9 @@ func (f *editFlow) validate(a *App, text string) {
 // Staying open is what makes a refusal recoverable: the text is still in the
 // widget, and a key that could not be committed is corrected rather than typed
 // again from the start.
-func (f *editFlow) submit(a *App, text string) {
+func (f *editFlow) submit(a *App, text string) []Effect {
 	if f.step != stepText {
-		return
+		return nil
 	}
 
 	if f.op == opInsert && !f.keySet {
@@ -380,30 +380,32 @@ func (f *editFlow) submit(a *App, text string) {
 		if err != nil {
 			f.err = promptError(err)
 
-			return
+			return nil
 		}
 
 		f.key, f.keySet = key, true
 		f.step, f.err = stepType, ""
 
-		return
+		return nil
 	}
 
 	res, err := a.applyText(f, text)
 	if err != nil {
 		f.err = promptError(err)
 
-		return
+		return nil
 	}
 
 	if f.op == opInsert {
 		a.finishInsert(f, res)
 
-		return
+		return nil
 	}
 
 	a.commit(res, revisionLabel(f.op, f.target))
 	a.flow = nil
+
+	return nil
 }
 
 // choose is a key pressed on the prompt an edit is asking through.

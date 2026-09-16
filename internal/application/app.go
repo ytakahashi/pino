@@ -138,7 +138,35 @@ func (a *App) Open(path string) error {
 		return err
 	}
 
-	a.install(read, path)
+	a.startDocument(read, FileSource{Path: path, New: read.isNew})
+
+	return nil
+}
+
+// OpenStdin parses and shows a document that was read from standard input.
+//
+// Standard input is not the file that will eventually be written, so a
+// missing final newline is not source formatting to preserve. out is kept as
+// the requested destination, or left empty so saving can ask for one.
+func (a *App) OpenStdin(src []byte, out string) error {
+	read, err := a.decode(src, nil)
+	if err != nil {
+		return err
+	}
+
+	read.format.TrailingNL = true
+	a.startDocument(read, StdinSource{Out: out})
+
+	return nil
+}
+
+// startDocument installs a newly selected subject of the session.
+//
+// Reload deliberately calls install directly and decides which parts of the
+// existing view survive. Starting another subject always resets them and the
+// accepted search term.
+func (a *App) startDocument(read document, source Source) {
+	a.install(read, source)
 
 	// The view state describes the document being looked at, so it does not
 	// outlive it: a cursor, a scroll position and a folded set carried over
@@ -148,11 +176,9 @@ func (a *App) Open(path string) error {
 	// replaces that document in place; opening another document starts without
 	// a term carried over from the previous one.
 	a.search = searchState{}
-
-	return nil
 }
 
-// document is a document read from a path, before any of it is installed.
+// document is parsed content before any of it is installed in the session.
 //
 // It is returned whole so that reading can fail without leaving the session
 // half changed. Every field here replaces one the session already holds, and
@@ -198,6 +224,14 @@ func (a *App) read(path string, allowNew bool) (document, error) {
 		return document{}, err
 	}
 
+	return a.decode(raw, meta)
+}
+
+// decode parses bytes and records the layout detected from those same bytes.
+//
+// It is separate from read because a parser must not know whether its bytes
+// came from a file or standard input, while only the file path needs a store.
+func (a *App) decode(raw []byte, meta Meta) (document, error) {
 	root, err := a.deps.Parser.Parse(raw, domain.JSONC)
 	if err != nil {
 		return document{}, err
@@ -213,11 +247,11 @@ func (a *App) read(path string, allowNew bool) (document, error) {
 // keeps it — which view is drawing. The edit in progress goes, since a
 // confirmation or a half typed value left open would be answered against the
 // wrong document.
-func (a *App) install(read document, path string) {
+func (a *App) install(read document, source Source) {
 	a.doc = NewDocument(read.root)
 	a.format = read.format
 	a.meta = read.meta
-	a.source = FileSource{Path: path, New: read.isNew}
+	a.source = source
 	a.flow = nil
 
 	// The history starts again at the document as it was read. The root is
@@ -413,7 +447,7 @@ func (a *App) Do(act Action) []Effect {
 		a.validate(act.Text)
 
 	case ActionPromptSubmit:
-		a.submit(act.Text)
+		return a.submit(act.Text)
 
 	case ActionPromptChoose:
 		return a.choose(act.Key)

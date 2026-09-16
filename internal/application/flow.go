@@ -38,11 +38,12 @@ type flow interface {
 // that put it on screen owns validating and accepting its text.
 type textFlow interface {
 	validate(a *App, text string)
-	submit(a *App, text string)
+	submit(a *App, text string) []Effect
 }
 
 var (
 	_ textFlow = (*editFlow)(nil)
+	_ textFlow = (*saveAsFlow)(nil)
 	_ textFlow = (*searchFlow)(nil)
 )
 
@@ -55,11 +56,13 @@ func (a *App) validate(text string) {
 	}
 }
 
-func (a *App) submit(text string) {
+func (a *App) submit(text string) []Effect {
 	// Keep the same boundary as validate: terminal input cannot submit text
 	// without a text box, and callers constructing Actions directly must not
 	// route it into a choice or confirmation flow.
 	if f, ok := a.flow.(textFlow); ok {
-		f.submit(a, text)
+		return f.submit(a, text)
 	}
+
+	return nil
 }

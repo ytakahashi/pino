@@ -240,20 +240,20 @@ func (f *searchFlow) validate(a *App, text string) {
 	f.err = noMatches
 }
 
-func (f *searchFlow) submit(a *App, text string) {
+func (f *searchFlow) submit(a *App, text string) []Effect {
 	q := newQuery(text)
 	if q.isZero() {
 		a.search = searchState{}
 		a.flow = nil
 		a.settle(a.render())
 
-		return
+		return nil
 	}
 
 	if a.doc == nil {
 		f.err = noMatches
 
-		return
+		return nil
 	}
 
 	candidate := searchState{query: q}
@@ -261,7 +261,7 @@ func (f *searchFlow) submit(a *App, text string) {
 	if len(candidate.hits) == 0 {
 		f.err = noMatches
 
-		return
+		return nil
 	}
 
 	// Accepting a search includes a match at the current cursor. Navigation
@@ -275,6 +275,8 @@ func (f *searchFlow) submit(a *App, text string) {
 	a.search = candidate
 	a.flow = nil
 	a.moveToSearchHit(target)
+
+	return nil
 }
 
 // beginSearch asks for a fresh term. It deliberately seeds an empty input:
