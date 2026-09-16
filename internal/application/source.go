@@ -28,3 +28,17 @@ func (FileSource) isSource() {}
 // between the mode, the view and the document, and the directory is not what
 // tells two open files apart in practice.
 func (s FileSource) Name() string { return filepath.Base(s.Path) }
+
+// StdinSource is a document read from standard input.
+//
+// Out is the path requested on the command line. An empty Out means the
+// document has no destination yet and saving must ask for one.
+type StdinSource struct {
+	Out string
+}
+
+func (StdinSource) isSource() {}
+
+// Name describes where the document came from. A requested output path does
+// not become its name until a write to that path commits.
+func (StdinSource) Name() string { return "stdin" }

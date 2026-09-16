@@ -3,6 +3,7 @@ package application
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/ytakahashi/pino/internal/domain"
 )
@@ -25,7 +26,7 @@ var (
 	errStoreContract = errors.New("the file store did not say whether the document was written")
 )
 
-// save writes the document to the file it came from.
+// save writes the document to its destination, asking for one when needed.
 //
 // The order is: write the bytes out and read them back, then ask what became
 // of the file, then replace it. Encoding is checked first because a defect
@@ -42,22 +43,42 @@ var (
 // that could not be encoded, a file that changed, a write that failed —
 // leaves pino running with the document still in it.
 func (a *App) save(quitAfter, overwrite bool) []Effect {
-	src, ok := a.saveTarget()
-	if !ok {
+	target, state := a.targetForSave()
+
+	switch state {
+	case saveNeedsDestination:
+		a.flow = &saveAsFlow{quitAfter: quitAfter}
+
+		return []Effect{EffectBeginInput{}}
+
+	case saveSkipped:
 		return nil
+
+	case saveReady:
+		return a.saveTo(target, quitAfter, overwrite)
 	}
 
+	return nil
+}
+
+// saveTo writes to a destination whose safety policy has already been chosen.
+//
+// Separating the target from Source matters for standard input: it must be
+// written even while clean, but an occupied destination cannot be reloaded as
+// the document it came from. A new FileSource shares the first property and
+// not the second.
+func (a *App) saveTo(target saveTarget, quitAfter, overwrite bool) []Effect {
 	encoded, err := a.validateEncoding()
 	if err != nil {
-		a.noticeSaveEncoding(src, err)
+		a.noticeSaveEncoding(target, err)
 
 		return nil
 	}
 
 	if !overwrite {
-		status, err := a.deps.Files.HasChangedSince(src.Path, a.meta)
+		status, err := a.deps.Files.HasChangedSince(target.path, target.expected)
 		if err != nil {
-			a.noticeSaveCheck(src, err)
+			a.noticeSaveCheck(target, err)
 
 			return nil
 		}
@@ -67,10 +88,28 @@ func (a *App) save(quitAfter, overwrite bool) []Effect {
 			// The file is what it was when it was read, so writing it back
 			// replaces this session's own work and nobody else's.
 
-		case ChangeModified, ChangeDeleted:
+		case ChangeModified:
 			// The question is carried on: answering it with Overwrite is
 			// still a save on the way out, and leaving is what it ends with.
-			a.flow = &conflictFlow{status: status, quitAfter: quitAfter}
+			if target.reloadable {
+				a.flow = &conflictFlow{status: status, quitAfter: quitAfter}
+			} else {
+				a.flow = &overwriteFlow{target: target, quitAfter: quitAfter}
+			}
+
+			return nil
+
+		case ChangeDeleted:
+			if target.reloadable {
+				a.flow = &conflictFlow{status: status, quitAfter: quitAfter}
+
+				return nil
+			}
+
+			// A nil Meta describes a path expected to be free. The store does
+			// not define a deletion from that state, so do not turn it into an
+			// overwrite that bypasses a result nobody understood.
+			a.noticeSaveSafely(target, errStoreStatus)
 
 			return nil
 
@@ -79,36 +118,90 @@ func (a *App) save(quitAfter, overwrite bool) []Effect {
 			// change would offer them an Overwrite that skips the very check
 			// whose answer could not be read — which is how a file nobody
 			// looked at gets written over.
-			a.noticeSaveSafely(src, errStoreStatus)
+			a.noticeSaveSafely(target, errStoreStatus)
 
 			return nil
 		}
 	}
 
-	out, err := a.deps.Files.Write(src.Path, encoded)
+	out, err := a.deps.Files.Write(target.path, encoded)
 
-	return a.applyWrite(src, out, err, quitAfter)
+	return a.applyWrite(target, out, err, quitAfter)
 }
 
-// saveTarget is the file to write to, and false when there is nothing to
-// write or nowhere to write it.
+// saveTarget is where a save writes and what safety rule applies there.
+//
+// writeClean and reloadable are deliberately separate. Both a new file and a
+// stdin document need writing while untouched, but only the former names a
+// file that can replace the document when it appears before the first save.
+type saveTarget struct {
+	path       string
+	expected   Meta
+	writeClean bool
+	reloadable bool
+}
+
+// displayName is the part of the destination that fits in a prompt or notice.
+func (t saveTarget) displayName() string { return filepath.Base(t.path) }
+
+// saveTargetState is what resolving the current document for a save found.
+type saveTargetState uint8
+
+const (
+	saveSkipped saveTargetState = iota
+	saveReady
+	saveNeedsDestination
+)
+
+// targetForSave resolves where the current document would be written.
 //
 // A document that is not dirty and whose file exists is not saved. There is
 // nothing to put there — the file already holds this very tree — and writing
 // anyway would lay the document out again, turning a file somebody else
 // formatted into a diff nobody asked for. A new document is written whether
-// or not it was edited, since the file it would create is not there yet.
-func (a *App) saveTarget() (FileSource, bool) {
-	src, ok := a.source.(FileSource)
-	if !ok || a.doc == nil {
-		return FileSource{}, false
+// or not it was edited, since the file it would create is not there yet. A
+// stdin document without a destination is reported separately so its caller
+// can ask for one rather than treating it as a save that has nothing to do.
+func (a *App) targetForSave() (saveTarget, saveTargetState) {
+	if a.doc == nil {
+		return saveTarget{}, saveSkipped
 	}
 
-	if !a.doc.IsDirty() && !src.New {
-		return FileSource{}, false
+	var target saveTarget
+
+	switch src := a.source.(type) {
+	case FileSource:
+		target = saveTarget{
+			path:       src.Path,
+			expected:   a.meta,
+			writeClean: src.New,
+			reloadable: true,
+		}
+
+	case StdinSource:
+		if src.Out == "" {
+			return saveTarget{}, saveNeedsDestination
+		}
+
+		target = stdinSaveTarget(src.Out)
+
+	default:
+		return saveTarget{}, saveSkipped
 	}
 
-	return src, true
+	if !a.doc.IsDirty() && !target.writeClean {
+		return saveTarget{}, saveSkipped
+	}
+
+	return target, saveReady
+}
+
+// stdinSaveTarget describes a path that has never held this document.
+func stdinSaveTarget(path string) saveTarget {
+	return saveTarget{
+		path:       path,
+		writeClean: true,
+	}
 }
 
 // validateEncoding is the document as bytes, once those bytes have been shown
@@ -145,17 +238,17 @@ func (a *App) validateEncoding() ([]byte, error) {
 // only place that reads which side of it a write ended on. Saving and saving
 // on the way out both come through here, so that they cannot come to disagree
 // about what a half-finished write meant.
-func (a *App) applyWrite(src FileSource, out WriteOutcome, err error, quitAfter bool) []Effect {
+func (a *App) applyWrite(target saveTarget, out WriteOutcome, err error, quitAfter bool) []Effect {
 	switch {
 	// Nothing was replaced. The document is exactly as dirty as it was, the
 	// file is exactly as it was, and the Meta still describes it.
 	case !out.Committed && err != nil:
-		a.noticeSave(src, err)
+		a.noticeSave(target, err)
 
 	case out.Committed && out.Meta != nil:
 		a.doc.MarkSaved()
 		a.meta = out.Meta
-		a.source = FileSource{Path: src.Path}
+		a.source = FileSource{Path: target.path}
 		a.flow = nil
 
 		// The document is saved and something after the rename still failed —
@@ -169,7 +262,7 @@ func (a *App) applyWrite(src FileSource, out WriteOutcome, err error, quitAfter 
 		// is nothing left to lose by staying: the document is saved, so the
 		// next attempt to leave goes straight out.
 		if err != nil {
-			a.noticeDurability(src, err)
+			a.noticeDurability(target, err)
 
 			return nil
 		}
@@ -182,7 +275,7 @@ func (a *App) applyWrite(src FileSource, out WriteOutcome, err error, quitAfter 
 		// A commit without a Meta, or a failure that reports neither, is a
 		// combination the port does not allow. Guessing which half to believe
 		// is how a document comes to be marked saved when it was not.
-		a.noticeSaveSafely(src, errStoreContract)
+		a.noticeSaveSafely(target, errStoreContract)
 	}
 
 	return nil
@@ -199,22 +292,55 @@ func (a *App) notice(summary string, severity NoticeSeverity, err error) {
 	}}
 }
 
-func (a *App) noticeSaveEncoding(src FileSource, err error) {
-	a.notice("Could not safely encode "+src.Name()+".", NoticeError, err)
+func (a *App) noticeSaveEncoding(target saveTarget, err error) {
+	a.notice("Could not safely encode "+target.displayName()+".", NoticeError, err)
 }
 
-func (a *App) noticeSaveCheck(src FileSource, err error) {
-	a.notice("Could not check "+src.Name()+" for outside changes.", NoticeError, err)
+func (a *App) noticeSaveCheck(target saveTarget, err error) {
+	a.notice("Could not check "+target.displayName()+" for outside changes.", NoticeError, err)
 }
 
-func (a *App) noticeSave(src FileSource, err error) {
-	a.notice("Could not save "+src.Name()+".", NoticeError, err)
+func (a *App) noticeSave(target saveTarget, err error) {
+	a.notice("Could not save "+target.displayName()+".", NoticeError, err)
 }
 
-func (a *App) noticeSaveSafely(src FileSource, err error) {
-	a.notice("Could not save "+src.Name()+" safely.", NoticeError, err)
+func (a *App) noticeSaveSafely(target saveTarget, err error) {
+	a.notice("Could not save "+target.displayName()+" safely.", NoticeError, err)
 }
 
-func (a *App) noticeDurability(src FileSource, err error) {
-	a.notice("Saved "+src.Name()+", but durability could not be confirmed.", NoticeWarning, err)
+func (a *App) noticeDurability(target saveTarget, err error) {
+	a.notice("Saved "+target.displayName()+", but durability could not be confirmed.", NoticeWarning, err)
+}
+
+// overwriteFlow is where saveTo stops when the destination is already taken
+// and the document did not come from it. Reload is not offered for that same
+// reason: there is nothing at that path this document could return to.
+type overwriteFlow struct {
+	target    saveTarget
+	quitAfter bool
+}
+
+func (*overwriteFlow) mode() Mode { return ModeConfirm }
+
+func (f *overwriteFlow) prompt(*App) PromptInfo {
+	return PromptInfo{
+		Kind:  PromptChoice,
+		Title: f.target.displayName() + " already exists.",
+		Choices: []Choice{
+			{Key: 'o', Label: "Overwrite"},
+			{Key: 'c', Label: "Cancel"},
+		},
+	}
+}
+
+func (f *overwriteFlow) choose(a *App, key rune) []Effect {
+	switch key {
+	case 'o':
+		return a.saveTo(f.target, f.quitAfter, true)
+
+	case 'c':
+		a.flow = nil
+	}
+
+	return nil
 }

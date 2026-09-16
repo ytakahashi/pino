@@ -309,7 +309,7 @@ func (a *App) reload() {
 	// both outlive the rest of the view state.
 	view, full := a.view.ViewMode, a.view.FullValue
 
-	a.install(read, src.Path)
+	a.install(read, FileSource{Path: src.Path})
 
 	if !same {
 		a.view = NewViewState()
