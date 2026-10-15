@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -33,7 +34,7 @@ const (
 
 // Run opens the document named on the command line and hands the terminal to
 // it, returning the exit code the process should end with.
-func Run(args []string, stdout, stderr io.Writer) int {
+func Run(args []string, stdin Input, stdout, stderr io.Writer) int {
 	parser := newOptionParser()
 
 	// Parse errors take precedence over flags already seen, so -hx cannot turn
@@ -59,10 +60,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitOK
 	}
 
-	// Exactly one document. Reading from standard input and holding several
-	// files at once are both foreseen, and both need more than an argument to
-	// arrive, so anything else is a misuse rather than a shortcut.
-	if len(options.arguments) != 1 {
+	choice, err := documentFrom(options, stdin.Terminal)
+	if err != nil {
+		if !errors.Is(err, errUsageOnly) {
+			printf(stderr, "pino: %v\n", err)
+		}
 		parser.usage(stderr)
 
 		return exitUsage
@@ -76,26 +78,54 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	path := options.arguments[0]
+	var doc Document = FileDocument{Path: choice.path}
+	if choice.stdin {
+		data, err := io.ReadAll(stdin.Reader)
+		if err != nil {
+			printf(stderr, "pino: <stdin>: %v\n", err)
+
+			return exitError
+		}
+
+		doc = StdinDocument{Data: data, Output: choice.output}
+	}
 
 	// The document is opened before the terminal is taken over: pino is a
 	// structural editor and has no way to repair a broken file, so the reason
 	// it cannot be opened is worth more on the terminal the user launched pino
 	// from than on a screen that would have nothing to offer them.
-	model, err := NewProgramModel(path, cfg)
+	model, err := NewProgramModel(doc, cfg)
 	if err != nil {
-		reportOpenError(stderr, path, err)
+		reportOpenError(stderr, doc, err)
 
 		return exitError
 	}
 
-	program := tea.NewProgram(
-		model,
-		// Output is the writer this function was given rather than os.Stdout,
-		// so that everything the run puts on the terminal goes through the
-		// same place.
-		tea.WithOutput(stdout),
-	)
+	programOptions := []tea.ProgramOption{tea.WithOutput(stdout)}
+	if choice.stdin {
+		// Parse before opening the terminal so invalid input is reported even
+		// without a controlling terminal. The consumed pipe cannot supply keys.
+		in, out, err := tea.OpenTTY()
+		if err != nil {
+			var pathError *fs.PathError
+			if errors.As(err, &pathError) {
+				// Keep the OS cause without Bubble Tea's assembly details.
+				err = pathError
+			}
+
+			printf(stderr, "pino: cannot open the terminal for keyboard input: %v\n", err)
+
+			return exitError
+		}
+		// These handles only carry terminal input; closing them cannot change
+		// a saved document or the outcome already reported by the program.
+		defer func() { _ = in.Close() }()
+		defer func() { _ = out.Close() }()
+
+		programOptions = append(programOptions, tea.WithInput(in))
+	}
+
+	program := tea.NewProgram(model, programOptions...)
 
 	if _, err := program.Run(); err != nil {
 		printf(stderr, "pino: %v\n", err)
@@ -124,7 +154,7 @@ type ProgramConfig struct {
 //
 // The terminal is untouched here: the document is read, parsed and laid out,
 // and nothing is drawn until a program is given what comes back.
-func NewProgramModel(path string, cfg ProgramConfig) (tea.Model, error) {
+func NewProgramModel(doc Document, cfg ProgramConfig) (tea.Model, error) {
 	app := application.New(application.Deps{
 		Parser:   jsonparser.New(),
 		Files:    filestore.New(),
@@ -133,7 +163,7 @@ func NewProgramModel(path string, cfg ProgramConfig) (tea.Model, error) {
 		TreeView: documentview.NewTreeRenderer(),
 	}, cfg.Application)
 
-	if err := app.Open(path); err != nil {
+	if err := doc.open(app); err != nil {
 		return nil, err
 	}
 
@@ -152,23 +182,27 @@ func printf(w io.Writer, format string, args ...any) {
 
 // reportOpenError says in one line why the document could not be opened.
 //
-// A position is added only for the errors that carry one. Everything the file
-// store reports is a *fs.PathError, which names the path itself, so repeating
-// it here would print the file twice.
-func reportOpenError(w io.Writer, path string, err error) {
+// Syntax errors use the document's label and any known position. Path errors
+// already name the file; other errors need the label to identify the document.
+func reportOpenError(w io.Writer, doc Document, err error) {
 	var syntax *jsonparser.SyntaxError
+	var pathError *fs.PathError
 
 	switch {
 	case !errors.As(err, &syntax):
-		printf(w, "pino: %v\n", err)
+		if errors.As(err, &pathError) {
+			printf(w, "pino: %v\n", err)
+		} else {
+			printf(w, "pino: %s: %v\n", doc.label(), err)
+		}
 
 	case syntax.Line == 0:
 		// The parser could not place the failure, which happens when the
 		// library rewords its errors. The reason is still worth printing; a
 		// guessed position would not be.
-		printf(w, "pino: %s: %s\n", path, syntax.Msg)
+		printf(w, "pino: %s: %s\n", doc.label(), syntax.Msg)
 
 	default:
-		printf(w, "pino: %s:%d:%d: %s\n", path, syntax.Line, syntax.Column, syntax.Msg)
+		printf(w, "pino: %s:%d:%d: %s\n", doc.label(), syntax.Line, syntax.Column, syntax.Msg)
 	}
 }
