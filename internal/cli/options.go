@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -18,6 +19,8 @@ type commandOptions struct {
 	showVersion    bool
 	indent         int
 	overrideIndent bool
+	output         string
+	outputGiven    bool
 	arguments      []string
 }
 
@@ -39,6 +42,7 @@ func newOptionParser() *optionParser {
 	// an invalid group of short options.
 	parser.flags.BoolVarP(&parser.options.showHelp, "help", "h", false, "print help information and exit")
 	parser.flags.BoolVarP(&parser.options.showVersion, "version", "v", false, "print version information and exit")
+	parser.flags.StringVarP(&parser.options.output, "output", "o", "", "path to save a document read from standard input")
 	parser.flags.IntVarP(
 		&parser.options.indent,
 		"indent",
@@ -56,13 +60,61 @@ func (p *optionParser) parse(args []string) error {
 	}
 
 	p.options.overrideIndent = p.flags.Changed("indent")
+	p.options.outputGiven = p.flags.Changed("output")
 	p.options.arguments = p.flags.Args()
 
 	return nil
 }
 
 func (p *optionParser) usage(w io.Writer) {
-	printf(w, "usage: pino [options] <file> [options]\n\noptions:\n%s", p.flags.FlagUsages())
+	printf(w, "usage: pino [options] [<file> | -] [options]\n\nRead standard input when piped with no file or with -.\n\noptions:\n%s", p.flags.FlagUsages())
+}
+
+// documentChoice selects an input before any bytes are read. A Document is
+// built only once Run has read standard input, so it always carries its data.
+type documentChoice struct {
+	path   string
+	stdin  bool
+	output string
+}
+
+// errUsageOnly preserves the usage-only response to a missing or extra file
+// argument. Other invocation errors carry a reason to print before usage.
+var errUsageOnly = errors.New("invalid document arguments")
+
+func documentFrom(options commandOptions, stdinTerminal bool) (documentChoice, error) {
+	if len(options.arguments) > 1 {
+		return documentChoice{}, errUsageOnly
+	}
+
+	// Validate output before choosing a file, then check terminal input.
+	// pflag leaves "-" positional even after "--"; it still means stdin here.
+	if options.outputGiven {
+		switch options.output {
+		case "":
+			return documentChoice{}, fmt.Errorf("--output needs a path")
+		case "-":
+			return documentChoice{}, fmt.Errorf("--output cannot be standard output")
+		}
+	}
+
+	if len(options.arguments) == 1 && options.arguments[0] != "-" {
+		if options.outputGiven {
+			return documentChoice{}, fmt.Errorf("--output is only used when reading standard input")
+		}
+
+		return documentChoice{path: options.arguments[0]}, nil
+	}
+
+	if stdinTerminal {
+		if len(options.arguments) == 0 && !options.outputGiven {
+			return documentChoice{}, errUsageOnly
+		}
+
+		return documentChoice{}, fmt.Errorf("standard input is a terminal")
+	}
+
+	return documentChoice{stdin: true, output: options.output}, nil
 }
 
 // configFrom is what the command line asked pino to do, as opposed to what it

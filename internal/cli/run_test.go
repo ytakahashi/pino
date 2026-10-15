@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/ytakahashi/pino/internal/infrastructure/jsonparser"
 )
@@ -19,13 +20,20 @@ func TestRunReportsUsageErrors(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		args []string
+		name      string
+		args      []string
+		usageOnly bool
 	}{
-		{"no arguments", nil},
-		{"two files", []string{"a.json", "b.json"}},
-		{"unknown short option", []string{"-nope", "a.json"}},
-		{"unknown long option", []string{"--nope", "a.json"}},
+		{"no arguments", nil, true},
+		{"two files", []string{"a.json", "b.json"}, true},
+		{"unknown short option", []string{"-nope", "a.json"}, false},
+		{"unknown long option", []string{"--nope", "a.json"}, false},
+		{"explicit stdin from a terminal", []string{"-"}, false},
+		{"output from a terminal", []string{"-o", "out.json"}, false},
+		{"file with output", []string{"file.json", "-o", "out.json"}, false},
+		{"empty output", []string{"-o", ""}, false},
+		{"stdout destination", []string{"-o", "-"}, false},
+		{"missing output value", []string{"--output"}, false},
 	}
 
 	for _, tt := range tests {
@@ -44,6 +52,58 @@ func TestRunReportsUsageErrors(t *testing.T) {
 
 			if !strings.Contains(stderr, "usage: pino") {
 				t.Errorf("stderr = %q, want it to describe the usage", stderr)
+			}
+
+			if tt.usageOnly && !strings.HasPrefix(stderr, "usage: pino") {
+				t.Errorf("stderr = %q, want usage without a preceding diagnostic", stderr)
+			}
+		})
+	}
+}
+
+func TestRunReportsStandardInputFailuresBeforeOpeningTheTerminal(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		data string
+		err  error
+		want string
+	}{
+		"syntax error":    {data: "{\n  \"host\" \"localhost\"\n}\n", want: "pino: <stdin>:2:10: invalid character"},
+		"empty input":     {want: "pino: <stdin>:1:1:"},
+		"read error":      {err: errors.New("input failed"), want: "pino: <stdin>: input failed"},
+		"read path error": {err: &fs.PathError{Op: "read", Path: "/dev/stdin", Err: fs.ErrPermission}, want: "pino: <stdin>: read /dev/stdin: permission denied"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, args := range [][]string{nil, {"-"}} {
+				input := Input{Reader: strings.NewReader(tc.data)}
+				if tc.err != nil {
+					input.Reader = iotest.ErrReader(tc.err)
+				}
+
+				var stdout, stderr bytes.Buffer
+				code := Run(args, input, &stdout, &stderr)
+				if code != exitError || stdout.Len() != 0 || !strings.HasPrefix(stderr.String(), tc.want) || strings.Count(stderr.String(), "\n") != 1 {
+					t.Errorf("Run(%v) = %d, %q, %q, want exit 1 and %q", args, code, stdout.String(), stderr.String(), tc.want)
+				}
+			}
+		})
+	}
+}
+
+func TestHelpAndVersionDoNotReadStandardInput(t *testing.T) {
+	t.Parallel()
+
+	for _, arg := range []string{"--help", "--version"} {
+		t.Run(arg, func(t *testing.T) {
+			t.Parallel()
+
+			var stdout, stderr bytes.Buffer
+			// A nil reader would fail if Run tried to consume it.
+			if code := Run([]string{arg}, Input{}, &stdout, &stderr); code != exitOK || stdout.Len() == 0 || stderr.Len() != 0 {
+				t.Errorf("Run = %d, %q, %q, want successful output", code, stdout.String(), stderr.String())
 			}
 		})
 	}
@@ -85,7 +145,7 @@ func TestHelpPrintsUsage(t *testing.T) {
 				t.Errorf("stdout = %q, want it to describe the usage", stdout)
 			}
 
-			for _, option := range []string{"-h, --help", "-i, --indent int", "-v, --version"} {
+			for _, option := range []string{"-h, --help", "-i, --indent int", "-v, --version", "-o, --output string"} {
 				if !strings.Contains(stdout, option) {
 					t.Errorf("stdout = %q, want it to list %s", stdout, option)
 				}
@@ -249,7 +309,7 @@ func TestOpeningAPathThatHoldsNothingStartsADocument(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "new.json")
 
-	model, err := NewProgramModel(path, ProgramConfig{})
+	model, err := NewProgramModel(FileDocument{Path: path}, ProgramConfig{})
 	if err != nil {
 		t.Fatalf("NewProgramModel: %v", err)
 	}
@@ -384,7 +444,7 @@ func TestReportOpenErrorOmitsAnUnknownPosition(t *testing.T) {
 
 	err := fmt.Errorf("parsing: %w", &jsonparser.SyntaxError{Msg: "a reason in some new shape"})
 
-	reportOpenError(&b, "config.json", err)
+	reportOpenError(&b, FileDocument{Path: "config.json"}, err)
 
 	if want := "pino: config.json: a reason in some new shape\n"; b.String() != want {
 		t.Errorf("reportOpenError wrote %q, want %q", b.String(), want)

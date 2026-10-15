@@ -258,7 +258,17 @@ func startAt(t *testing.T, path, onFirstScreen string) (*teatest.TestModel, *scr
 func startWith(t *testing.T, path string, cfg cli.ProgramConfig, onFirstScreen string) (*teatest.TestModel, *screenWaiter, string) {
 	t.Helper()
 
-	model, err := cli.NewProgramModel(path, cfg)
+	tm, waiter := startDocument(t, cli.FileDocument{Path: path}, cfg, onFirstScreen)
+
+	return tm, waiter, path
+}
+
+// startDocument shares the real program assembly and screen observation for
+// file and standard-input documents.
+func startDocument(t *testing.T, doc cli.Document, cfg cli.ProgramConfig, onFirstScreen string) (*teatest.TestModel, *screenWaiter) {
+	t.Helper()
+
+	model, err := cli.NewProgramModel(doc, cfg)
 	if err != nil {
 		t.Fatalf("NewProgramModel() = %v", err)
 	}
@@ -284,7 +294,7 @@ func startWith(t *testing.T, path string, cfg cli.ProgramConfig, onFirstScreen s
 		return strings.Contains(strings.Join(screen, "\n"), onFirstScreen)
 	})
 
-	return tm, waiter, path
+	return tm, waiter
 }
 
 // finalScreen quits and answers the screen the program stopped on, one entry

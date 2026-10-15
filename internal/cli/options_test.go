@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -113,5 +114,94 @@ func TestDoubleDashAllowsAPathStartingWithAHyphen(t *testing.T) {
 
 	if got, want := parser.options.arguments, []string{"-config.json"}; len(got) != 1 || got[0] != want[0] {
 		t.Errorf("arguments = %v, want %v", got, want)
+	}
+}
+
+func TestTheCommandLineSelectsAFileOrStandardInput(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		args      []string
+		terminal  bool
+		want      documentChoice
+		wantErr   string
+		wantUsage bool
+	}{
+		{name: "file from a terminal", args: []string{"in.json"}, terminal: true, want: documentChoice{path: "in.json"}},
+		{name: "file ignores a pipe", args: []string{"in.json"}, want: documentChoice{path: "in.json"}},
+		{name: "file rejects output", args: []string{"in.json", "-o", "out.json"}, wantErr: "--output is only used when reading standard input"},
+		{name: "explicit stdin", args: []string{"-"}, want: documentChoice{stdin: true}},
+		{name: "explicit stdin with output", args: []string{"-", "-o", "out.json"}, want: documentChoice{stdin: true, output: "out.json"}},
+		{name: "explicit terminal", args: []string{"-"}, terminal: true, wantErr: "standard input is a terminal"},
+		{name: "explicit terminal with output", args: []string{"-", "-o", "out.json"}, terminal: true, wantErr: "standard input is a terminal"},
+		{name: "implicit stdin", want: documentChoice{stdin: true}},
+		{name: "implicit stdin with output", args: []string{"-o", "out.json"}, want: documentChoice{stdin: true, output: "out.json"}},
+		{name: "no input", terminal: true, wantUsage: true},
+		{name: "implicit terminal with output", args: []string{"-o", "out.json"}, terminal: true, wantErr: "standard input is a terminal"},
+		{name: "several files", args: []string{"a", "b"}, wantUsage: true},
+		{name: "several files from a terminal", args: []string{"a", "b"}, terminal: true, wantUsage: true},
+		{name: "empty output", args: []string{"-o", ""}, wantErr: "--output needs a path"},
+		{name: "stdout destination", args: []string{"-o", "-"}, wantErr: "--output cannot be standard output"},
+		{name: "literal dash file", args: []string{"./-"}, terminal: true, want: documentChoice{path: "./-"}},
+		{name: "dash after separator", args: []string{"--", "-"}, want: documentChoice{stdin: true}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			parser := newOptionParser()
+			if err := parser.parse(tc.args); err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+
+			got, err := documentFrom(parser.options, tc.terminal)
+			if tc.wantUsage {
+				if !errors.Is(err, errUsageOnly) {
+					t.Fatalf("documentFrom = %v, want usage only", err)
+				}
+
+				return
+			}
+
+			if tc.wantErr != "" {
+				if err == nil || err.Error() != tc.wantErr {
+					t.Fatalf("documentFrom = %v, want %q", err, tc.wantErr)
+				}
+
+				return
+			}
+
+			if err != nil || got != tc.want {
+				t.Errorf("documentFrom = %+v, %v, want %+v", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestOutputSpellingsSelectTheSameStdinDestination(t *testing.T) {
+	t.Parallel()
+
+	for _, args := range [][]string{
+		{"--output", "out.json", "-"},
+		{"-", "--output=out.json"},
+		{"-o", "out.json", "-"},
+		{"-", "-o=out.json"},
+		{"-oout.json", "-"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Parallel()
+
+			parser := newOptionParser()
+			if err := parser.parse(args); err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+
+			want := documentChoice{stdin: true, output: "out.json"}
+			if got, err := documentFrom(parser.options, false); err != nil || got != want {
+				t.Errorf("documentFrom = %+v, %v, want %+v", got, err, want)
+			}
+		})
 	}
 }
