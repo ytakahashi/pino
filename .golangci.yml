@@ -78,6 +78,12 @@ linters:
             - $gostd
             - github.com/ytakahashi/pino/internal/domain
             - github.com/ytakahashi/pino/internal/application/testdocs
+        # Shared matching must stay independent of its callers and their ports.
+        textmatch:
+          files:
+            - '**/internal/application/textmatch/**'
+          allow:
+            - $gostd
         testdocs:
           files:
             - '**/internal/application/testdocs/**'

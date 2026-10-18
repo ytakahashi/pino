@@ -8,7 +8,9 @@ import (
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
-func TestQueryUsesSmartcase(t *testing.T) {
+// The comparison rule itself is textmatch's and is tested there. What is left
+// here is the search's own meaning for an empty term.
+func TestQueryMatchesNothingWhenEmpty(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -16,12 +18,8 @@ func TestQueryUsesSmartcase(t *testing.T) {
 		text  string
 		want  bool
 	}{
-		"lowercase ignores case":       {query: "port", text: "ServerPort", want: true},
-		"uppercase preserves case":     {query: "Port", text: "ServerPort", want: true},
-		"uppercase refuses other case": {query: "Port", text: "serverport", want: false},
-		"a substring is enough":        {query: "serve", text: "server", want: true},
-		"Unicode letters are folded":   {query: "ä", text: "Ärger", want: true},
-		"empty matches nothing":        {query: "", text: "anything", want: false},
+		"a term matches by the shared rule": {query: "port", text: "ServerPort", want: true},
+		"empty matches nothing":             {query: "", text: "anything", want: false},
 	}
 
 	for name, tc := range tests {
