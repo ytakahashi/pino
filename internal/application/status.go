@@ -82,7 +82,7 @@ func (a *App) Status() StatusInfo {
 	}
 
 	if !a.search.query.isZero() {
-		search := SearchInfo{Query: a.search.query.text, Total: len(a.search.hits)}
+		search := SearchInfo{Query: a.search.query.text(), Total: len(a.search.hits)}
 		if a.search.on {
 			search.At = a.search.passed + 1
 		}

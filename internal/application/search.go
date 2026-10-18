@@ -1,42 +1,34 @@
 package application
 
 import (
-	"strings"
-
+	"github.com/ytakahashi/pino/internal/application/textmatch"
 	"github.com/ytakahashi/pino/internal/domain"
 )
 
 const noMatches = "no matches"
 
-// query is a search term and the comparison rule it selects.
+// query adds the search's empty-term policy to shared text matching.
 //
-// A term without uppercase letters selects case-insensitive matching. The
-// term itself decides the rule, so there is no separate option that can get
-// out of step with what is shown to the user.
+// The term is a named field rather than embedded: embedding would promote a
+// Match that treats an empty term as matching everything, one letter away
+// from match, which does not.
 type query struct {
-	text string
-	fold bool
+	term textmatch.Query
 }
 
 func newQuery(text string) query {
-	return query{text: text, fold: strings.ToLower(text) == text}
+	return query{term: textmatch.New(text)}
 }
 
-func (q query) isZero() bool { return q.text == "" }
+func (q query) text() string { return q.term.Text() }
+
+func (q query) isZero() bool { return q.text() == "" }
 
 func (q query) match(text string) bool {
-	// An empty term clears the search. strings.Contains would instead make it
-	// match every node, so keep that session-level meaning true at this lower
-	// boundary as well.
-	if q.isZero() {
-		return false
-	}
-
-	if q.fold {
-		text = strings.ToLower(text)
-	}
-
-	return strings.Contains(text, q.text)
+	// An empty term clears the search. textmatch would instead match every
+	// node, so keep that session-level meaning true at this lower boundary as
+	// well.
+	return !q.isZero() && q.term.Match(text)
 }
 
 // walkSearchNodes visits nodes in the order an expanded document draws them.
