@@ -84,6 +84,15 @@ linters:
             - '**/internal/application/textmatch/**'
           allow:
             - $gostd
+        # The picker and the session do not know each other: whoever drives
+        # both is the one place that does. Its port is declared in the package
+        # itself, so it needs nothing of application but the shared matching.
+        picker:
+          files:
+            - '**/internal/application/picker/**'
+          allow:
+            - $gostd
+            - github.com/ytakahashi/pino/internal/application/textmatch
         testdocs:
           files:
             - '**/internal/application/testdocs/**'
