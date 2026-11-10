@@ -143,6 +143,22 @@ func (a *App) Open(path string) error {
 	return nil
 }
 
+// OpenExisting reads and parses the document at path, which must exist.
+//
+// A file chosen from a listing may have disappeared since it was listed.
+// Report that as an error instead of starting a new document. Reading or
+// parsing failures leave the session untouched.
+func (a *App) OpenExisting(path string) error {
+	read, err := a.read(path, false)
+	if err != nil {
+		return err
+	}
+
+	a.startDocument(read, FileSource{Path: path})
+
+	return nil
+}
+
 // OpenStdin parses and shows a document that was read from standard input.
 //
 // Standard input is not the file that will eventually be written, so a
@@ -182,7 +198,7 @@ func (a *App) startDocument(read document, source Source) {
 //
 // It is returned whole so that reading can fail without leaving the session
 // half changed. Every field here replaces one the session already holds, and
-// the two callers differ in what they do with them afterwards, not in how
+// the callers differ in what they do with them afterwards, not in how
 // they are obtained.
 type document struct {
 	root   domain.Node
@@ -200,10 +216,13 @@ type document struct {
 //
 // allowNew says what a path holding nothing means. Opening one starts an
 // empty document, which is how pino is told to write a file that does not
-// exist yet; reloading one must not, because a file deleted underneath the
+// exist yet. Reloading one must not, because a file deleted underneath the
 // session would then quietly replace what the reader has been editing with
-// an empty object. A link pointing at nothing is neither: the store reports
-// it apart from a path that is free, so it stays an error in both.
+// an empty object. Nor must opening a file chosen from a listing: the reader
+// picked it because it was there, and a name that has since gone is not a
+// request to start a new file. A link pointing at nothing is neither: the
+// store reports it apart from a path that is free, so it stays an error in
+// either case.
 func (a *App) read(path string, allowNew bool) (document, error) {
 	raw, meta, err := a.deps.Files.Read(path)
 
