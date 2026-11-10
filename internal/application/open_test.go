@@ -3,11 +3,123 @@ package application
 import (
 	"bytes"
 	"errors"
+	"io/fs"
+	"reflect"
 	"testing"
 
 	"github.com/ytakahashi/pino/internal/application/documentview"
 	"github.com/ytakahashi/pino/internal/domain"
 )
+
+func TestOpeningAnExistingFileLoadsTheSameDocumentAsOpen(t *testing.T) {
+	t.Parallel()
+
+	const path = "config/settings.json"
+	raw := []byte("{\r\n    \"a\": 1\r\n}\r\n")
+	meta := &fakeMeta{}
+	deps := Deps{
+		Parser:   &fakeParser{root: testTree(t)},
+		Files:    &fakeFileStore{data: map[string][]byte{path: raw}, meta: meta},
+		Wrapper:  fakeTextWrap{},
+		JSONView: documentview.NewJSONRenderer(),
+		TreeView: documentview.NewTreeRenderer(),
+	}
+	app, ordinary := New(deps, Config{}), New(deps, Config{})
+
+	if err := ordinary.Open(path); err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	if err := app.OpenExisting(path); err != nil {
+		t.Fatalf("OpenExisting: %v", err)
+	}
+
+	status := app.Status()
+	if status != ordinary.Status() || status.Name != "settings.json" || status.New || status.Dirty {
+		t.Errorf("status = %+v, want the same clean existing file as Open: %+v", status, ordinary.Status())
+	}
+
+	frame := app.Frame()
+	if len(frame.Lines) == 0 || !reflect.DeepEqual(frame, ordinary.Frame()) {
+		t.Errorf("frame = %+v, want the nonempty frame from Open: %+v", frame, ordinary.Frame())
+	}
+
+	wantFormat := domain.Format{Indent: "    ", Newline: "\r\n", TrailingNL: true}
+	if app.format != wantFormat || app.format != ordinary.format {
+		t.Errorf("format = %#v, want %#v, as Open read it: %#v", app.format, wantFormat, ordinary.format)
+	}
+
+	if app.source != (FileSource{Path: path}) || app.meta != meta {
+		t.Errorf("source = %#v, meta = %#v, want the selected path and its metadata", app.source, app.meta)
+	}
+}
+
+func TestOpeningAnExistingFileLeavesTheSessionAloneOnFailure(t *testing.T) {
+	t.Parallel()
+
+	parseErr := errors.New("unexpected end of JSON input")
+	for name, tc := range map[string]struct {
+		// selected is what the store holds at the chosen path. Nil leaves the
+		// path free, as a file removed after it was listed does.
+		selected []byte
+		readErr  error
+		parseErr error
+		want     error
+	}{
+		"missing file":    {want: fs.ErrNotExist},
+		"unreadable file": {selected: []byte(testSource), readErr: fs.ErrPermission, want: fs.ErrPermission},
+		"invalid JSON":    {selected: []byte("{"), parseErr: parseErr, want: parseErr},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			for session, existing := range map[string]bool{"empty session": false, "open document": true} {
+				t.Run(session, func(t *testing.T) {
+					t.Parallel()
+
+					files := &fakeFileStore{data: map[string][]byte{"first.json": []byte(testSource)}}
+					if tc.selected != nil {
+						files.data["selected.json"] = tc.selected
+					}
+
+					parser := &fakeParser{root: testTree(t)}
+					app := New(Deps{
+						Parser:   parser,
+						Files:    files,
+						Wrapper:  fakeTextWrap{},
+						JSONView: documentview.NewJSONRenderer(),
+						TreeView: documentview.NewTreeRenderer(),
+					}, Config{})
+					if existing {
+						if err := app.Open("first.json"); err != nil {
+							t.Fatalf("Open: %v", err)
+						}
+					}
+
+					before := struct {
+						doc    *Document
+						source Source
+						format domain.Format
+						meta   Meta
+					}{app.doc, app.source, app.format, app.meta}
+					files.err, parser.err = tc.readErr, tc.parseErr
+
+					if err := app.OpenExisting("selected.json"); !errors.Is(err, tc.want) {
+						t.Fatalf("OpenExisting error = %v, want %v", err, tc.want)
+					}
+
+					if app.doc != before.doc || app.source != before.source || app.format != before.format || app.meta != before.meta {
+						t.Error("a failed existing file open changed the current document")
+					}
+
+					if !existing && (app.Status().New || len(app.Frame().Lines) != 0) {
+						t.Error("a failed existing file open started a new document")
+					}
+				})
+			}
+		})
+	}
+}
 
 func TestOpeningStandardInputLoadsAnUnownedDocument(t *testing.T) {
 	t.Parallel()
