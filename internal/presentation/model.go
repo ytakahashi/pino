@@ -64,12 +64,17 @@ type Model struct {
 // are settled where the rest of the program is assembled, which is where an
 // option to choose one would arrive.
 func NewModel(app *application.App, theme Theme) Model {
-	return Model{app: app, theme: theme, mouse: true}
+	return newModel(app, theme, true)
 }
 
-// Init has nothing to start. The document is opened before the program runs,
-// so that a file which cannot be read is reported on the terminal pino was
-// launched from rather than on a screen it has already taken over.
+// newModel also accepts the terminal selection policy carried from a picker.
+func newModel(app *application.App, theme Theme, mouse bool) Model {
+	return Model{app: app, theme: theme, mouse: mouse}
+}
+
+// Init has nothing to start. The document is already open: file arguments and
+// stdin are opened before the program runs, and picker selections are opened
+// by the root model before it creates the editor.
 func (m Model) Init() tea.Cmd { return nil }
 
 // Update answers a message with the next model.

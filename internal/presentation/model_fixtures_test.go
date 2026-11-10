@@ -23,9 +23,12 @@ import (
 // depend on parsing; the store hands back the bytes the layout is detected
 // from.
 
-type fakeFileStore struct{ src []byte }
+type fakeFileStore struct {
+	src []byte
+	err error
+}
 
-func (s fakeFileStore) Read(string) ([]byte, application.Meta, error) { return s.src, nil, nil }
+func (s fakeFileStore) Read(string) ([]byte, application.Meta, error) { return s.src, nil, s.err }
 
 func (fakeFileStore) Write(string, []byte) (application.WriteOutcome, error) {
 	return application.WriteOutcome{}, errors.ErrUnsupported
@@ -35,9 +38,12 @@ func (fakeFileStore) HasChangedSince(string, application.Meta) (application.Chan
 	return application.ChangeModified, errors.ErrUnsupported
 }
 
-type fakeParser struct{ root domain.Node }
+type fakeParser struct {
+	root domain.Node
+	err  error
+}
 
-func (p fakeParser) Parse([]byte, domain.Dialect) (domain.Node, error) { return p.root, nil }
+func (p fakeParser) Parse([]byte, domain.Dialect) (domain.Node, error) { return p.root, p.err }
 
 // testDocument draws as four rows:
 //

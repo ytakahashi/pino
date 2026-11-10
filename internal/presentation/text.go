@@ -1,8 +1,11 @@
 package presentation
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // This file holds the handling of text that came from outside pino and is
@@ -42,4 +45,41 @@ func printable(s string) string {
 
 		return r
 	}, s)
+}
+
+// escaped is outside text made safe to draw while keeping it distinguishable.
+//
+// The picker lists names that only differ in what printable would replace:
+// "a\nb.json" and "a\tb.json" are two files, and a reader choosing between
+// them has to see which is which. Each rune that is not graphic is written as
+// its Go escape instead, and a byte that is not valid UTF-8 as \xNN. Quotes
+// and backslashes stay as they are, unlike strconv.Quote: they are ordinary
+// in file names and in parse errors such as "invalid character '"'". The cost
+// is that a name holding a literal backslash followed by "n" reads the same as
+// one holding a newline, which is rare enough to accept.
+//
+// The editor keeps printable, since it shows one name and never has to tell
+// two apart.
+func escaped(s string) string {
+	var b strings.Builder
+
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+
+		switch {
+		case r == utf8.RuneError && size == 1:
+			fmt.Fprintf(&b, `\x%02x`, s[i])
+
+		case unicode.IsGraphic(r):
+			b.WriteRune(r)
+
+		default:
+			quoted := strconv.QuoteRune(r)
+			b.WriteString(quoted[1 : len(quoted)-1])
+		}
+
+		i += size
+	}
+
+	return b.String()
 }

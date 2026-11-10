@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"slices"
 	"strings"
 )
 
@@ -23,6 +24,7 @@ const (
 	helpMove
 	helpJump
 	helpSearch
+	helpFilter
 	helpFold
 	helpView
 	helpEdit
@@ -35,11 +37,13 @@ const (
 // helpGroups is the order the headings are read in: getting about the
 // document, then looking at it, then changing it, then what becomes of the
 // changes, then operations on its file, and last the keys that exist only
-// while a question is up.
+// while a question is up. Filter is the picker's counterpart to Search; no
+// screen has both, so each reads its finding keys in the same place.
 var helpGroups = []helpGroup{
 	helpMove,
 	helpJump,
 	helpSearch,
+	helpFilter,
 	helpFold,
 	helpView,
 	helpEdit,
@@ -58,6 +62,8 @@ func (g helpGroup) String() string {
 		return "Jump"
 	case helpSearch:
 		return "Search"
+	case helpFilter:
+		return "Filter"
 	case helpFold:
 		return "Fold"
 	case helpView:
@@ -103,11 +109,20 @@ type helpLine struct {
 // not a key at all. Leaving them off would be worse than holding them in a
 // second place — a reader who cannot get out of a text box is stuck — so what
 // the tables cannot say is said here, beside what they can.
-var contextualEntries = []helpEntry{
+//
+// The picker offers the same wheel and one-line box, so it takes
+// sharedContextualEntries rather than writing them out again; only a newline
+// is the editor's alone, since the picker's filter box holds a single line.
+var contextualEntries = slices.Concat(sharedContextualEntries, []helpEntry{
+	{Group: helpPrompt, Keys: "Ctrl+j", Description: "newline"},
+})
+
+// sharedContextualEntries are the contextual keys every screen with a list and
+// a box has.
+var sharedContextualEntries = []helpEntry{
 	{Group: helpView, Keys: "wheel", Description: "scroll"},
 	{Group: helpPrompt, Keys: "Enter", Description: "accept"},
 	{Group: helpPrompt, Keys: "Esc", Description: "cancel"},
-	{Group: helpPrompt, Keys: "Ctrl+j", Description: "newline"},
 }
 
 // helpTitle is what the screen calls itself, at the left of its first row.
@@ -157,8 +172,11 @@ func helpEntries() []helpEntry {
 // the rows the smallest terminal has, which is what the test alongside holds
 // it to; there is no offset here to scroll a longer one with.
 func helpLines() []helpLine {
-	entries := helpEntries()
+	return groupedHelp(helpEntries())
+}
 
+// groupedHelp keeps the heading order shared by the editor and picker.
+func groupedHelp(entries []helpEntry) []helpLine {
 	lines := make([]helpLine, 0, len(helpGroups))
 
 	for _, g := range helpGroups {
@@ -223,9 +241,13 @@ func helpTitleRow(width int) string {
 // what lets the eye find a key without reading the rows. The three columns are
 // already three fields, so nothing has to be taken apart again to colour it.
 func (t Theme) RenderHelp(width, height int) []string {
-	rows := []string{t.HelpTitle.Render(helpTitleRow(width))}
+	return t.renderHelp(helpTitleRow(width), helpLines(), width, height)
+}
 
-	for _, l := range helpLines() {
+func (t Theme) renderHelp(title string, lines []helpLine, width, height int) []string {
+	rows := []string{t.HelpTitle.Render(title)}
+
+	for _, l := range lines {
 		written := make([]string, 0, len(l.Entries))
 		for _, e := range l.Entries {
 			written = append(written, t.HelpKey.Render(e.Keys)+" "+e.Description)
