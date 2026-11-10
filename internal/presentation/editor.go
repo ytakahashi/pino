@@ -117,6 +117,12 @@ func newEditor(t Theme, seed application.EffectBeginInput, width int) (editor, b
 	return e, held
 }
 
+// newLineEditor is a single-line box seeded with text, for screens that ask
+// for a term rather than answer a session prompt.
+func newLineEditor(t Theme, text string, width int) (editor, bool) {
+	return newEditor(t, application.EffectBeginInput{Text: text}, width)
+}
+
 // Value is what has been typed.
 func (e editor) Value() string {
 	switch {
