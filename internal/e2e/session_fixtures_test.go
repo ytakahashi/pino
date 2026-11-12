@@ -258,14 +258,15 @@ func startAt(t *testing.T, path, onFirstScreen string) (*teatest.TestModel, *scr
 func startWith(t *testing.T, path string, cfg cli.ProgramConfig, onFirstScreen string) (*teatest.TestModel, *screenWaiter, string) {
 	t.Helper()
 
-	tm, waiter := startDocument(t, cli.FileDocument{Path: path}, cfg, onFirstScreen)
+	tm, waiter, _ := startDocument(t, cli.FileDocument{Path: path}, cfg, onFirstScreen)
 
 	return tm, waiter, path
 }
 
 // startDocument shares the real program assembly and screen observation for
-// file and standard-input documents.
-func startDocument(t *testing.T, doc cli.Document, cfg cli.ProgramConfig, onFirstScreen string) (*teatest.TestModel, *screenWaiter) {
+// file, standard-input, and directory documents. It also answers the first
+// screen showing onFirstScreen, for a scenario that checks more of it.
+func startDocument(t *testing.T, doc cli.Document, cfg cli.ProgramConfig, onFirstScreen string) (*teatest.TestModel, *screenWaiter, []string) {
 	t.Helper()
 
 	model, err := cli.NewProgramModel(doc, cfg)
@@ -290,11 +291,11 @@ func startDocument(t *testing.T, doc cli.Document, cfg cli.ProgramConfig, onFirs
 
 	waiter := &screenWaiter{observer: observer}
 
-	waiter.wait(t, func(screen []string) bool {
+	first := waiter.wait(t, func(screen []string) bool {
 		return strings.Contains(strings.Join(screen, "\n"), onFirstScreen)
 	})
 
-	return tm, waiter
+	return tm, waiter, first
 }
 
 // finalScreen quits and answers the screen the program stopped on, one entry

@@ -17,6 +17,7 @@ An interactive terminal editor for JSON files.
 - Preserve comments in JSON documents regardless of file extension. Trailing
   commas are accepted and removed when saving.
 - Preserve the detected indentation and newline style when saving.
+- Pick a JSON file from a directory listing.
 - Open JSON from standard input and save it to a chosen file.
 
 ### Views
@@ -55,6 +56,20 @@ go install github.com/ytakahashi/pino/cmd/pino@latest
 ```
 
 ## Getting started
+
+Choose a file from the current directory or a specified directory:
+
+```sh
+pino
+pino path/to/directory/
+```
+
+The picker lists `.json` files directly in the directory, including hidden files
+and file symlinks. Use `j` / `k` to move, `/` to filter with the same smartcase
+rules as search, and `Enter` to open. If a file cannot be opened, choose another
+from the picker. A directory with no `.json` files prints a message and exits
+successfully. With no arguments, piped input opens a document instead; a
+directory argument takes precedence over piped input.
 
 Open one JSON file:
 
@@ -100,7 +115,7 @@ ignores case; a term containing an uppercase letter is case-sensitive.
 ## Options
 
 ```text
-usage: pino [options] [<file> | -] [options]
+usage: pino [options] [<file> | <dir> | -] [options]
 ```
 
 | Option                  | Description                                                |

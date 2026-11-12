@@ -14,7 +14,7 @@ func TestTheProgramSavesAnEditedStdinDocumentToTheEnteredPath(t *testing.T) {
 	t.Parallel()
 
 	path := missingPath(t)
-	tm, waiter := startDocument(t, cli.StdinDocument{Data: []byte(jsoncConfig)}, cli.ProgramConfig{}, "Address used by clients")
+	tm, waiter, _ := startDocument(t, cli.StdinDocument{Data: []byte(jsoncConfig)}, cli.ProgramConfig{}, "Address used by clients")
 
 	first := waiter.wait(t, func(screen []string) bool {
 		return strings.Contains(statusRow(screen), "stdin")

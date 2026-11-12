@@ -83,9 +83,10 @@ func TestRootReportsOpenFailuresAndAllowsAnotherSelection(t *testing.T) {
 			if !errors.Is(f.Err, tc.want) || l.calls != 2 || len(f.Names) != 1 || f.Names[0] != "b.json" {
 				t.Errorf("failure did not preserve its cause and refresh the names: %+v, lists=%d", f, l.calls)
 			}
+			// The directory is on the status row; the error row names the file.
 			row := rootRows(m)[minHeight-2]
-			if strings.Count(row, "configs/a.json") != 1 || !strings.Contains(row, tc.want.Error()) {
-				t.Errorf("error row = %q, want filename once and the cause", row)
+			if strings.Count(row, "a.json") != 1 || strings.Contains(row, "configs/") || !strings.Contains(row, tc.want.Error()) {
+				t.Errorf("error row = %q, want the filename once and the cause", row)
 			}
 			if len(m.app.Frame().Lines) != 0 {
 				t.Error("a failed open created a document")

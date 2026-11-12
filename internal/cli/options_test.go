@@ -117,7 +117,7 @@ func TestDoubleDashAllowsAPathStartingWithAHyphen(t *testing.T) {
 	}
 }
 
-func TestTheCommandLineSelectsAFileOrStandardInput(t *testing.T) {
+func TestTheCommandLineSelectsAPathOrStandardInput(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -131,13 +131,16 @@ func TestTheCommandLineSelectsAFileOrStandardInput(t *testing.T) {
 		{name: "file from a terminal", args: []string{"in.json"}, terminal: true, want: documentChoice{path: "in.json"}},
 		{name: "file ignores a pipe", args: []string{"in.json"}, want: documentChoice{path: "in.json"}},
 		{name: "file rejects output", args: []string{"in.json", "-o", "out.json"}, wantErr: "--output is only used when reading standard input"},
+		{name: "directory from a terminal", args: []string{"dir/"}, terminal: true, want: documentChoice{path: "dir/"}},
+		{name: "directory ignores a pipe", args: []string{"dir/"}, want: documentChoice{path: "dir/"}},
+		{name: "directory rejects output", args: []string{"dir/", "-o", "out.json"}, wantErr: "--output is only used when reading standard input"},
 		{name: "explicit stdin", args: []string{"-"}, want: documentChoice{stdin: true}},
 		{name: "explicit stdin with output", args: []string{"-", "-o", "out.json"}, want: documentChoice{stdin: true, output: "out.json"}},
 		{name: "explicit terminal", args: []string{"-"}, terminal: true, wantErr: "standard input is a terminal"},
 		{name: "explicit terminal with output", args: []string{"-", "-o", "out.json"}, terminal: true, wantErr: "standard input is a terminal"},
 		{name: "implicit stdin", want: documentChoice{stdin: true}},
 		{name: "implicit stdin with output", args: []string{"-o", "out.json"}, want: documentChoice{stdin: true, output: "out.json"}},
-		{name: "no input", terminal: true, wantUsage: true},
+		{name: "current directory from a terminal", terminal: true, want: documentChoice{path: "."}},
 		{name: "implicit terminal with output", args: []string{"-o", "out.json"}, terminal: true, wantErr: "standard input is a terminal"},
 		{name: "several files", args: []string{"a", "b"}, wantUsage: true},
 		{name: "several files from a terminal", args: []string{"a", "b"}, terminal: true, wantUsage: true},

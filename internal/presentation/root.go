@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -54,13 +55,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch e := effect.(type) {
 		case picker.EffectOpen:
 			if err := m.app.OpenExisting(e.Path); err != nil {
-				// File-store errors already name their path; parser errors do
-				// not. Preserve both the cause and a readable filename.
-				var pathErr *fs.PathError
-				if !errors.As(err, &pathErr) {
-					err = fmt.Errorf("%s: %w", e.Path, err)
-				}
-				m.picker.picker.Failed(err)
+				m.picker.picker.Failed(namedOpenError(e.Path, err))
 				m.picker.syncSize()
 
 				continue
@@ -89,6 +84,25 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// namedOpenError names the file a failed open was for by its name alone.
+//
+// The error row is one line cut at the terminal width, and the directory is
+// already on the status row; a full path would push the reason off screen.
+// Candidates are entries directly inside the directory, so the base name is
+// what the list showed. A path error about the selection, which the file store
+// returns unwrapped, keeps its operation and cause with the shorter path; any
+// other error is prefixed with the name, since a parser error has none.
+func namedOpenError(path string, err error) error {
+	name := filepath.Base(path)
+
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) && pathErr.Path == path {
+		return &fs.PathError{Op: pathErr.Op, Path: name, Err: pathErr.Err}
+	}
+
+	return fmt.Errorf("%s: %w", name, err)
 }
 
 // forward hands msg to the editor. Model.Update returns its own type behind
