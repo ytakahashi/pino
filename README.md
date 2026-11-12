@@ -64,12 +64,8 @@ pino
 pino path/to/directory/
 ```
 
-The picker lists `.json` files directly in the directory, including hidden files
-and file symlinks. Use `j` / `k` to move, `/` to filter with the same smartcase
-rules as search, and `Enter` to open. If a file cannot be opened, choose another
-from the picker. A directory with no `.json` files prints a message and exits
-successfully. With no arguments, piped input opens a document instead; a
-directory argument takes precedence over piped input.
+The picker lists `.json` files directly in the directory. Use `j` / `k` to move,
+`/` to filter with the same smartcase rules as search, and `Enter` to open.
 
 Open one JSON file:
 
@@ -85,9 +81,6 @@ curl -sSf https://api.github.com/repos/ytakahashi/pino | pino - -o response.json
 
 With piped input, `-` can be omitted. Without `-o`, `Ctrl+s` asks for a file
 name. Existing destinations require confirmation before the first overwrite.
-After saving, the document behaves like a file opened directly, including
-reload. An untouched stdin document quits without saving or asking for
-confirmation.
 
 The keys below cover a first editing session. Press `?` inside pino to see all
 available keys.
@@ -125,10 +118,8 @@ usage: pino [options] [<file> | <dir> | -] [options]
 | `-o`, `--output string` | path to save a document read from standard input           |
 | `-v`, `--version`       | print version information and exit                         |
 
-`-o`, `--output string` sets the save destination for standard input only. An
-empty path and `-` (standard output) are rejected. To open a file named `-`, use
-`pino ./-`; `pino -- -` still reads standard input. Standard input must be piped
-or redirected, and keyboard input requires a controlling terminal.
-
-Saving stdin always adds a trailing newline. The TUI draws to stdout, so
-`pino - > out.json` does not export JSON. Use `-o out.json` instead.
+- `-o`, `--output string` sets the save destination for standard input only. An
+  empty path and `-` (standard output) are rejected.
+- Standard input must be piped or redirected.
+- Saving stdin always adds a trailing newline.
+- The TUI draws to stdout, use `-o out.json` to write to a file.
