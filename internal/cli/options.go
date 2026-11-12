@@ -67,7 +67,7 @@ func (p *optionParser) parse(args []string) error {
 }
 
 func (p *optionParser) usage(w io.Writer) {
-	printf(w, "usage: pino [options] [<file> | -] [options]\n\nRead standard input when piped with no file or with -.\n\noptions:\n%s", p.flags.FlagUsages())
+	printf(w, "usage: pino [options] [<file> | <dir> | -] [options]\n\nPick a JSON file from <dir> or the current directory when no input is given.\nRead standard input when piped with no file or with -.\n\noptions:\n%s", p.flags.FlagUsages())
 }
 
 // documentChoice selects an input before any bytes are read. A Document is
@@ -78,8 +78,8 @@ type documentChoice struct {
 	output string
 }
 
-// errUsageOnly preserves the usage-only response to a missing or extra file
-// argument. Other invocation errors carry a reason to print before usage.
+// errUsageOnly preserves the usage-only response to extra positional
+// arguments. Other invocation errors carry a reason to print before usage.
 var errUsageOnly = errors.New("invalid document arguments")
 
 func documentFrom(options commandOptions, stdinTerminal bool) (documentChoice, error) {
@@ -108,7 +108,7 @@ func documentFrom(options commandOptions, stdinTerminal bool) (documentChoice, e
 
 	if stdinTerminal {
 		if len(options.arguments) == 0 && !options.outputGiven {
-			return documentChoice{}, errUsageOnly
+			return documentChoice{path: "."}, nil
 		}
 
 		return documentChoice{}, fmt.Errorf("standard input is a terminal")

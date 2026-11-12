@@ -17,6 +17,7 @@ An interactive terminal editor for JSON files.
 - Preserve comments in JSON documents regardless of file extension. Trailing
   commas are accepted and removed when saving.
 - Preserve the detected indentation and newline style when saving.
+- Pick a JSON file from a directory listing.
 - Open JSON from standard input and save it to a chosen file.
 
 ### Views
@@ -56,6 +57,16 @@ go install github.com/ytakahashi/pino/cmd/pino@latest
 
 ## Getting started
 
+Choose a file from the current directory or a specified directory:
+
+```sh
+pino
+pino path/to/directory/
+```
+
+The picker lists `.json` files directly in the directory. Use `j` / `k` to move,
+`/` to filter with the same smartcase rules as search, and `Enter` to open.
+
 Open one JSON file:
 
 ```sh
@@ -70,9 +81,6 @@ curl -sSf https://api.github.com/repos/ytakahashi/pino | pino - -o response.json
 
 With piped input, `-` can be omitted. Without `-o`, `Ctrl+s` asks for a file
 name. Existing destinations require confirmation before the first overwrite.
-After saving, the document behaves like a file opened directly, including
-reload. An untouched stdin document quits without saving or asking for
-confirmation.
 
 The keys below cover a first editing session. Press `?` inside pino to see all
 available keys.
@@ -100,7 +108,7 @@ ignores case; a term containing an uppercase letter is case-sensitive.
 ## Options
 
 ```text
-usage: pino [options] [<file> | -] [options]
+usage: pino [options] [<file> | <dir> | -] [options]
 ```
 
 | Option                  | Description                                                |
@@ -110,10 +118,8 @@ usage: pino [options] [<file> | -] [options]
 | `-o`, `--output string` | path to save a document read from standard input           |
 | `-v`, `--version`       | print version information and exit                         |
 
-`-o`, `--output string` sets the save destination for standard input only. An
-empty path and `-` (standard output) are rejected. To open a file named `-`, use
-`pino ./-`; `pino -- -` still reads standard input. Standard input must be piped
-or redirected, and keyboard input requires a controlling terminal.
-
-Saving stdin always adds a trailing newline. The TUI draws to stdout, so
-`pino - > out.json` does not export JSON. Use `-o out.json` instead.
+- `-o`, `--output string` sets the save destination for standard input only. An
+  empty path and `-` (standard output) are rejected.
+- Standard input must be piped or redirected.
+- Saving stdin always adds a trailing newline.
+- The TUI draws to stdout, use `-o out.json` to write to a file.

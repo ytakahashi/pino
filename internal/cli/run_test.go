@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"os"
@@ -24,7 +25,6 @@ func TestRunReportsUsageErrors(t *testing.T) {
 		args      []string
 		usageOnly bool
 	}{
-		{"no arguments", nil, true},
 		{"two files", []string{"a.json", "b.json"}, true},
 		{"unknown short option", []string{"-nope", "a.json"}, false},
 		{"unknown long option", []string{"--nope", "a.json"}, false},
@@ -141,7 +141,7 @@ func TestHelpPrintsUsage(t *testing.T) {
 				t.Errorf("exit code = %d, want %d", code, exitOK)
 			}
 
-			if !strings.Contains(stdout, "usage: pino") {
+			if !strings.HasPrefix(stdout, "usage: pino [options] [<file> | <dir> | -] [options]\n") {
 				t.Errorf("stdout = %q, want it to describe the usage", stdout)
 			}
 
@@ -247,11 +247,6 @@ func TestRunNamesAnUnreadableFile(t *testing.T) {
 		path func(t *testing.T) string
 		want string
 	}{
-		{
-			name: "directory",
-			path: func(t *testing.T) string { return t.TempDir() },
-			want: "is a directory",
-		},
 		{
 			name: "a link to nothing",
 			path: func(t *testing.T) string {
@@ -448,5 +443,55 @@ func TestReportOpenErrorOmitsAnUnknownPosition(t *testing.T) {
 
 	if want := "pino: config.json: a reason in some new shape\n"; b.String() != want {
 		t.Errorf("reportOpenError wrote %q, want %q", b.String(), want)
+	}
+}
+
+func TestRunReportsAnEmptyDirectoryWithoutOpeningTheTerminal(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("notes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, terminal := range map[string]bool{"terminal": true, "pipe": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var stdout, stderr bytes.Buffer
+			// A directory argument must not consume stdin, even when it is a pipe.
+			code := Run([]string{dir}, Input{Reader: unreadInput{t}, Terminal: terminal}, &stdout, &stderr)
+			want := "pino: no .json files in " + dir + "\n"
+			if code != exitOK || stdout.Len() != 0 || stderr.String() != want {
+				t.Errorf("Run = %d, %q, %q, want exit 0 and %q", code, stdout.String(), stderr.String(), want)
+			}
+		})
+	}
+}
+
+// unreadInput is standard input that a run must leave alone.
+type unreadInput struct{ t *testing.T }
+
+func (in unreadInput) Read([]byte) (int, error) {
+	in.t.Error("standard input was read")
+
+	return 0, io.EOF
+}
+
+func TestRunReportsAnUnreadableDirectoryBeforeOpeningTheTerminal(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Error(err)
+		}
+	})
+	// Privileged test runners may still read a directory with no permissions.
+	if _, err := os.ReadDir(dir); err == nil {
+		t.Skip("directory remains readable without permissions")
+	}
+	code, stdout, stderr := run(t, dir)
+	if code != exitError || stdout != "" || !strings.HasPrefix(stderr, "pino: open "+dir+": ") || strings.Count(stderr, "\n") != 1 {
+		t.Errorf("Run = %d, %q, %q, want exit 1 and a directory read error", code, stdout, stderr)
 	}
 }

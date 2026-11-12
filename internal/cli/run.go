@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -32,8 +33,9 @@ const (
 	exitUsage = 2
 )
 
-// Run opens the document named on the command line and hands the terminal to
-// it, returning the exit code the process should end with.
+// Run opens the document named on the command line, or lists the directory
+// named there to pick one from, and hands the terminal to it, returning the
+// exit code the process should end with.
 func Run(args []string, stdin Input, stdout, stderr io.Writer) int {
 	parser := newOptionParser()
 
@@ -88,14 +90,22 @@ func Run(args []string, stdin Input, stdout, stderr io.Writer) int {
 		}
 
 		doc = StdinDocument{Data: data, Output: choice.output}
+	} else if info, err := os.Stat(choice.path); err == nil && info.IsDir() {
+		// A failed Stat keeps the file path: Open owns missing-file creation
+		// and reports filesystem errors with the existing file diagnostics.
+		doc = DirectoryDocument{Dir: choice.path}
 	}
 
-	// The document is opened before the terminal is taken over: pino is a
-	// structural editor and has no way to repair a broken file, so the reason
-	// it cannot be opened is worth more on the terminal the user launched pino
-	// from than on a screen that would have nothing to offer them.
+	// Open explicit files and stdin, or list a directory, before taking the
+	// terminal. Picker selections are opened inside the running program so an
+	// unreadable candidate can be reported while another is chosen.
 	model, err := NewProgramModel(doc, cfg)
 	if err != nil {
+		if errors.Is(err, errNoJSONFiles) {
+			printf(stderr, "pino: no .json files in %s\n", doc.label())
+
+			return exitOK
+		}
 		reportOpenError(stderr, doc, err)
 
 		return exitError
@@ -144,7 +154,7 @@ type ProgramConfig struct {
 	Application application.Config
 }
 
-// NewProgramModel opens a document and answers the model that draws it.
+// NewProgramModel prepares the starting document or picker and its model.
 //
 // This is the assembly Run performs, kept apart from it because everything
 // around it — the flags, the writers, the exit code — needs a process to mean
@@ -152,8 +162,8 @@ type ProgramConfig struct {
 // model this returns and so exercises the adapters Run would have chosen,
 // rather than a second set of them written out beside it.
 //
-// The terminal is untouched here: the document is read, parsed and laid out,
-// and nothing is drawn until a program is given what comes back.
+// The terminal is untouched here: a file is read and parsed or a directory
+// is listed. Nothing is drawn until a program is given what comes back.
 func NewProgramModel(doc Document, cfg ProgramConfig) (tea.Model, error) {
 	app := application.New(application.Deps{
 		Parser:   jsonparser.New(),
@@ -163,11 +173,11 @@ func NewProgramModel(doc Document, cfg ProgramConfig) (tea.Model, error) {
 		TreeView: documentview.NewTreeRenderer(),
 	}, cfg.Application)
 
-	if err := doc.open(app); err != nil {
-		return nil, err
-	}
-
-	return presentation.NewModel(app, presentation.DefaultTheme()), nil
+	return doc.start(programParts{
+		app:    app,
+		lister: filestore.NewLister(),
+		theme:  presentation.DefaultTheme(),
+	})
 }
 
 // printf puts a message on the terminal.
