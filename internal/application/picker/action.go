@@ -6,7 +6,8 @@ package picker
 type Action interface{ isAction() }
 
 // ActionMoveNext and ActionMovePrev ask for the name below and above the one
-// selected. ActionMoveFirst and ActionMoveLast ask for the first and the last.
+// selected, wrapping to the opposite end of the list when moving past an end.
+// ActionMoveFirst and ActionMoveLast ask for the first and the last.
 type (
 	ActionMoveNext  struct{}
 	ActionMovePrev  struct{}

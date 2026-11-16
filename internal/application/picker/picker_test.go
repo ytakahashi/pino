@@ -84,7 +84,7 @@ func TestEmptyReportsADirectoryWithNoCandidates(t *testing.T) {
 
 // Moving the selection and the window.
 
-func TestMovesStopAtTheEnds(t *testing.T) {
+func TestMovesWrapAtTheEnds(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -92,9 +92,9 @@ func TestMovesStopAtTheEnds(t *testing.T) {
 		want int
 	}{
 		"next":                {acts: []Action{ActionMoveNext{}}, want: 1},
-		"previous at the top": {acts: []Action{ActionMovePrev{}}, want: 0},
+		"previous at the top": {acts: []Action{ActionMovePrev{}}, want: 2},
 		"last":                {acts: []Action{ActionMoveLast{}}, want: 2},
-		"next at the bottom":  {acts: []Action{ActionMoveLast{}, ActionMoveNext{}}, want: 2},
+		"next at the bottom":  {acts: []Action{ActionMoveLast{}, ActionMoveNext{}}, want: 0},
 		"previous":            {acts: []Action{ActionMoveLast{}, ActionMovePrev{}}, want: 1},
 		"first":               {acts: []Action{ActionMoveLast{}, ActionMoveFirst{}}, want: 0},
 	}
@@ -115,6 +115,41 @@ func TestMovesStopAtTheEnds(t *testing.T) {
 	}
 }
 
+func TestMovesWrapWithinTheFilteredList(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		filter string
+		prev   int
+		next   int
+	}{
+		"several matches": {filter: "conf", prev: 1, next: 0},
+		"one match":       {filter: "local", prev: 0, next: 0},
+		"no matches":      {filter: "missing", prev: -1, next: -1},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			p := newPicker(t, listing("app.json", "config.json", "config.local.json", "package.json"), "dir")
+			p.Do(ActionBeginFilter{})
+			p.Do(ActionFilterSubmit{Text: tc.filter})
+			p.Do(ActionMovePrev{})
+
+			if got := p.Frame().Cursor; got != tc.prev {
+				t.Fatalf("Cursor after previous = %d, want %d", got, tc.prev)
+			}
+
+			p.Do(ActionMoveNext{})
+
+			if got := p.Frame().Cursor; got != tc.next {
+				t.Errorf("Cursor after next = %d, want %d", got, tc.next)
+			}
+		})
+	}
+}
+
 func TestMovingKeepsTheSelectionInTheWindow(t *testing.T) {
 	t.Parallel()
 
@@ -125,6 +160,8 @@ func TestMovingKeepsTheSelectionInTheWindow(t *testing.T) {
 		act            Action
 		cursor, scroll int
 	}{
+		{ActionMovePrev{}, 9, 7},
+		{ActionMoveNext{}, 0, 0},
 		{ActionMoveLast{}, 9, 7},
 		{ActionMovePrev{}, 8, 7},
 		{ActionMoveFirst{}, 0, 0},

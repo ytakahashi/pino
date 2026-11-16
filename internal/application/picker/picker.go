@@ -179,10 +179,18 @@ func (p *Picker) Do(act Action) []Effect {
 func (p *Picker) doNormal(act Action) []Effect {
 	switch act := act.(type) {
 	case ActionMoveNext:
-		p.moveTo(p.cursor + 1)
+		if p.cursor == len(p.shown)-1 {
+			p.moveTo(0)
+		} else {
+			p.moveTo(p.cursor + 1)
+		}
 
 	case ActionMovePrev:
-		p.moveTo(p.cursor - 1)
+		if p.cursor == 0 {
+			p.moveTo(len(p.shown) - 1)
+		} else {
+			p.moveTo(p.cursor - 1)
+		}
 
 	case ActionMoveFirst:
 		p.moveTo(0)
